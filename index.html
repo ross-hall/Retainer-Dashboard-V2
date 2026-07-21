@@ -52,6 +52,7 @@
   .client-card{cursor:pointer;transition:border-color .15s,box-shadow .15s}
   .client-card:hover{border-color:var(--navy-soft);box-shadow:0 2px 10px rgba(4,14,107,.06)}
   .client-card h3{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .quicklog-btn{margin-left:auto;padding:1px 10px;font-size:15px;line-height:1.4;font-weight:600}
   .dot{width:10px;height:10px;border-radius:50%;flex:none}
   .cycle{color:var(--muted);font-size:12.5px;margin:3px 0 20px}
 
@@ -368,6 +369,60 @@ function openClientEditModal(clientId){
   };
 }
 
+function openQuickLogModal(clientId){
+  const c = state.clients.find(c=>c.id===clientId);
+  if(!c){ toast('Client not found'); return; }
+  const clients = state.clients.filter(cc=>cc.active || cc.id===clientId);
+  const members = state.members.filter(m=>m.active);
+  if(!members.length){ toast('Add a team member first — see Settings'); return; }
+  const lastMember = store.get('rs_last_member') || '';
+  const today = state.logDate || iso(new Date());
+  state.logDate = null;
+  showModal(`
+    <h3>Log task — ${esc(c.name)}</h3>
+    <div class="sub">Raw hours are multiplied by the team member's factor</div>
+    <form class="log" style="max-width:none">
+      <div><label>Client</label><select id="q_client">${clients.map(cc=>`<option value="${cc.id}" ${cc.id===clientId?'selected':''}>${esc(cc.name)}</option>`).join('')}</select></div>
+      <div><label>Team member</label><select id="q_member">${members.map(m=>`<option value="${m.id}" ${m.id===lastMember?'selected':''}>${esc(m.name)} (×${m.weight})</option>`).join('')}</select></div>
+      <div><label>Date</label><input type="date" id="q_date" value="${today}"></div>
+      <div><label>Hours worked</label><input type="number" min="0.25" step="0.25" id="q_hours" placeholder="e.g. 4"></div>
+      <div class="full"><label>Task</label><input type="text" id="q_desc" placeholder="What was the work?"></div>
+      <div class="full"><label>Notes (optional)</label><textarea id="q_notes" placeholder="Anything worth remembering…"></textarea></div>
+      <div class="weighted-note full" id="q_note">Counts as <b>—</b> against the retainer</div>
+    </form>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="q_cancel">Cancel</button>
+        <button class="btn" id="q_save">Log task</button>
+      </div>
+    </div>
+  `);
+  const upd = ()=>{
+    const m = members.find(m=>m.id===$('#q_member').value);
+    const h = parseFloat($('#q_hours').value);
+    $('#q_note').innerHTML = (m && h>0) ? `${fmtH(h)} × ${m.weight} — counts as <b>${fmtH(h*m.weight)}</b> against the retainer` : `Counts as <b>—</b> against the retainer`;
+  };
+  $('#q_member').addEventListener('change', upd);
+  $('#q_hours').addEventListener('input', upd);
+  upd();
+  $('#q_cancel').onclick = closeModal;
+  $('#q_save').onclick = async ()=>{
+    const member = members.find(m=>m.id===$('#q_member').value);
+    const hours = parseFloat($('#q_hours').value);
+    if(!$('#q_client').value || !member || !(hours>0) || !$('#q_date').value){ toast('Fill in client, member, date and hours'); return; }
+    const { error } = await db.from('rs_tasks').insert({
+      client_id: $('#q_client').value, member_id: member.id, task_date: $('#q_date').value, hours,
+      description: $('#q_desc').value.trim() || null, notes: $('#q_notes').value.trim() || null,
+      weight_applied: member.weight
+    });
+    if(error){ toast('Could not save'); console.error(error); return; }
+    store.set('rs_last_member', member.id);
+    closeModal();
+    toast(`Logged — ${fmtH(hours*member.weight)} weighted`);
+    await refreshCurrentView();
+  };
+}
+
 /* ---------- views ---------- */
 function render(){
   const activeClients = state.clients.filter(c=>c.active);
@@ -444,7 +499,7 @@ function renderDashboard(){
       const bd = Object.entries(u.perMember).sort((a,b)=>b[1]-a[1])
         .map(([n,h])=>`<div><span>${esc(n)}</span><span>${fmtH(h)}</span></div>`).join('');
       return `<div class="card client-card" data-goto="${c.id}">
-        <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h3>
+        <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<button class="btn small ghost quicklog-btn" data-quicklog="${c.id}" title="Log task for ${esc(c.name)}">+</button></h3>
         <div class="cycle">${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)} · renews ${fmtDate(u.cyc.next)}</div>
         ${meterHtml(u, c.retainer_hours)}
         ${status}
@@ -455,6 +510,9 @@ function renderDashboard(){
   main.innerHTML = html;
   main.querySelectorAll('[data-goto]').forEach(el=>el.addEventListener('click', ()=>{
     state.clientId = el.dataset.goto; state.view='client'; render();
+  }));
+  main.querySelectorAll('[data-quicklog]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation(); openQuickLogModal(el.dataset.quicklog);
   }));
   $('#dashSearch').addEventListener('input', e=>{
     state.dashSearch=e.target.value; renderDashboard();
@@ -502,7 +560,10 @@ async function renderClient(){
     historyHtml = `<div class="history-list"><b style="display:block;margin-bottom:4px;color:var(--ink)">Retainer history</b>${rows}</div>`;
   }
 
-  let html = `<button class="btn ghost small back-btn" id="backBtn">← Back to dashboard</button>
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+    <button class="btn ghost small" id="backBtn">← Back to dashboard</button>
+    <button class="btn small" id="quickLogBtn">+ Log task</button>
+  </div>
     <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
     <div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · full history below</div>
     ${historyHtml}`;
@@ -540,6 +601,7 @@ async function renderClient(){
   }
   main.innerHTML = html;
   $('#backBtn').onclick = ()=>{ state.view='dashboard'; render(); };
+  $('#quickLogBtn').onclick = ()=> openQuickLogModal(c.id);
   main.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click', ()=>openTaskModal(el.dataset.task)));
 }
 
