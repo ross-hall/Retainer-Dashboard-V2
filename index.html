@@ -142,6 +142,21 @@
   .cycle-block .cb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
   .cycle-block .cb-head h4{font-size:14.5px;font-weight:600}
   .cycle-block .cb-head .badge{font-size:11.5px;color:var(--muted)}
+
+  .day.drop-target{border-color:var(--navy-soft);background:var(--track)}
+  .task-chip{transition:transform .1s}
+  .task-chip:active{cursor:grabbing}
+
+  .swatch{width:16px;height:16px;border-radius:5px;display:inline-block;border:1px solid rgba(0,0,0,.08);vertical-align:middle}
+  input[type=color]{width:44px;height:34px;padding:2px;cursor:pointer}
+
+  .dash-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
+  .dash-controls input[type=text]{width:220px}
+  .dash-controls select{width:auto}
+
+  .history-list{font-size:12.5px;color:var(--muted);margin-bottom:20px}
+  .history-list div{padding:3px 0}
+  .history-list b{color:var(--ink);font-weight:500}
 </style>
 </head>
 <body>
@@ -169,7 +184,7 @@ const SUPABASE_ANON_KEY = "";
 /* ================================ */
 
 let db = null;
-let state = { view:'dashboard', clients:[], members:[], tasks:[], calMonth:null, logDate:null, clientId:null, calHidden:new Set() };
+let state = { view:'dashboard', clients:[], members:[], tasks:[], calMonth:null, logDate:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -197,6 +212,17 @@ function cycleFor(renewalDay, ref){
 
 const PALETTE = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200'];
 function clientColor(id){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return PALETTE[h%PALETTE.length]; }
+function colorFor(client){ return (client && client.color) ? client.color : clientColor(client.id); }
+
+/* Pick the retainer/renewal settings that applied on a given date, from a
+   client's effective-dated history (sorted ascending by effective_from). */
+function settingsAt(history, dateObj){
+  if(!history || !history.length) return null;
+  const d = iso(dateObj);
+  let applicable = history[0];
+  for(const h of history){ if(h.effective_from <= d) applicable = h; else break; }
+  return applicable;
+}
 
 function clientUsage(client, taskList){
   const cyc = cycleFor(client.renewal_day);
@@ -288,6 +314,60 @@ async function refreshCurrentView(){
   if(state.view==='client'){ renderClient(); }
 }
 
+function openClientEditModal(clientId){
+  const c = state.clients.find(c=>c.id===clientId);
+  if(!c){ toast('Client not found'); return; }
+  const today = iso(new Date());
+  showModal(`
+    <h3>Edit ${esc(c.name)}</h3>
+    <div class="sub">Retainer and renewal changes only apply from the effective date onward — tasks logged before it keep counting against the old numbers, so past cycles won't shift.</div>
+    <form class="log" style="max-width:none">
+      <div><label>Dot colour</label><input type="color" id="ec_color" value="${colorFor(c)}"></div>
+      <div><label>Retainer</label><select id="ec_days">
+        <option value="${c.retainer_hours}" selected>Current — ${fmtH(c.retainer_hours)}</option>
+        <optgroup label="Per month">
+          <option value="8">1 day/mo (8h)</option>
+          <option value="16">2 days/mo (16h)</option>
+          <option value="24">3 days/mo (24h)</option>
+          <option value="32">4 days/mo (32h)</option>
+        </optgroup>
+        <optgroup label="Per week">
+          <option value="34.7">1 day/week (~34.7h/mo)</option>
+          <option value="69.3">2 days/week (~69.3h/mo)</option>
+          <option value="104">3 days/week (~104h/mo)</option>
+        </optgroup>
+      </select></div>
+      <div><label>Renews on</label><select id="ec_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===c.renewal_day?'selected':''}>${i+1}</option>`).join('')}</select></div>
+      <div><label>Effective from</label><input type="date" id="ec_effective" value="${today}"></div>
+      <div class="full weighted-note">Only used if the retainer or renewal day actually changes below — the colour updates immediately either way.</div>
+    </form>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="ec_cancel">Cancel</button>
+        <button class="btn" id="ec_save">Save changes</button>
+      </div>
+    </div>
+  `);
+  $('#ec_cancel').onclick = closeModal;
+  $('#ec_save').onclick = async ()=>{
+    const color = $('#ec_color').value;
+    const retainer_hours = +$('#ec_days').value;
+    const renewal_day = +$('#ec_renew').value;
+    const effective_from = $('#ec_effective').value || today;
+    const changed = retainer_hours !== c.retainer_hours || renewal_day !== c.renewal_day;
+
+    const { error: updErr } = await db.from('rs_clients').update({ color, retainer_hours, renewal_day }).eq('id', c.id);
+    if(updErr){ toast('Save failed'); console.error(updErr); return; }
+    if(changed){
+      const { error: histErr } = await db.from('rs_client_settings_history').insert({ client_id:c.id, retainer_hours, renewal_day, effective_from });
+      if(histErr){ toast('Saved, but history log failed — run migration v3?'); console.error(histErr); }
+    }
+    closeModal();
+    toast(changed ? `Updated — new terms apply from ${fmtDate(new Date(effective_from+'T00:00'))}` : 'Colour updated');
+    await refreshCurrentView();
+  };
+}
+
 /* ---------- views ---------- */
 function render(){
   const activeClients = state.clients.filter(c=>c.active);
@@ -312,8 +392,21 @@ function meterHtml(u, retainerHours){
 }
 
 function renderDashboard(){
-  const clients = state.clients.filter(c=>c.active);
-  const flagged = clients.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
+  const allActive = state.clients.filter(c=>c.active);
+  const flagged = allActive.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
+
+  let items = allActive
+    .filter(c=>c.name.toLowerCase().includes(state.dashSearch.toLowerCase()))
+    .map(c=>({c,u:clientUsage(c)}));
+  const sorters = {
+    name: (a,b)=>a.c.name.localeCompare(b.c.name),
+    pct_desc: (a,b)=>b.u.pct-a.u.pct,
+    pct_asc: (a,b)=>a.u.pct-b.u.pct,
+    hours_desc: (a,b)=>b.u.used-a.u.used,
+    hours_asc: (a,b)=>a.u.used-b.u.used,
+  };
+  items.sort(sorters[state.dashSort]||sorters.name);
+
   let html = `<h2>Retainers this cycle</h2><div class="sub">Weighted hours against each client's own renewal month · click a card for full history</div>`;
 
   if (flagged.length){
@@ -326,11 +419,23 @@ function renderDashboard(){
     </div>`;
   }
 
-  if (!clients.length){
+  html += `<div class="dash-controls">
+    <input type="text" id="dashSearch" placeholder="Filter by name…" value="${esc(state.dashSearch)}">
+    <select id="dashSort">
+      <option value="name" ${state.dashSort==='name'?'selected':''}>Sort: Name (A–Z)</option>
+      <option value="pct_desc" ${state.dashSort==='pct_desc'?'selected':''}>Sort: % used (high–low)</option>
+      <option value="pct_asc" ${state.dashSort==='pct_asc'?'selected':''}>Sort: % used (low–high)</option>
+      <option value="hours_desc" ${state.dashSort==='hours_desc'?'selected':''}>Sort: Hours logged (high–low)</option>
+      <option value="hours_asc" ${state.dashSort==='hours_asc'?'selected':''}>Sort: Hours logged (low–high)</option>
+    </select>
+  </div>`;
+
+  if (!allActive.length){
     html += `<div class="empty">No clients yet — add them under <b>Settings</b>.</div>`;
+  } else if (!items.length){
+    html += `<div class="empty">No clients match "${esc(state.dashSearch)}".</div>`;
   } else {
-    html += `<div class="grid">` + clients.map(c=>{
-      const u = clientUsage(c);
+    html += `<div class="grid">` + items.map(({c,u})=>{
       const status = u.pct>=100
         ? `<span class="status over"><span class="pulse"></span>Over retainer by ${fmtH(u.used-c.retainer_hours)}</span>`
         : u.pct>=75
@@ -339,7 +444,7 @@ function renderDashboard(){
       const bd = Object.entries(u.perMember).sort((a,b)=>b[1]-a[1])
         .map(([n,h])=>`<div><span>${esc(n)}</span><span>${fmtH(h)}</span></div>`).join('');
       return `<div class="card client-card" data-goto="${c.id}">
-        <h3><span class="dot" style="background:${clientColor(c.id)}"></span>${esc(c.name)}</h3>
+        <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h3>
         <div class="cycle">${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)} · renews ${fmtDate(u.cyc.next)}</div>
         ${meterHtml(u, c.retainer_hours)}
         ${status}
@@ -351,6 +456,11 @@ function renderDashboard(){
   main.querySelectorAll('[data-goto]').forEach(el=>el.addEventListener('click', ()=>{
     state.clientId = el.dataset.goto; state.view='client'; render();
   }));
+  $('#dashSearch').addEventListener('input', e=>{
+    state.dashSearch=e.target.value; renderDashboard();
+    const inp=$('#dashSearch'); inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+  });
+  $('#dashSort').addEventListener('change', e=>{ state.dashSort=e.target.value; renderDashboard(); });
 }
 
 async function renderClient(){
@@ -361,23 +471,41 @@ async function renderClient(){
     <div class="empty">Loading…</div>`;
   $('#backBtn').onclick = ()=>{ state.view='dashboard'; render(); };
 
-  const { data, error } = await db.from('rs_tasks').select('*').eq('client_id', c.id).order('task_date',{ascending:false});
-  if(error){ toast('Could not load history'); console.error(error); return; }
-  state._clientTaskCache = data;
+  const [{ data: tasks, error: tErr }, { data: hist, error: hErr }] = await Promise.all([
+    db.from('rs_tasks').select('*').eq('client_id', c.id).order('task_date',{ascending:false}),
+    db.from('rs_client_settings_history').select('*').eq('client_id', c.id).order('effective_from',{ascending:true})
+  ]);
+  if(tErr){ toast('Could not load history'); console.error(tErr); return; }
+  const history = (hist||[]).length ? hist : [{retainer_hours:c.retainer_hours, renewal_day:c.renewal_day, effective_from:'2000-01-01'}];
+  state._clientTaskCache = tasks;
 
+  // group tasks into cycles using whatever settings applied on each task's date
   const groups = {};
-  data.forEach(t=>{
-    const cyc = cycleFor(c.renewal_day, new Date(t.task_date+'T00:00'));
+  tasks.forEach(t=>{
+    const s = settingsAt(history, new Date(t.task_date+'T00:00'));
+    const cyc = cycleFor(s.renewal_day, new Date(t.task_date+'T00:00'));
     const key = iso(cyc.start);
-    if(!groups[key]) groups[key] = { cyc, tasks:[] };
+    if(!groups[key]) groups[key] = { cyc, retainer_hours:s.retainer_hours, tasks:[] };
     groups[key].tasks.push(t);
   });
   const currentKey = iso(cycleFor(c.renewal_day).start);
   const keys = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
 
+  let historyHtml = '';
+  if(hErr){ /* table may not exist yet if migration v3 hasn't run */ }
+  else if(history.length>1){
+    const rows = history.slice().reverse().map((h,i,arr)=>{
+      const prev = arr[i+1];
+      const change = prev ? `— changed from ${fmtH(prev.retainer_hours)} / renews ${ordinal(prev.renewal_day)}` : '— initial setting';
+      return `<div>Since <b>${fmtDateY(new Date(h.effective_from+'T00:00'))}</b>: ${fmtH(h.retainer_hours)} retainer, renews on the ${ordinal(h.renewal_day)} <span style="color:var(--muted)">${change}</span></div>`;
+    }).join('');
+    historyHtml = `<div class="history-list"><b style="display:block;margin-bottom:4px;color:var(--ink)">Retainer history</b>${rows}</div>`;
+  }
+
   let html = `<button class="btn ghost small back-btn" id="backBtn">← Back to dashboard</button>
-    <h2><span class="dot" style="background:${clientColor(c.id)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
-    <div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · full history below</div>`;
+    <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
+    <div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · full history below</div>
+    ${historyHtml}`;
 
   if(!keys.length){
     html += `<div class="empty">No tasks logged for this client yet.</div>`;
@@ -385,14 +513,14 @@ async function renderClient(){
     keys.forEach(key=>{
       const g = groups[key];
       const used = g.tasks.reduce((a,t)=>a+t.hours*t.weight_applied,0);
-      const pct = c.retainer_hours>0 ? used/c.retainer_hours*100 : 0;
+      const pct = g.retainer_hours>0 ? used/g.retainer_hours*100 : 0;
       const isCurrent = key===currentKey;
       const badgeCls = pct>=100?'over':pct>=75?'warn':'ok';
       const badgeText = pct>=100 ? `${Math.round(pct)}% · over` : pct>=75 ? `${Math.round(pct)}% · reaching limit` : `${Math.round(pct)}%`;
       html += `<div class="cycle-block">
         <div class="cb-head">
           <h4>${fmtDateY(g.cyc.start)} – ${fmtDateY(g.cyc.end)} ${isCurrent?'<span class="badge">(current cycle)</span>':''}</h4>
-          <span class="status ${badgeCls}">${fmtH(used)} of ${fmtH(c.retainer_hours)} · ${badgeText}</span>
+          <span class="status ${badgeCls}">${fmtH(used)} of ${fmtH(g.retainer_hours)} · ${badgeText}</span>
         </div>
         <div class="card" style="padding:8px 12px">
           <table><thead><tr><th>Date</th><th>Member</th><th>Task</th><th style="text-align:right">Hours</th><th style="text-align:right">Weighted</th></tr></thead>
@@ -448,7 +576,7 @@ function renderLog(){
           const c=state.clients.find(c=>c.id===t.client_id), m=state.members.find(m=>m.id===t.member_id);
           return `<tr class="task-row" data-task="${t.id}">
             <td>${fmtDate(new Date(t.task_date+'T00:00'))}</td>
-            <td><span class="chip"><span class="dot" style="background:${c?clientColor(c.id):'#999'}"></span>${esc(c?c.name:'—')}</span></td>
+            <td><span class="chip"><span class="dot" style="background:${c?colorFor(c):'#999'}"></span>${esc(c?c.name:'—')}</span></td>
             <td>${esc(m?m.name:'—')}</td>
             <td>${esc(t.description||'')}${t.notes? '<span class="note-dot">●</span>':''}</td>
             <td style="text-align:right">${fmtH(t.hours)}</td>
@@ -516,7 +644,7 @@ function renderCalendar(){
     const chips = renews.map(c=>`<div class="renew-chip" data-goto="${c.id}">↻ ${esc(c.name)} renews</div>`).join('')
       + list.slice(0,3).map(t=>{
         const c = state.clients.find(c=>c.id===t.client_id);
-        return `<div class="task-chip" data-task="${t.id}" style="background:${c?clientColor(c.id):'#999'}" title="${esc(t.description||'')}">${esc(c?c.name:'?')} · ${fmtH(t.hours*t.weight_applied)}</div>`;
+        return `<div class="task-chip" draggable="true" data-task="${t.id}" style="background:${c?colorFor(c):'#999'}" title="${esc(t.description||'')} — drag to another day to reschedule">${esc(c?c.name:'?')} · ${fmtH(t.hours*t.weight_applied)}</div>`;
       }).join('') + (list.length>3? `<div style="color:var(--muted)">+${list.length-3} more</div>`:'');
     cells += `<div class="day ${dIso===todayIso?'today':''}" data-date="${dIso}"><div class="num">${d}</div>${chips}</div>`;
   }
@@ -524,7 +652,7 @@ function renderCalendar(){
   main.innerHTML = `
     <h2>Calendar</h2><div class="sub">Weighted hours per task · renewal dates marked automatically · click a day to log time, or a task to edit it</div>
     <div class="cal-filters" id="calFilters">
-      ${activeClients.map(c=>`<button class="filter-pill ${state.calHidden.has(c.id)?'off':''}" data-toggle="${c.id}"><span class="dot" style="background:${clientColor(c.id)}"></span>${esc(c.name)}</button>`).join('')}
+      ${activeClients.map(c=>`<button class="filter-pill ${state.calHidden.has(c.id)?'off':''}" data-toggle="${c.id}"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</button>`).join('')}
       ${activeClients.length? `<button class="filter-pill" id="calAll">Show all</button>`:''}
     </div>
     <div class="cal-head">
@@ -549,8 +677,30 @@ function renderCalendar(){
     if(e.target.closest('[data-task]') || e.target.closest('[data-goto]')) return;
     state.logDate = el.dataset.date; state.view='log'; render();
   }));
-  main.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click', (e)=>{ e.stopPropagation(); openTaskModal(el.dataset.task); }));
+  main.querySelectorAll('.task-chip[data-task]').forEach(el=>{
+    el.addEventListener('click', (e)=>{ e.stopPropagation(); openTaskModal(el.dataset.task); });
+    el.addEventListener('dragstart', (e)=>{
+      e.dataTransfer.setData('text/plain', el.dataset.task);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+  });
   main.querySelectorAll('.renew-chip[data-goto]').forEach(el=>el.addEventListener('click', (e)=>{ e.stopPropagation(); state.clientId=el.dataset.goto; state.view='client'; render(); }));
+  main.querySelectorAll('.day[data-date]').forEach(dayEl=>{
+    dayEl.addEventListener('dragover', e=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; dayEl.classList.add('drop-target'); });
+    dayEl.addEventListener('dragleave', ()=> dayEl.classList.remove('drop-target'));
+    dayEl.addEventListener('drop', async e=>{
+      e.preventDefault(); dayEl.classList.remove('drop-target');
+      const taskId = e.dataTransfer.getData('text/plain');
+      const newDate = dayEl.dataset.date;
+      if(!taskId || !newDate) return;
+      const t = state.tasks.find(t=>t.id===taskId);
+      if(t && t.task_date===newDate) return;
+      const { error } = await db.from('rs_tasks').update({ task_date:newDate }).eq('id', taskId);
+      if(error){ toast('Could not move task'); console.error(error); return; }
+      toast(`Moved to ${fmtDate(new Date(newDate+'T00:00'))}`);
+      await loadAll();
+    });
+  });
 }
 
 function renderSettings(){
@@ -559,18 +709,21 @@ function renderSettings(){
     <div class="settings-cols">
       <div class="card">
         <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Clients</h3>
-        <table><thead><tr><th>Name</th><th>Retainer</th><th>Renews on</th><th></th></tr></thead><tbody>
+        <table><thead><tr><th></th><th>Name</th><th>Retainer</th><th>Renews on</th><th></th></tr></thead><tbody>
         ${state.clients.map(c=>`<tr style="${c.active?'':'opacity:.45'}">
+          <td><span class="swatch" style="background:${colorFor(c)}"></span></td>
           <td>${esc(c.name)}</td>
           <td>${fmtH(c.retainer_hours)}</td>
           <td>${ordinal(c.renewal_day)}</td>
           <td class="action-cell">
+            <button class="btn small ghost" data-cedit="${c.id}">Edit</button>
             <button class="btn small ghost" data-cactive="${c.id}">${c.active?'Archive':'Restore'}</button>
             ${!c.active? `<button class="btn small danger" data-cdelete="${c.id}">Delete</button>`:''}
           </td>
-        </tr>`).join('') || '<tr><td colspan="4" class="empty">No clients yet.</td></tr>'}
+        </tr>`).join('') || '<tr><td colspan="5" class="empty">No clients yet.</td></tr>'}
         </tbody></table>
         <div class="row-form">
+          <input type="color" id="c_color" value="${PALETTE[state.clients.length%PALETTE.length]}" title="Dot colour">
           <input id="c_name" placeholder="Client name" style="flex:2">
           <select id="c_days">
             <optgroup label="Per month">
@@ -614,8 +767,11 @@ function renderSettings(){
 
   $('#c_add').onclick = async ()=>{
     const name = $('#c_name').value.trim(); if(!name){ toast('Client needs a name'); return; }
-    const { error } = await db.from('rs_clients').insert({ name, retainer_hours:+$('#c_days').value, renewal_day:+$('#c_renew').value });
-    if(error){ toast('Could not add client'); return; } await loadAll();
+    const retainer_hours = +$('#c_days').value, renewal_day = +$('#c_renew').value, color = $('#c_color').value;
+    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color }).select().single();
+    if(error){ toast('Could not add client'); console.error(error); return; }
+    await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
+    await loadAll();
   };
   $('#m_add').onclick = async ()=>{
     const name = $('#m_name').value.trim(); const w = parseFloat($('#m_weight').value);
@@ -623,6 +779,7 @@ function renderSettings(){
     const { error } = await db.from('rs_members').insert({ name, weight:w });
     if(error){ toast('Could not add member'); return; } await loadAll();
   };
+  main.querySelectorAll('[data-cedit]').forEach(b=>b.onclick = ()=> openClientEditModal(b.dataset.cedit));
   main.querySelectorAll('[data-cactive]').forEach(b=>b.onclick = async ()=>{
     const c = state.clients.find(c=>c.id===b.dataset.cactive);
     await db.from('rs_clients').update({active:!c.active}).eq('id',c.id); await loadAll();
@@ -656,7 +813,7 @@ function showSetup(){
   main.innerHTML = `
     <div class="setup">
       <h2>Connect to Supabase</h2>
-      <p>Paste your project URL and anon key (Project settings → API). They'll be remembered in this browser. Run <b>retainer-tracker-setup.sql</b> (and <b>retainer-tracker-migration-v2.sql</b> if upgrading) in the SQL editor first.</p>
+      <p>Paste your project URL and anon key (Project settings → API). They'll be remembered in this browser. Run <b>retainer-tracker-setup.sql</b> first, then <b>retainer-tracker-migration-v3.sql</b> (covers all updates so far) in the SQL editor.</p>
       <label>Project URL</label><input id="s_url" placeholder="https://xxxx.supabase.co">
       <label>Anon key</label><input id="s_key" placeholder="eyJ…">
       <button class="btn" id="s_go">Connect</button>
