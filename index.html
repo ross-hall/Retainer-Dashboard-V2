@@ -49,17 +49,20 @@
 
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .client-card{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+  .client-card:hover{border-color:var(--navy-soft);box-shadow:0 2px 10px rgba(4,14,107,.06)}
   .client-card h3{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
   .dot{width:10px;height:10px;border-radius:50%;flex:none}
-  .cycle{color:var(--muted);font-size:12.5px;margin:3px 0 16px}
+  .cycle{color:var(--muted);font-size:12.5px;margin:3px 0 20px}
 
-  .meter{position:relative;height:26px;background:var(--track);border-radius:8px;overflow:visible;margin-bottom:10px}
+  .meter-wrap{margin-top:22px;margin-bottom:8px}
+  .meter{position:relative;height:24px;background:var(--track);border-radius:8px}
   .meter .fill{position:absolute;inset:0 auto 0 0;border-radius:8px;background:var(--navy-soft);transition:width .4s ease;max-width:100%}
   .meter .fill.warn{background:var(--amber)}
   .meter .fill.over{background:var(--red)}
-  .meter .tick{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--ink);opacity:.45;left:75%}
-  .meter .tick::after{content:'75%';position:absolute;top:-15px;left:-11px;font-size:10px;color:var(--muted)}
-  .meter-stats{display:flex;justify-content:space-between;font-size:13px;font-variant-numeric:tabular-nums}
+  .meter .tick{position:absolute;top:-6px;bottom:-6px;width:2px;background:var(--ink);opacity:.4;left:75%}
+  .meter .tick-label{position:absolute;top:-22px;left:75%;transform:translateX(-50%);font-size:10.5px;color:var(--muted);white-space:nowrap;font-weight:500}
+  .meter-stats{display:flex;justify-content:space-between;font-size:13px;font-variant-numeric:tabular-nums;margin-top:10px}
   .meter-stats .pct{font-weight:600}
   .status{margin-top:12px;font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px}
   .status.ok{background:#e8f2ec;color:var(--green)}
@@ -74,6 +77,7 @@
   form.log .full{grid-column:1/-1}
   label{display:block;font-size:12.5px;font-weight:500;margin-bottom:5px;color:var(--ink)}
   input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fff}
+  textarea{resize:vertical;min-height:70px}
   input:focus,select:focus,textarea:focus{outline:2px solid var(--navy-soft);outline-offset:-1px;border-color:transparent}
   .weighted-note{grid-column:1/-1;font-size:13px;color:var(--muted);background:var(--track);border-radius:9px;padding:10px 12px}
   .weighted-note b{color:var(--navy);font-weight:600}
@@ -82,29 +86,40 @@
   .btn.ghost{background:transparent;color:var(--navy);border:1px solid var(--line)}
   .btn.small{padding:6px 12px;font-size:12.5px}
   .btn.danger{background:transparent;color:var(--red);border:1px solid var(--line)}
+  .btn.danger:hover{background:var(--red-bg)}
+  .btn[disabled]{opacity:.4;cursor:not-allowed}
 
   table{width:100%;border-collapse:collapse;font-size:13.5px}
   th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:500;padding:8px 10px;border-bottom:1px solid var(--line)}
   td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle;font-variant-numeric:tabular-nums}
   tr:last-child td{border-bottom:none}
+  tr.task-row{cursor:pointer}
+  tr.task-row:hover{background:var(--track)}
   td .chip{display:inline-flex;align-items:center;gap:6px}
+  .note-dot{color:var(--amber);margin-left:4px}
 
   /* calendar */
-  .cal-head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .cal-head{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
   .cal-head h3{font-size:17px;font-weight:600;min-width:170px;text-align:center}
+  .cal-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .filter-pill{border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;opacity:1}
+  .filter-pill.off{opacity:.4}
+  .filter-pill .dot{width:8px;height:8px}
   .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
   .cal .dow{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);text-align:center;padding:4px 0}
-  .cal .day{background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:92px;padding:6px;font-size:12px;cursor:pointer}
+  .cal .day{background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:96px;padding:6px;font-size:12px;cursor:pointer}
   .cal .day:hover{border-color:var(--navy-soft)}
   .cal .day.blank{background:transparent;border:none;cursor:default}
   .cal .day .num{font-weight:600;color:var(--muted);margin-bottom:4px}
   .cal .day.today .num{color:var(--navy);background:var(--track);border-radius:6px;display:inline-block;padding:0 5px}
-  .task-chip{border-radius:6px;padding:2px 6px;color:#fff;margin-bottom:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .task-chip{border-radius:6px;padding:2px 6px;color:#fff;margin-bottom:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+  .renew-chip{border:1px dashed var(--navy-soft);color:var(--navy-soft);background:#fff;border-radius:6px;padding:2px 6px;font-size:10.5px;margin-bottom:3px;cursor:pointer;font-weight:500}
 
   .settings-cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
   @media(max-width:800px){.settings-cols{grid-template-columns:1fr}form.log{grid-template-columns:1fr}}
   .row-form{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
   .row-form input,.row-form select{width:auto;flex:1;min-width:80px}
+  .action-cell{display:flex;gap:6px;justify-content:flex-end}
 
   .setup{max-width:460px;margin:70px auto;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:28px}
   .setup h2{margin-bottom:6px}
@@ -114,6 +129,19 @@
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:10px;padding:11px 18px;font-size:13.5px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:50}
   .toast.show{opacity:1}
   .empty{color:var(--muted);font-size:13.5px;padding:20px 0}
+  .back-btn{margin-bottom:16px}
+
+  .modal-backdrop{position:fixed;inset:0;background:rgba(4,14,107,.4);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
+  .modal-card{background:#fff;border-radius:var(--radius);padding:24px;max-width:480px;width:100%;max-height:88vh;overflow:auto}
+  .modal-card h3{font-size:16px;margin-bottom:4px}
+  .modal-card .sub{margin-bottom:16px}
+  .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:10px}
+  .modal-actions .right{display:flex;gap:8px;margin-left:auto}
+
+  .cycle-block{margin-bottom:22px}
+  .cycle-block .cb-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
+  .cycle-block .cb-head h4{font-size:14.5px;font-weight:600}
+  .cycle-block .cb-head .badge{font-size:11.5px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -131,23 +159,20 @@
 </header>
 
 <main id="main"></main>
+<div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
 
 <script>
-/* ============ CONFIG ============
-   Option A: paste your Supabase project URL + anon key here and redeploy.
-   Option B: leave blank — the app shows a one-time setup screen and
-   stores the values in this browser. */
+/* ============ CONFIG ============ */
 const SUPABASE_URL = "";
 const SUPABASE_ANON_KEY = "";
 /* ================================ */
 
 let db = null;
-let state = { view:'dashboard', clients:[], members:[], tasks:[], calMonth:null, logDate:null };
+let state = { view:'dashboard', clients:[], members:[], tasks:[], calMonth:null, logDate:null, clientId:null, calHidden:new Set() };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
-/* ---------- helpers ---------- */
 const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
@@ -157,9 +182,10 @@ function esc(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;',
 function fmtH(n){ const v=Math.round(n*100)/100; return (v%1===0? v.toFixed(0):v.toFixed(2).replace(/0$/,''))+'h'; }
 function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
+function fmtDateY(d){ return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+function ordinal(n){ const s=['th','st','nd','rd'],v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
 function clampDay(y,m,day){ const last=new Date(y,m+1,0).getDate(); return new Date(y,m,Math.min(day,last)); }
 
-/* Current billing cycle for a client, based on its renewal day */
 function cycleFor(renewalDay, ref){
   ref = ref || new Date(); ref = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
   let start = clampDay(ref.getFullYear(), ref.getMonth(), renewalDay);
@@ -169,14 +195,13 @@ function cycleFor(renewalDay, ref){
   return { start, end, next };
 }
 
-/* Deterministic colour per client */
 const PALETTE = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200'];
 function clientColor(id){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return PALETTE[h%PALETTE.length]; }
 
-function clientUsage(client){
+function clientUsage(client, taskList){
   const cyc = cycleFor(client.renewal_day);
   const s = iso(cyc.start), e = iso(cyc.end);
-  const tasks = state.tasks.filter(t => t.client_id===client.id && t.task_date>=s && t.task_date<=e);
+  const tasks = (taskList||state.tasks).filter(t => t.client_id===client.id && t.task_date>=s && t.task_date<=e);
   const used = tasks.reduce((a,t)=>a + t.hours*t.weight_applied, 0);
   const perMember = {};
   tasks.forEach(t=>{
@@ -189,7 +214,7 @@ function clientUsage(client){
 
 /* ---------- data ---------- */
 async function loadAll(){
-  const since = iso(new Date(Date.now() - 1000*60*60*24*70)); // ~2 cycles of history
+  const since = iso(new Date(Date.now() - 1000*60*60*24*70));
   const [c,m,t] = await Promise.all([
     db.from('rs_clients').select('*').order('name'),
     db.from('rs_members').select('*').order('name'),
@@ -200,6 +225,69 @@ async function loadAll(){
   render();
 }
 
+/* ---------- modal ---------- */
+function closeModal(){ $('#modalRoot').innerHTML=''; }
+function showModal(html){
+  $('#modalRoot').innerHTML = `<div class="modal-backdrop" id="mbd"><div class="modal-card">${html}</div></div>`;
+  $('#mbd').addEventListener('click', e=>{ if(e.target.id==='mbd') closeModal(); });
+}
+
+function openTaskModal(taskId){
+  const t = state.tasks.find(t=>t.id===taskId) || (state._clientTaskCache||[]).find(t=>t.id===taskId);
+  if(!t){ toast('Task not found'); return; }
+  const clients = state.clients.filter(c=>c.active || c.id===t.client_id);
+  const members = state.members.filter(m=>m.active || m.id===t.member_id);
+  showModal(`
+    <h3>Edit task</h3>
+    <div class="sub">Changes recalculate weighted hours using the selected member's current factor</div>
+    <form class="log" id="editForm" style="max-width:none">
+      <div><label>Client</label><select id="e_client">${clients.map(c=>`<option value="${c.id}" ${c.id===t.client_id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <div><label>Team member</label><select id="e_member">${members.map(m=>`<option value="${m.id}" ${m.id===t.member_id?'selected':''}>${esc(m.name)} (×${m.weight})</option>`).join('')}</select></div>
+      <div><label>Date</label><input type="date" id="e_date" value="${t.task_date}"></div>
+      <div><label>Hours worked</label><input type="number" min="0.25" step="0.25" id="e_hours" value="${t.hours}"></div>
+      <div class="full"><label>Task</label><input type="text" id="e_desc" value="${esc(t.description||'')}"></div>
+      <div class="full"><label>Notes</label><textarea id="e_notes" placeholder="Scribble any notes here…">${esc(t.notes||'')}</textarea></div>
+      <div class="weighted-note full" id="e_note">—</div>
+    </form>
+    <div class="modal-actions">
+      <button class="btn danger" id="e_delete">Delete task</button>
+      <div class="right">
+        <button class="btn ghost" id="e_cancel">Cancel</button>
+        <button class="btn" id="e_save">Save changes</button>
+      </div>
+    </div>
+  `);
+  const upd = ()=>{
+    const m = members.find(m=>m.id===$('#e_member').value);
+    const h = parseFloat($('#e_hours').value);
+    $('#e_note').innerHTML = (m && h>0) ? `${fmtH(h)} × ${m.weight} — counts as <b>${fmtH(h*m.weight)}</b> against the retainer` : 'Enter hours and a member';
+  };
+  $('#e_member').addEventListener('change', upd); $('#e_hours').addEventListener('input', upd); upd();
+  $('#e_cancel').onclick = closeModal;
+  $('#e_delete').onclick = async ()=>{
+    if(!confirm('Delete this task? This cannot be undone.')) return;
+    const { error } = await db.from('rs_tasks').delete().eq('id', t.id);
+    if(error){ toast('Delete failed'); return; }
+    closeModal(); toast('Task deleted'); await refreshCurrentView();
+  };
+  $('#e_save').onclick = async ()=>{
+    const member = members.find(m=>m.id===$('#e_member').value);
+    const hours = parseFloat($('#e_hours').value);
+    if(!$('#e_client').value || !member || !(hours>0) || !$('#e_date').value){ toast('Fill in all required fields'); return; }
+    const { error } = await db.from('rs_tasks').update({
+      client_id: $('#e_client').value, member_id: member.id, task_date: $('#e_date').value,
+      hours, description: $('#e_desc').value.trim()||null, notes: $('#e_notes').value.trim()||null,
+      weight_applied: member.weight
+    }).eq('id', t.id);
+    if(error){ toast('Save failed'); console.error(error); return; }
+    closeModal(); toast('Task updated'); await refreshCurrentView();
+  };
+}
+async function refreshCurrentView(){
+  await loadAll();
+  if(state.view==='client'){ renderClient(); }
+}
+
 /* ---------- views ---------- */
 function render(){
   const activeClients = state.clients.filter(c=>c.active);
@@ -208,13 +296,25 @@ function render(){
     b.classList.toggle('active', b.dataset.view===state.view);
     if(b.dataset.view==='dashboard') b.innerHTML = 'Dashboard' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
   });
-  ({dashboard:renderDashboard, log:renderLog, calendar:renderCalendar, settings:renderSettings}[state.view])();
+  ({dashboard:renderDashboard, log:renderLog, calendar:renderCalendar, settings:renderSettings, client:renderClient}[state.view])();
+}
+
+function meterHtml(u, retainerHours){
+  const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
+  return `<div class="meter-wrap">
+      <div class="meter">
+        <div class="fill ${cls}" style="width:${Math.min(u.pct,100)}%"></div>
+        <div class="tick"></div>
+        <div class="tick-label">75%</div>
+      </div>
+      <div class="meter-stats"><span>${fmtH(u.used)} of ${fmtH(retainerHours)}</span><span class="pct">${Math.round(u.pct)}%</span></div>
+    </div>`;
 }
 
 function renderDashboard(){
   const clients = state.clients.filter(c=>c.active);
   const flagged = clients.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
-  let html = `<h2>Retainers this cycle</h2><div class="sub">Weighted hours against each client's own renewal month</div>`;
+  let html = `<h2>Retainers this cycle</h2><div class="sub">Weighted hours against each client's own renewal month · click a card for full history</div>`;
 
   if (flagged.length){
     const over = flagged.filter(x=>x.u.pct>=100);
@@ -231,7 +331,6 @@ function renderDashboard(){
   } else {
     html += `<div class="grid">` + clients.map(c=>{
       const u = clientUsage(c);
-      const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
       const status = u.pct>=100
         ? `<span class="status over"><span class="pulse"></span>Over retainer by ${fmtH(u.used-c.retainer_hours)}</span>`
         : u.pct>=75
@@ -239,23 +338,81 @@ function renderDashboard(){
         : `<span class="status ok">${fmtH(c.retainer_hours-u.used)} remaining</span>`;
       const bd = Object.entries(u.perMember).sort((a,b)=>b[1]-a[1])
         .map(([n,h])=>`<div><span>${esc(n)}</span><span>${fmtH(h)}</span></div>`).join('');
-      return `<div class="card client-card">
+      return `<div class="card client-card" data-goto="${c.id}">
         <h3><span class="dot" style="background:${clientColor(c.id)}"></span>${esc(c.name)}</h3>
-        <div class="cycle">${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)} · renews ${fmtDate(u.cyc.next)} · ${c.retainer_hours/8} day${c.retainer_hours===8?'':'s'}/mo</div>
-        <div class="meter">
-          <div class="fill ${cls}" style="width:${Math.min(u.pct,100)}%"></div>
-          <div class="tick"></div>
-        </div>
-        <div class="meter-stats">
-          <span>${fmtH(u.used)} of ${fmtH(c.retainer_hours)}</span>
-          <span class="pct">${Math.round(u.pct)}%</span>
-        </div>
+        <div class="cycle">${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)} · renews ${fmtDate(u.cyc.next)}</div>
+        ${meterHtml(u, c.retainer_hours)}
         ${status}
         ${bd? `<div class="breakdown">${bd}</div>`:''}
       </div>`;
     }).join('') + `</div>`;
   }
   main.innerHTML = html;
+  main.querySelectorAll('[data-goto]').forEach(el=>el.addEventListener('click', ()=>{
+    state.clientId = el.dataset.goto; state.view='client'; render();
+  }));
+}
+
+async function renderClient(){
+  const c = state.clients.find(c=>c.id===state.clientId);
+  if(!c){ state.view='dashboard'; render(); return; }
+  main.innerHTML = `<button class="btn ghost small back-btn" id="backBtn">← Back to dashboard</button>
+    <h2>${esc(c.name)}</h2><div class="sub">Full history, grouped by renewal cycle</div>
+    <div class="empty">Loading…</div>`;
+  $('#backBtn').onclick = ()=>{ state.view='dashboard'; render(); };
+
+  const { data, error } = await db.from('rs_tasks').select('*').eq('client_id', c.id).order('task_date',{ascending:false});
+  if(error){ toast('Could not load history'); console.error(error); return; }
+  state._clientTaskCache = data;
+
+  const groups = {};
+  data.forEach(t=>{
+    const cyc = cycleFor(c.renewal_day, new Date(t.task_date+'T00:00'));
+    const key = iso(cyc.start);
+    if(!groups[key]) groups[key] = { cyc, tasks:[] };
+    groups[key].tasks.push(t);
+  });
+  const currentKey = iso(cycleFor(c.renewal_day).start);
+  const keys = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
+
+  let html = `<button class="btn ghost small back-btn" id="backBtn">← Back to dashboard</button>
+    <h2><span class="dot" style="background:${clientColor(c.id)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
+    <div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · full history below</div>`;
+
+  if(!keys.length){
+    html += `<div class="empty">No tasks logged for this client yet.</div>`;
+  } else {
+    keys.forEach(key=>{
+      const g = groups[key];
+      const used = g.tasks.reduce((a,t)=>a+t.hours*t.weight_applied,0);
+      const pct = c.retainer_hours>0 ? used/c.retainer_hours*100 : 0;
+      const isCurrent = key===currentKey;
+      const badgeCls = pct>=100?'over':pct>=75?'warn':'ok';
+      const badgeText = pct>=100 ? `${Math.round(pct)}% · over` : pct>=75 ? `${Math.round(pct)}% · reaching limit` : `${Math.round(pct)}%`;
+      html += `<div class="cycle-block">
+        <div class="cb-head">
+          <h4>${fmtDateY(g.cyc.start)} – ${fmtDateY(g.cyc.end)} ${isCurrent?'<span class="badge">(current cycle)</span>':''}</h4>
+          <span class="status ${badgeCls}">${fmtH(used)} of ${fmtH(c.retainer_hours)} · ${badgeText}</span>
+        </div>
+        <div class="card" style="padding:8px 12px">
+          <table><thead><tr><th>Date</th><th>Member</th><th>Task</th><th style="text-align:right">Hours</th><th style="text-align:right">Weighted</th></tr></thead>
+          <tbody>${g.tasks.map(t=>{
+            const m = state.members.find(m=>m.id===t.member_id);
+            return `<tr class="task-row" data-task="${t.id}">
+              <td>${fmtDate(new Date(t.task_date+'T00:00'))}</td>
+              <td>${esc(m?m.name:'—')}</td>
+              <td>${esc(t.description||'')}${t.notes? '<span class="note-dot">●</span>':''}</td>
+              <td style="text-align:right">${fmtH(t.hours)}</td>
+              <td style="text-align:right"><b>${fmtH(t.hours*t.weight_applied)}</b></td>
+            </tr>`;
+          }).join('')}</tbody></table>
+        </div>
+      </div>`;
+    });
+  }
+  main.innerHTML = html;
+  $('#backBtn').onclick = ()=>{ state.view='dashboard'; render(); };
+  main.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click', ()=>openTaskModal(el.dataset.task)));
 }
 
 function renderLog(){
@@ -274,28 +431,29 @@ function renderLog(){
         <div><label>Team member</label><select id="f_member" required>
           ${members.map(m=>`<option value="${m.id}" ${m.id===lastMember?'selected':''}>${esc(m.name)} (×${m.weight})</option>`).join('')}</select></div>
         <div><label>Date</label><input type="date" id="f_date" value="${today}" required></div>
-        <div><label>Hours worked</label><input type="number" id="f_hours" min="0.25" step="0.25" placeholder="e.g. 4" required></div>
+        <div><label>Hours worked</label><input type="number" min="0.25" step="0.25" placeholder="e.g. 4" id="f_hours" required></div>
         <div class="full"><label>Task</label><input type="text" id="f_desc" placeholder="What was the work?"></div>
-        <div class="weighted-note" id="f_note">Counts as <b>—</b> against the retainer</div>
+        <div class="full"><label>Notes (optional)</label><textarea id="f_notes" placeholder="Anything worth remembering…"></textarea></div>
+        <div class="weighted-note full" id="f_note">Counts as <b>—</b> against the retainer</div>
         <div class="full"><button type="button" class="btn" id="f_submit">Log task</button></div>
       </form>
     </div>
 
     <div style="margin-top:34px">
       <h2 style="font-size:17px">Recent tasks</h2>
-      <div class="card" style="margin-top:12px;padding:8px 12px">
-        <table><thead><tr><th>Date</th><th>Client</th><th>Member</th><th>Task</th><th style="text-align:right">Hours</th><th style="text-align:right">Weighted</th><th></th></tr></thead>
+      <div class="sub" style="margin-bottom:12px">Click any row to edit or add notes</div>
+      <div class="card" style="padding:8px 12px">
+        <table><thead><tr><th>Date</th><th>Client</th><th>Member</th><th>Task</th><th style="text-align:right">Hours</th><th style="text-align:right">Weighted</th></tr></thead>
         <tbody>${state.tasks.slice(0,25).map(t=>{
           const c=state.clients.find(c=>c.id===t.client_id), m=state.members.find(m=>m.id===t.member_id);
-          return `<tr>
+          return `<tr class="task-row" data-task="${t.id}">
             <td>${fmtDate(new Date(t.task_date+'T00:00'))}</td>
             <td><span class="chip"><span class="dot" style="background:${c?clientColor(c.id):'#999'}"></span>${esc(c?c.name:'—')}</span></td>
             <td>${esc(m?m.name:'—')}</td>
-            <td>${esc(t.description||'')}</td>
+            <td>${esc(t.description||'')}${t.notes? '<span class="note-dot">●</span>':''}</td>
             <td style="text-align:right">${fmtH(t.hours)}</td>
             <td style="text-align:right"><b>${fmtH(t.hours*t.weight_applied)}</b></td>
-            <td style="text-align:right"><button class="btn small danger" data-del="${t.id}">Delete</button></td>
-          </tr>`;}).join('') || '<tr><td colspan="7" class="empty">Nothing logged yet.</td></tr>'}
+          </tr>`;}).join('') || '<tr><td colspan="6" class="empty">Nothing logged yet.</td></tr>'}
         </tbody></table>
       </div>
     </div>`;
@@ -320,6 +478,7 @@ function renderLog(){
       client_id: $('#f_client').value, member_id: member.id,
       task_date: $('#f_date').value, hours,
       description: $('#f_desc').value.trim() || null,
+      notes: $('#f_notes').value.trim() || null,
       weight_applied: member.weight
     });
     if (error){ toast('Could not save'); console.error(error); return; }
@@ -328,12 +487,7 @@ function renderLog(){
     await loadAll();
   });
 
-  main.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', async ()=>{
-    if(!confirm('Delete this task?')) return;
-    const { error } = await db.from('rs_tasks').delete().eq('id', b.dataset.del);
-    if (error){ toast('Delete failed'); return; }
-    await loadAll();
-  }));
+  main.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click', ()=>openTaskModal(el.dataset.task)));
 }
 
 function renderCalendar(){
@@ -341,26 +495,38 @@ function renderCalendar(){
   const m0 = state.calMonth;
   const y = m0.getFullYear(), mo = m0.getMonth();
   const first = new Date(y, mo, 1);
-  const startPad = (first.getDay()+6)%7;                 // Monday first
+  const startPad = (first.getDay()+6)%7;
   const daysIn = new Date(y, mo+1, 0).getDate();
   const todayIso = iso(new Date());
+  const activeClients = state.clients.filter(c=>c.active);
   const byDay = {};
-  state.tasks.forEach(t=>{ (byDay[t.task_date]=byDay[t.task_date]||[]).push(t); });
+  state.tasks.forEach(t=>{ if(state.calHidden.has(t.client_id)) return; (byDay[t.task_date]=byDay[t.task_date]||[]).push(t); });
+  const renewByDay = {};
+  activeClients.forEach(c=>{
+    if(state.calHidden.has(c.id)) return;
+    if(c.renewal_day<=daysIn){ const dIso = iso(new Date(y,mo,c.renewal_day)); (renewByDay[dIso]=renewByDay[dIso]||[]).push(c); }
+  });
 
   let cells = '';
   for(let i=0;i<startPad;i++) cells += `<div class="day blank"></div>`;
   for(let d=1;d<=daysIn;d++){
     const dIso = iso(new Date(y,mo,d));
     const list = (byDay[dIso]||[]);
-    const chips = list.slice(0,3).map(t=>{
-      const c = state.clients.find(c=>c.id===t.client_id);
-      return `<div class="task-chip" style="background:${c?clientColor(c.id):'#999'}" title="${esc(t.description||'')}">${esc(c?c.name:'?')} · ${fmtH(t.hours*t.weight_applied)}</div>`;
-    }).join('') + (list.length>3? `<div style="color:var(--muted)">+${list.length-3} more</div>`:'');
+    const renews = (renewByDay[dIso]||[]);
+    const chips = renews.map(c=>`<div class="renew-chip" data-goto="${c.id}">↻ ${esc(c.name)} renews</div>`).join('')
+      + list.slice(0,3).map(t=>{
+        const c = state.clients.find(c=>c.id===t.client_id);
+        return `<div class="task-chip" data-task="${t.id}" style="background:${c?clientColor(c.id):'#999'}" title="${esc(t.description||'')}">${esc(c?c.name:'?')} · ${fmtH(t.hours*t.weight_applied)}</div>`;
+      }).join('') + (list.length>3? `<div style="color:var(--muted)">+${list.length-3} more</div>`:'');
     cells += `<div class="day ${dIso===todayIso?'today':''}" data-date="${dIso}"><div class="num">${d}</div>${chips}</div>`;
   }
 
   main.innerHTML = `
-    <h2>Calendar</h2><div class="sub">Weighted hours per task · click a day to log time for that date</div>
+    <h2>Calendar</h2><div class="sub">Weighted hours per task · renewal dates marked automatically · click a day to log time, or a task to edit it</div>
+    <div class="cal-filters" id="calFilters">
+      ${activeClients.map(c=>`<button class="filter-pill ${state.calHidden.has(c.id)?'off':''}" data-toggle="${c.id}"><span class="dot" style="background:${clientColor(c.id)}"></span>${esc(c.name)}</button>`).join('')}
+      ${activeClients.length? `<button class="filter-pill" id="calAll">Show all</button>`:''}
+    </div>
     <div class="cal-head">
       <button class="btn ghost small" id="calPrev">←</button>
       <h3>${m0.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</h3>
@@ -375,9 +541,16 @@ function renderCalendar(){
   $('#calPrev').onclick = ()=>{ state.calMonth = new Date(y, mo-1, 1); renderCalendar(); };
   $('#calNext').onclick = ()=>{ state.calMonth = new Date(y, mo+1, 1); renderCalendar(); };
   $('#calToday').onclick = ()=>{ state.calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1); renderCalendar(); };
-  main.querySelectorAll('.day[data-date]').forEach(el=>el.addEventListener('click', ()=>{
+  if($('#calAll')) $('#calAll').onclick = ()=>{ state.calHidden.clear(); renderCalendar(); };
+  main.querySelectorAll('[data-toggle]').forEach(b=>b.addEventListener('click', ()=>{
+    const id=b.dataset.toggle; state.calHidden.has(id)? state.calHidden.delete(id): state.calHidden.add(id); renderCalendar();
+  }));
+  main.querySelectorAll('.day[data-date]').forEach(el=>el.addEventListener('click', (e)=>{
+    if(e.target.closest('[data-task]') || e.target.closest('[data-goto]')) return;
     state.logDate = el.dataset.date; state.view='log'; render();
   }));
+  main.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click', (e)=>{ e.stopPropagation(); openTaskModal(el.dataset.task); }));
+  main.querySelectorAll('.renew-chip[data-goto]').forEach(el=>el.addEventListener('click', (e)=>{ e.stopPropagation(); state.clientId=el.dataset.goto; state.view='client'; render(); }));
 }
 
 function renderSettings(){
@@ -386,17 +559,32 @@ function renderSettings(){
     <div class="settings-cols">
       <div class="card">
         <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Clients</h3>
-        <table><thead><tr><th>Name</th><th>Days/mo</th><th>Renews on</th><th></th></tr></thead><tbody>
+        <table><thead><tr><th>Name</th><th>Retainer</th><th>Renews on</th><th></th></tr></thead><tbody>
         ${state.clients.map(c=>`<tr style="${c.active?'':'opacity:.45'}">
           <td>${esc(c.name)}</td>
-          <td>${c.retainer_hours/8} (${fmtH(c.retainer_hours)})</td>
-          <td>${c.renewal_day}${['st','nd','rd'][((c.renewal_day+90)%100-10)%10-1]||'th'}</td>
-          <td style="text-align:right"><button class="btn small ghost" data-cactive="${c.id}">${c.active?'Archive':'Restore'}</button></td>
+          <td>${fmtH(c.retainer_hours)}</td>
+          <td>${ordinal(c.renewal_day)}</td>
+          <td class="action-cell">
+            <button class="btn small ghost" data-cactive="${c.id}">${c.active?'Archive':'Restore'}</button>
+            ${!c.active? `<button class="btn small danger" data-cdelete="${c.id}">Delete</button>`:''}
+          </td>
         </tr>`).join('') || '<tr><td colspan="4" class="empty">No clients yet.</td></tr>'}
         </tbody></table>
         <div class="row-form">
           <input id="c_name" placeholder="Client name" style="flex:2">
-          <select id="c_days"><option value="8">1 day (8h)</option><option value="16">2 days (16h)</option><option value="24">3 days (24h)</option><option value="32">4 days (32h)</option></select>
+          <select id="c_days">
+            <optgroup label="Per month">
+              <option value="8">1 day/mo (8h)</option>
+              <option value="16">2 days/mo (16h)</option>
+              <option value="24">3 days/mo (24h)</option>
+              <option value="32">4 days/mo (32h)</option>
+            </optgroup>
+            <optgroup label="Per week">
+              <option value="34.7">1 day/week (~34.7h/mo)</option>
+              <option value="69.3">2 days/week (~69.3h/mo)</option>
+              <option value="104">3 days/week (~104h/mo)</option>
+            </optgroup>
+          </select>
           <select id="c_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}">Renews ${i+1}</option>`).join('')}</select>
           <button class="btn small" id="c_add">Add</button>
         </div>
@@ -408,9 +596,10 @@ function renderSettings(){
         ${state.members.map(m=>`<tr style="${m.active?'':'opacity:.45'}">
           <td>${esc(m.name)}</td>
           <td>×${m.weight}</td>
-          <td style="text-align:right">
+          <td class="action-cell">
             <button class="btn small ghost" data-mweight="${m.id}">Change factor</button>
             <button class="btn small ghost" data-mactive="${m.id}">${m.active?'Archive':'Restore'}</button>
+            ${!m.active? `<button class="btn small danger" data-mdelete="${m.id}">Delete</button>`:''}
           </td>
         </tr>`).join('') || '<tr><td colspan="3" class="empty">No team members yet.</td></tr>'}
         </tbody></table>
@@ -419,7 +608,7 @@ function renderSettings(){
           <input id="m_weight" type="number" step="0.25" min="0.25" value="1" title="Weighting factor">
           <button class="btn small" id="m_add">Add</button>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Changing a factor only affects tasks logged from then on.</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
       </div>
     </div>`;
 
@@ -448,6 +637,18 @@ function renderSettings(){
     const w = parseFloat(v); if(!(w>0)) return;
     await db.from('rs_members').update({weight:w}).eq('id',m.id); await loadAll();
   });
+  main.querySelectorAll('[data-cdelete]').forEach(b=>b.onclick = async ()=>{
+    const c = state.clients.find(c=>c.id===b.dataset.cdelete);
+    if(!confirm(`Permanently delete ${c.name}? This also deletes all of their logged tasks. This cannot be undone.`)) return;
+    const { error } = await db.from('rs_clients').delete().eq('id', c.id);
+    if(error){ toast('Delete failed'); return; } toast('Client deleted'); await loadAll();
+  });
+  main.querySelectorAll('[data-mdelete]').forEach(b=>b.onclick = async ()=>{
+    const m = state.members.find(m=>m.id===b.dataset.mdelete);
+    if(!confirm(`Permanently delete ${m.name}? Their past tasks will be kept but unassigned. This cannot be undone.`)) return;
+    const { error } = await db.from('rs_members').delete().eq('id', m.id);
+    if(error){ toast('Delete failed'); return; } toast('Member deleted'); await loadAll();
+  });
 }
 
 /* ---------- setup / boot ---------- */
@@ -455,7 +656,7 @@ function showSetup(){
   main.innerHTML = `
     <div class="setup">
       <h2>Connect to Supabase</h2>
-      <p>Paste your project URL and anon key (Project settings → API). They'll be remembered in this browser. Run <b>retainer-tracker-setup.sql</b> in the SQL editor first if you haven't.</p>
+      <p>Paste your project URL and anon key (Project settings → API). They'll be remembered in this browser. Run <b>retainer-tracker-setup.sql</b> (and <b>retainer-tracker-migration-v2.sql</b> if upgrading) in the SQL editor first.</p>
       <label>Project URL</label><input id="s_url" placeholder="https://xxxx.supabase.co">
       <label>Anon key</label><input id="s_key" placeholder="eyJ…">
       <button class="btn" id="s_go">Connect</button>
