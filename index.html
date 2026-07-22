@@ -6,6 +6,7 @@
 <title>RS Retainer Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
@@ -52,7 +53,9 @@
   .client-card{cursor:pointer;transition:border-color .15s,box-shadow .15s}
   .client-card:hover{border-color:var(--navy-soft);box-shadow:0 2px 10px rgba(4,14,107,.06)}
   .client-card h3{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
-  .quicklog-btn{margin-left:auto;padding:1px 10px;font-size:15px;line-height:1.4;font-weight:600}
+  .card-actions{margin-left:auto;display:flex;gap:6px}
+  .card-actions .btn{padding:1px 10px;font-size:12.5px;line-height:1.8}
+  .quick-dates{display:flex;gap:8px}
   .dot{width:10px;height:10px;border-radius:50%;flex:none}
   .cycle{color:var(--muted);font-size:12.5px;margin:3px 0 20px}
 
@@ -423,6 +426,113 @@ function openQuickLogModal(clientId){
   };
 }
 
+/* Client-safe PDF: totals + a plain task list. No notes, no team member
+   names, no weighting factors — just what was delivered and hours consumed. */
+function generateClientPdf(client, group){
+  if(!window.jspdf){ toast('PDF library still loading — try again in a second'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 48;
+  let y = 60;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(4,14,107);
+  doc.text('Reciprocal Space', margin, y); y += 18;
+  doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(123,125,146);
+  doc.text('Retainer usage summary', margin, y); y += 34;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,24,58);
+  doc.text(client.name, margin, y); y += 20;
+  doc.setFont('helvetica','normal'); doc.setFontSize(11);
+  doc.text(`${fmtDateY(group.cyc.start)} – ${fmtDateY(group.cyc.end)}`, margin, y); y += 26;
+
+  const used = group.tasks.reduce((a,t)=>a+t.hours*t.weight_applied,0);
+  const pct = group.retainer_hours>0 ? used/group.retainer_hours*100 : 0;
+  const remaining = Math.max(group.retainer_hours-used,0);
+  const statusColor = pct>=100 ? [201,55,44] : pct>=75 ? [224,140,0] : [29,122,77];
+
+  doc.setDrawColor(228,228,222); doc.setFillColor(246,246,243);
+  doc.roundedRect(margin, y, pageWidth-margin*2, 64, 6, 6, 'FD');
+  doc.setFontSize(9.5); doc.setTextColor(123,125,146);
+  doc.text('Hours used', margin+16, y+22);
+  doc.text('Retainer', margin+150, y+22);
+  doc.text('Remaining', margin+290, y+22);
+  doc.text('% used', margin+430, y+22);
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(22,24,58);
+  doc.text(fmtH(used), margin+16, y+42);
+  doc.text(fmtH(group.retainer_hours), margin+150, y+42);
+  doc.text(fmtH(remaining), margin+290, y+42);
+  doc.setTextColor(...statusColor);
+  doc.text(Math.round(pct)+'%', margin+430, y+42);
+  y += 92;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,24,58);
+  doc.text('Work completed this period', margin, y); y += 16;
+  doc.setDrawColor(228,228,222); doc.line(margin, y, pageWidth-margin, y); y += 16;
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+  const sorted = group.tasks.slice().sort((a,b)=>a.task_date.localeCompare(b.task_date));
+  if(!sorted.length){
+    doc.setTextColor(123,125,146);
+    doc.text('No work logged for this period yet.', margin, y); y += 16;
+  }
+  sorted.forEach(t=>{
+    if(y > 760){ doc.addPage(); y = 60; }
+    doc.setTextColor(22,24,58);
+    doc.text(fmtDate(new Date(t.task_date+'T00:00')), margin, y);
+    const lines = doc.splitTextToSize(t.description || 'Work item', 330);
+    doc.text(lines, margin+70, y);
+    doc.text(fmtH(t.hours*t.weight_applied), pageWidth-margin-40, y);
+    y += 14*lines.length + 4;
+  });
+
+  doc.setFontSize(8); doc.setTextColor(123,125,146);
+  doc.text(`Generated ${fmtDateY(new Date())} · Reciprocal Space`, margin, doc.internal.pageSize.getHeight()-30);
+
+  const safeName = client.name.replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'');
+  doc.save(`${safeName}-${iso(group.cyc.start)}.pdf`);
+}
+
+/* ---------- data export / backup ---------- */
+function csvEscape(v){ const s = String(v ?? ''); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
+
+async function exportAllData(){
+  toast('Preparing backup…');
+  const [c,m,t,h] = await Promise.all([
+    db.from('rs_clients').select('*').order('name'),
+    db.from('rs_members').select('*').order('name'),
+    db.from('rs_tasks').select('*').order('task_date',{ascending:false}),
+    db.from('rs_client_settings_history').select('*').order('effective_from',{ascending:true})
+  ]);
+  if(c.error||m.error||t.error){ toast('Backup failed'); console.error(c.error||m.error||t.error); return; }
+  const payload = { exported_at: new Date().toISOString(), clients:c.data, members:m.data, tasks:t.data, settings_history: h.data||[] };
+  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `rs-retainer-backup-${iso(new Date())}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('Backup downloaded');
+}
+
+async function exportTasksCsv(){
+  toast('Preparing CSV…');
+  const { data, error } = await db.from('rs_tasks').select('*').order('task_date',{ascending:false});
+  if(error){ toast('Export failed'); console.error(error); return; }
+  const header = ['Date','Client','Team member','Task','Notes','Hours','Weight','Weighted hours'];
+  const rows = data.map(t=>{
+    const c = state.clients.find(c=>c.id===t.client_id);
+    const m = state.members.find(m=>m.id===t.member_id);
+    return [t.task_date, c?c.name:'', m?m.name:'', t.description||'', t.notes||'', t.hours, t.weight_applied, (t.hours*t.weight_applied).toFixed(2)];
+  });
+  const csv = [header, ...rows].map(r=>r.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `rs-tasks-export-${iso(new Date())}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('CSV downloaded');
+}
+
 /* ---------- views ---------- */
 function render(){
   const activeClients = state.clients.filter(c=>c.active);
@@ -499,7 +609,12 @@ function renderDashboard(){
       const bd = Object.entries(u.perMember).sort((a,b)=>b[1]-a[1])
         .map(([n,h])=>`<div><span>${esc(n)}</span><span>${fmtH(h)}</span></div>`).join('');
       return `<div class="card client-card" data-goto="${c.id}">
-        <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<button class="btn small ghost quicklog-btn" data-quicklog="${c.id}" title="Log task for ${esc(c.name)}">+</button></h3>
+        <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}
+          <span class="card-actions">
+            <button class="btn small ghost" data-quicklog="${c.id}" title="Log task for ${esc(c.name)}">+</button>
+            <button class="btn small ghost" data-pdf-current="${c.id}" title="Generate PDF for ${esc(c.name)}">PDF</button>
+          </span>
+        </h3>
         <div class="cycle">${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)} · renews ${fmtDate(u.cyc.next)}</div>
         ${meterHtml(u, c.retainer_hours)}
         ${status}
@@ -513,6 +628,12 @@ function renderDashboard(){
   }));
   main.querySelectorAll('[data-quicklog]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation(); openQuickLogModal(el.dataset.quicklog);
+  }));
+  main.querySelectorAll('[data-pdf-current]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const c = state.clients.find(c=>c.id===el.dataset.pdfCurrent);
+    const u = clientUsage(c);
+    generateClientPdf(c, { cyc:u.cyc, retainer_hours:c.retainer_hours, tasks:u.tasks });
   }));
   $('#dashSearch').addEventListener('input', e=>{
     state.dashSearch=e.target.value; renderDashboard();
@@ -581,7 +702,10 @@ async function renderClient(){
       html += `<div class="cycle-block">
         <div class="cb-head">
           <h4>${fmtDateY(g.cyc.start)} – ${fmtDateY(g.cyc.end)} ${isCurrent?'<span class="badge">(current cycle)</span>':''}</h4>
-          <span class="status ${badgeCls}">${fmtH(used)} of ${fmtH(g.retainer_hours)} · ${badgeText}</span>
+          <span style="display:flex;align-items:center;gap:10px">
+            <span class="status ${badgeCls}">${fmtH(used)} of ${fmtH(g.retainer_hours)} · ${badgeText}</span>
+            <button class="btn small ghost" data-pdf="${key}">PDF</button>
+          </span>
         </div>
         <div class="card" style="padding:8px 12px">
           <table><thead><tr><th>Date</th><th>Member</th><th>Task</th><th style="text-align:right">Hours</th><th style="text-align:right">Weighted</th></tr></thead>
@@ -603,6 +727,7 @@ async function renderClient(){
   $('#backBtn').onclick = ()=>{ state.view='dashboard'; render(); };
   $('#quickLogBtn').onclick = ()=> openQuickLogModal(c.id);
   main.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click', ()=>openTaskModal(el.dataset.task)));
+  main.querySelectorAll('[data-pdf]').forEach(el=>el.addEventListener('click', ()=> generateClientPdf(c, groups[el.dataset.pdf])));
 }
 
 function renderLog(){
@@ -611,16 +736,24 @@ function renderLog(){
   const today = state.logDate || iso(new Date());
   state.logDate = null;
   const lastMember = store.get('rs_last_member') || '';
+  const lastClient = store.get('rs_last_client') || '';
 
   main.innerHTML = `
     <h2>Log time</h2><div class="sub">Raw hours are multiplied by the team member's factor</div>
     <div class="card" style="max-width:680px">
       <form class="log" id="logForm">
         <div><label>Client</label><select id="f_client" required>
-          ${clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+          ${clients.map(c=>`<option value="${c.id}" ${c.id===lastClient?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
         <div><label>Team member</label><select id="f_member" required>
           ${members.map(m=>`<option value="${m.id}" ${m.id===lastMember?'selected':''}>${esc(m.name)} (×${m.weight})</option>`).join('')}</select></div>
-        <div><label>Date</label><input type="date" id="f_date" value="${today}" required></div>
+        <div>
+          <label>Date</label>
+          <input type="date" id="f_date" value="${today}" required>
+          <div class="quick-dates" style="margin-top:6px">
+            <button type="button" class="btn small ghost" id="qd_today">Today</button>
+            <button type="button" class="btn small ghost" id="qd_yesterday">Yesterday</button>
+          </div>
+        </div>
         <div><label>Hours worked</label><input type="number" min="0.25" step="0.25" placeholder="e.g. 4" id="f_hours" required></div>
         <div class="full"><label>Task</label><input type="text" id="f_desc" placeholder="What was the work?"></div>
         <div class="full"><label>Notes (optional)</label><textarea id="f_notes" placeholder="Anything worth remembering…"></textarea></div>
@@ -659,6 +792,8 @@ function renderLog(){
   $('#f_member').addEventListener('change', updateNote);
   $('#f_hours').addEventListener('input', updateNote);
   updateNote();
+  $('#qd_today').addEventListener('click', ()=>{ $('#f_date').value = iso(new Date()); });
+  $('#qd_yesterday').addEventListener('click', ()=>{ const d=new Date(); d.setDate(d.getDate()-1); $('#f_date').value = iso(d); });
 
   $('#f_submit').addEventListener('click', async ()=>{
     const member = members.find(m=>m.id===$('#f_member').value);
@@ -673,6 +808,8 @@ function renderLog(){
     });
     if (error){ toast('Could not save'); console.error(error); return; }
     store.set('rs_last_member', member.id);
+    store.set('rs_last_client', $('#f_client').value);
+    state.logDate = $('#f_date').value; // keep the same date/client/member for fast catch-up logging
     toast(`Logged — ${fmtH(hours*member.weight)} weighted`);
     await loadAll();
   });
@@ -825,6 +962,15 @@ function renderSettings(){
         </div>
         <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
       </div>
+    </div>
+
+    <div class="card" style="margin-top:22px">
+      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Data & backups</h3>
+      <div class="sub" style="margin-bottom:14px">Export everything currently in Supabase — good for a periodic backup, or before making big changes.</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn small" id="exportJson">Export full backup (JSON)</button>
+        <button class="btn small ghost" id="exportCsv">Export tasks (CSV)</button>
+      </div>
     </div>`;
 
   $('#c_add').onclick = async ()=>{
@@ -868,6 +1014,8 @@ function renderSettings(){
     const { error } = await db.from('rs_members').delete().eq('id', m.id);
     if(error){ toast('Delete failed'); return; } toast('Member deleted'); await loadAll();
   });
+  $('#exportJson').onclick = exportAllData;
+  $('#exportCsv').onclick = exportTasksCsv;
 }
 
 /* ---------- setup / boot ---------- */
