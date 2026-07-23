@@ -161,6 +161,31 @@
   .history-list{font-size:12.5px;color:var(--muted);margin-bottom:20px}
   .history-list div{padding:3px 0}
   .history-list b{color:var(--ink);font-weight:500}
+
+  .breadcrumb{font-size:13px;color:var(--muted);margin-bottom:14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .breadcrumb button{background:none;border:none;color:var(--navy-soft);font-size:13px;padding:0}
+  .breadcrumb button:hover{text-decoration:underline}
+  .breadcrumb .sep{color:var(--line)}
+  .breadcrumb .current{color:var(--ink);font-weight:500}
+
+  .type-badge{display:inline-block;background:var(--track);color:var(--navy-soft);font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px}
+  .label-chip{display:inline-block;background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;margin-left:6px}
+  .retainer-badge{display:inline-block;background:#e8f2ec;color:var(--green);font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:99px;margin-left:6px}
+
+  .col-toggles{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+
+  .stage-section{margin-bottom:26px}
+  .stage-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .stage-head h4{font-size:14.5px;font-weight:600}
+  .stage-head .count{font-size:12px;color:var(--muted)}
+  .stage-head .stage-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+
+  .priority-pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;display:inline-block}
+  .priority-low{background:var(--track);color:var(--muted)}
+  .priority-medium{background:#e7e9fb;color:var(--navy-soft)}
+  .priority-high{background:var(--amber-bg);color:var(--amber)}
+  .priority-urgent{background:var(--red-bg);color:var(--red)}
+  .retainer-tick{color:var(--green);font-weight:700}
 </style>
 </head>
 <body>
@@ -170,6 +195,7 @@
     <div class="brand">Retainer Tracker <span>Reciprocal Space</span></div>
     <nav id="nav" style="display:none">
       <button data-view="dashboard" class="active">Dashboard</button>
+      <button data-view="projects">Projects</button>
       <button data-view="log">Log time</button>
       <button data-view="calendar">Calendar</button>
       <button data-view="settings">Settings</button>
@@ -188,7 +214,9 @@ const SUPABASE_ANON_KEY = "";
 /* ================================ */
 
 let db = null;
-let state = { view:'dashboard', clients:[], members:[], tasks:[], calMonth:null, logDate:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name' };
+let state = { view:'dashboard', clients:[], members:[], tasks:[], calMonth:null, logDate:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name',
+  projects:[], stages:[], projTasks:[], projView:'clients', projClientId:null, projProjectId:null,
+  taskCols:new Set(['designer','reviewer','hours','due','priority','retainer']) };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -217,6 +245,17 @@ function cycleFor(renewalDay, ref){
 const PALETTE = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200'];
 function clientColor(id){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return PALETTE[h%PALETTE.length]; }
 function colorFor(client){ return (client && client.color) ? client.color : clientColor(client.id); }
+
+const PROJECT_TYPES = ['Website branding','Micro branding','Animations','Deck projects'];
+const STAGE_TEMPLATES = {
+  'Website branding': ['Discovery','Design','Development','Review','Launch'],
+  'Micro branding': ['Discovery','Design','Review','Delivery'],
+  'Animations': ['Concept','Storyboard','Animation','Review','Delivery'],
+  'Deck projects': ['Content','Design','Review','Delivery'],
+  default: ['Discovery','Design','Review','Delivery']
+};
+const PRIORITIES = ['Low','Medium','High','Urgent'];
+const TASK_COLUMNS = [['designer','Designer'],['reviewer','Reviewer'],['hours','Hours'],['due','Due date'],['priority','Priority'],['retainer','Retainer']];
 
 /* Pick the retainer/renewal settings that applied on a given date, from a
    client's effective-dated history (sorted ascending by effective_from). */
@@ -252,6 +291,14 @@ async function loadAll(){
   ]);
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
+
+  const [pr,st,pt] = await Promise.all([
+    db.from('rs_projects').select('*').order('name'),
+    db.from('rs_project_stages').select('*').order('position'),
+    db.from('rs_proj_tasks').select('*').order('created_at')
+  ]);
+  state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[];
+  if(pr.error) console.warn('Project Overview tables not found — run retainer-tracker-migration-v4.sql', pr.error);
   render();
 }
 
@@ -317,6 +364,7 @@ async function refreshCurrentView(){
   await loadAll();
   if(state.view==='client'){ renderClient(); }
 }
+async function refreshProjectView(){ await refreshCurrentView(); }
 
 function openClientEditModal(clientId){
   const c = state.clients.find(c=>c.id===clientId);
@@ -327,23 +375,26 @@ function openClientEditModal(clientId){
     <div class="sub">Retainer and renewal changes only apply from the effective date onward — tasks logged before it keep counting against the old numbers, so past cycles won't shift.</div>
     <form class="log" style="max-width:none">
       <div><label>Dot colour</label><input type="color" id="ec_color" value="${colorFor(c)}"></div>
-      <div><label>Retainer</label><select id="ec_days">
-        <option value="${c.retainer_hours}" selected>Current — ${fmtH(c.retainer_hours)}</option>
-        <optgroup label="Per month">
-          <option value="8">1 day/mo (8h)</option>
-          <option value="16">2 days/mo (16h)</option>
-          <option value="24">3 days/mo (24h)</option>
-          <option value="32">4 days/mo (32h)</option>
-        </optgroup>
-        <optgroup label="Per week">
-          <option value="34.7">1 day/week (~34.7h/mo)</option>
-          <option value="69.3">2 days/week (~69.3h/mo)</option>
-          <option value="104">3 days/week (~104h/mo)</option>
-        </optgroup>
-      </select></div>
-      <div><label>Renews on</label><select id="ec_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===c.renewal_day?'selected':''}>${i+1}</option>`).join('')}</select></div>
-      <div><label>Effective from</label><input type="date" id="ec_effective" value="${today}"></div>
-      <div class="full weighted-note">Only used if the retainer or renewal day actually changes below — the colour updates immediately either way.</div>
+      <div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="ec_isretainer" ${c.is_retainer?'checked':''} style="width:auto"> On retainer</label></div>
+      <div id="ec_retainer_fields" style="display:${c.is_retainer?'contents':'none'}">
+        <div><label>Retainer</label><select id="ec_days">
+          <option value="${c.retainer_hours||8}" selected>Current${c.is_retainer?' — '+fmtH(c.retainer_hours):''}</option>
+          <optgroup label="Per month">
+            <option value="8">1 day/mo (8h)</option>
+            <option value="16">2 days/mo (16h)</option>
+            <option value="24">3 days/mo (24h)</option>
+            <option value="32">4 days/mo (32h)</option>
+          </optgroup>
+          <optgroup label="Per week">
+            <option value="34.7">1 day/week (~34.7h/mo)</option>
+            <option value="69.3">2 days/week (~69.3h/mo)</option>
+            <option value="104">3 days/week (~104h/mo)</option>
+          </optgroup>
+        </select></div>
+        <div><label>Renews on</label><select id="ec_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===c.renewal_day?'selected':''}>${i+1}</option>`).join('')}</select></div>
+        <div><label>Effective from</label><input type="date" id="ec_effective" value="${today}"></div>
+      </div>
+      <div class="full weighted-note">The retainer fields only matter if you tick "On retainer" — the colour updates immediately either way.</div>
     </form>
     <div class="modal-actions">
       <div class="right">
@@ -352,22 +403,27 @@ function openClientEditModal(clientId){
       </div>
     </div>
   `);
+  $('#ec_isretainer').addEventListener('change', e=>{ $('#ec_retainer_fields').style.display = e.target.checked?'contents':'none'; });
   $('#ec_cancel').onclick = closeModal;
   $('#ec_save').onclick = async ()=>{
     const color = $('#ec_color').value;
-    const retainer_hours = +$('#ec_days').value;
-    const renewal_day = +$('#ec_renew').value;
+    const is_retainer = $('#ec_isretainer').checked;
+    const retainer_hours = is_retainer ? +$('#ec_days').value : null;
+    const renewal_day = is_retainer ? +$('#ec_renew').value : null;
     const effective_from = $('#ec_effective').value || today;
-    const changed = retainer_hours !== c.retainer_hours || renewal_day !== c.renewal_day;
+    const turningOn = is_retainer && !c.is_retainer;
+    const changed = is_retainer && !turningOn && (retainer_hours !== c.retainer_hours || renewal_day !== c.renewal_day);
 
-    const { error: updErr } = await db.from('rs_clients').update({ color, retainer_hours, renewal_day }).eq('id', c.id);
+    const { error: updErr } = await db.from('rs_clients').update({ color, is_retainer, retainer_hours, renewal_day }).eq('id', c.id);
     if(updErr){ toast('Save failed'); console.error(updErr); return; }
-    if(changed){
+    if(turningOn){
+      await db.from('rs_client_settings_history').insert({ client_id:c.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
+    } else if(changed){
       const { error: histErr } = await db.from('rs_client_settings_history').insert({ client_id:c.id, retainer_hours, renewal_day, effective_from });
       if(histErr){ toast('Saved, but history log failed — run migration v3?'); console.error(histErr); }
     }
     closeModal();
-    toast(changed ? `Updated — new terms apply from ${fmtDate(new Date(effective_from+'T00:00'))}` : 'Colour updated');
+    toast(!is_retainer ? 'Retainer turned off' : turningOn ? 'Now a retainer client' : changed ? `Updated — new terms apply from ${fmtDate(new Date(effective_from+'T00:00'))}` : 'Saved');
     await refreshCurrentView();
   };
 }
@@ -375,7 +431,7 @@ function openClientEditModal(clientId){
 function openQuickLogModal(clientId){
   const c = state.clients.find(c=>c.id===clientId);
   if(!c){ toast('Client not found'); return; }
-  const clients = state.clients.filter(cc=>cc.active || cc.id===clientId);
+  const clients = state.clients.filter(cc=>(cc.active && cc.is_retainer) || cc.id===clientId);
   const members = state.members.filter(m=>m.active);
   if(!members.length){ toast('Add a team member first — see Settings'); return; }
   const lastMember = store.get('rs_last_member') || '';
@@ -535,13 +591,13 @@ async function exportTasksCsv(){
 
 /* ---------- views ---------- */
 function render(){
-  const activeClients = state.clients.filter(c=>c.active);
+  const activeClients = state.clients.filter(c=>c.active && c.is_retainer);
   const flagged = activeClients.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
   document.querySelectorAll('#nav button').forEach(b=>{
     b.classList.toggle('active', b.dataset.view===state.view);
     if(b.dataset.view==='dashboard') b.innerHTML = 'Dashboard' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
   });
-  ({dashboard:renderDashboard, log:renderLog, calendar:renderCalendar, settings:renderSettings, client:renderClient}[state.view])();
+  ({dashboard:renderDashboard, projects:renderProjects, log:renderLog, calendar:renderCalendar, settings:renderSettings, client:renderClient}[state.view])();
 }
 
 function meterHtml(u, retainerHours){
@@ -557,7 +613,7 @@ function meterHtml(u, retainerHours){
 }
 
 function renderDashboard(){
-  const allActive = state.clients.filter(c=>c.active);
+  const allActive = state.clients.filter(c=>c.active && c.is_retainer);
   const flagged = allActive.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
 
   let items = allActive
@@ -730,8 +786,328 @@ async function renderClient(){
   main.querySelectorAll('[data-pdf]').forEach(el=>el.addEventListener('click', ()=> generateClientPdf(c, groups[el.dataset.pdf])));
 }
 
-function renderLog(){
+/* ================= Project Overview ================= */
+function renderProjects(){
+  if(state.projView==='project') renderProjDetail();
+  else if(state.projView==='clientProjects') renderProjClientProjects();
+  else renderProjClients();
+}
+
+function renderProjClients(){
   const clients = state.clients.filter(c=>c.active);
+  let html = `<h2>Project Overview</h2><div class="sub">All client work — branding, animation, decks and retainer projects in one place</div>`;
+  if(!clients.length){
+    html += `<div class="empty">No clients yet — add one under <b>Settings</b>.</div>`;
+  } else {
+    html += `<div class="grid">` + clients.map(c=>{
+      const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
+      return `<div class="card client-card" data-projgoto="${c.id}">
+        <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}</h3>
+        <div class="cycle">${projects.length} active project${projects.length===1?'':'s'}</div>
+      </div>`;
+    }).join('') + `</div>`;
+  }
+  main.innerHTML = html;
+  main.querySelectorAll('[data-projgoto]').forEach(el=>el.addEventListener('click', ()=>{
+    state.projClientId = el.dataset.projgoto; state.projView='clientProjects'; render();
+  }));
+}
+
+function renderProjClientProjects(){
+  const c = state.clients.find(c=>c.id===state.projClientId);
+  if(!c){ state.projView='clients'; render(); return; }
+  const projects = state.projects.filter(p=>p.client_id===c.id).sort((a,b)=> Number(b.active)-Number(a.active) || a.name.localeCompare(b.name));
+
+  let html = `<div class="breadcrumb"><button data-bc="clients">Project Overview</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+    <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
+    <div class="sub">${c.is_retainer?'Retainer client':'Project client'} · click a project to open it</div>
+    <div style="margin-bottom:18px"><button class="btn small" id="newProjectBtn">+ New project</button></div>`;
+
+  if(!projects.length){
+    html += `<div class="empty">No projects yet for this client.</div>`;
+  } else {
+    html += `<div class="grid">` + projects.map(p=>{
+      const stages = state.stages.filter(s=>s.project_id===p.id);
+      const tasks = state.projTasks.filter(t=>t.project_id===p.id);
+      return `<div class="card client-card" data-projdetail="${p.id}" style="${p.active?'':'opacity:.5'}">
+        <h3>${esc(p.name)}${p.active?'':' (archived)'}</h3>
+        <div class="cycle"><span class="type-badge">${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
+        <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
+          <div><span>Stages</span><span>${stages.length}</span></div>
+          <div><span>Tasks</span><span>${tasks.length}</span></div>
+        </div>
+      </div>`;
+    }).join('') + `</div>`;
+  }
+  main.innerHTML = html;
+  $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
+  $('#newProjectBtn').onclick = ()=> openProjectModal(null, c.id);
+  main.querySelectorAll('[data-projdetail]').forEach(el=>el.addEventListener('click', ()=>{
+    state.projProjectId = el.dataset.projdetail; state.projView='project'; render();
+  }));
+}
+
+function renderProjDetail(){
+  const p = state.projects.find(p=>p.id===state.projProjectId);
+  if(!p){ state.projView='clientProjects'; render(); return; }
+  const c = state.clients.find(c=>c.id===p.client_id);
+  const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
+  const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
+
+  let html = `<div class="breadcrumb">
+      <button data-bc="clients">Project Overview</button><span class="sep">/</span>
+      <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
+      <span class="current">${esc(p.name)}</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+      <h2>${esc(p.name)}</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn small ghost" id="editProjectBtn">Edit project</button>
+        <button class="btn small" id="addStageBtn">+ Add stage</button>
+      </div>
+    </div>
+    <div class="sub"><span class="type-badge">${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}${c.is_retainer?'':' · not a retainer client — retainer syncing is off'}</div>
+    <div class="col-toggles">
+      ${TASK_COLUMNS.map(([key,label])=>`<button class="filter-pill ${state.taskCols.has(key)?'':'off'}" data-colkey="${key}">${label}</button>`).join('')}
+    </div>`;
+
+  if(!stages.length){
+    html += `<div class="empty">No stages yet — click "Add stage" to get started.</div>`;
+  } else {
+    stages.forEach((s,idx)=>{
+      const tasks = state.projTasks.filter(t=>t.stage_id===s.id);
+      html += `<div class="stage-section">
+        <div class="stage-head">
+          <h4>${esc(s.name)}</h4>
+          <span class="count">${tasks.length} task${tasks.length===1?'':'s'}</span>
+          <span class="stage-actions">
+            <button class="btn small ghost" data-stagemove="${s.id}:up" ${idx===0?'disabled':''}>↑</button>
+            <button class="btn small ghost" data-stagemove="${s.id}:down" ${idx===stages.length-1?'disabled':''}>↓</button>
+            <button class="btn small ghost" data-stagerename="${s.id}">Rename</button>
+            <button class="btn small danger" data-stagedelete="${s.id}">Delete</button>
+            <button class="btn small" data-addtask="${s.id}">+ Task</button>
+          </span>
+        </div>
+        <div class="card" style="padding:8px 12px">
+          <table><thead><tr>
+            <th>Task</th>
+            ${state.taskCols.has('priority')?'<th>Priority</th>':''}
+            ${state.taskCols.has('designer')?'<th>Designer</th>':''}
+            ${state.taskCols.has('reviewer')?'<th>Reviewer</th>':''}
+            ${state.taskCols.has('hours')?'<th style="text-align:right">Hours</th>':''}
+            ${state.taskCols.has('due')?'<th>Due</th>':''}
+            ${state.taskCols.has('retainer')?'<th style="text-align:center">Retainer</th>':''}
+          </tr></thead><tbody>
+          ${tasks.map(t=>{
+            const d = state.members.find(m=>m.id===t.assigned_designer_id);
+            const r = state.members.find(m=>m.id===t.assigned_reviewer_id);
+            return `<tr class="task-row" data-projtask="${t.id}">
+              <td>${esc(t.title)}</td>
+              ${state.taskCols.has('priority')?`<td><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></td>`:''}
+              ${state.taskCols.has('designer')?`<td>${esc(d?d.name:'—')}</td>`:''}
+              ${state.taskCols.has('reviewer')?`<td>${esc(r?r.name:'—')}</td>`:''}
+              ${state.taskCols.has('hours')?`<td style="text-align:right">${t.recorded_hours!=null?fmtH(t.recorded_hours):'—'}</td>`:''}
+              ${state.taskCols.has('due')?`<td>${t.due_date? fmtDate(new Date(t.due_date+'T00:00')):'—'}</td>`:''}
+              ${state.taskCols.has('retainer')?`<td style="text-align:center">${t.counts_toward_retainer && t.retainer_task_id?'<span class="retainer-tick">✓</span>':'—'}</td>`:''}
+            </tr>`;
+          }).join('') || `<tr><td colspan="${visibleCount}" class="empty">No tasks in this stage yet.</td></tr>`}
+          </tbody></table>
+        </div>
+      </div>`;
+    });
+  }
+  main.innerHTML = html;
+  $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
+  $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
+  $('#editProjectBtn').onclick = ()=> openProjectModal(p.id, p.client_id);
+  $('#addStageBtn').onclick = async ()=>{
+    const name = prompt('New stage name');
+    if(!name || !name.trim()) return;
+    const { error } = await db.from('rs_project_stages').insert({ project_id:p.id, name:name.trim(), position:stages.length });
+    if(error){ toast('Could not add stage'); return; } toast('Stage added'); await refreshProjectView();
+  };
+  main.querySelectorAll('[data-colkey]').forEach(el=>el.addEventListener('click', ()=>{
+    const k = el.dataset.colkey;
+    state.taskCols.has(k)? state.taskCols.delete(k): state.taskCols.add(k);
+    renderProjDetail();
+  }));
+  main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
+  main.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(el.dataset.projtask, {})));
+  main.querySelectorAll('[data-stagerename]').forEach(el=>el.addEventListener('click', async ()=>{
+    const s = stages.find(s=>s.id===el.dataset.stagerename);
+    const name = prompt('Rename stage', s.name);
+    if(!name || !name.trim() || name.trim()===s.name) return;
+    const { error } = await db.from('rs_project_stages').update({name:name.trim()}).eq('id', s.id);
+    if(error){ toast('Rename failed'); return; } await refreshProjectView();
+  }));
+  main.querySelectorAll('[data-stagedelete]').forEach(el=>el.addEventListener('click', async ()=>{
+    const s = stages.find(s=>s.id===el.dataset.stagedelete);
+    const count = state.projTasks.filter(t=>t.stage_id===s.id).length;
+    if(!confirm(`Delete stage "${s.name}"?${count?` This also deletes its ${count} task(s).`:''}`)) return;
+    const { error } = await db.from('rs_project_stages').delete().eq('id', s.id);
+    if(error){ toast('Delete failed'); return; } toast('Stage deleted'); await refreshProjectView();
+  }));
+  main.querySelectorAll('[data-stagemove]').forEach(el=>el.addEventListener('click', async ()=>{
+    const [id,dir] = el.dataset.stagemove.split(':');
+    const idx = stages.findIndex(s=>s.id===id);
+    const swapIdx = dir==='up'? idx-1 : idx+1;
+    if(swapIdx<0 || swapIdx>=stages.length) return;
+    const a = stages[idx], b = stages[swapIdx];
+    await Promise.all([
+      db.from('rs_project_stages').update({position:b.position}).eq('id',a.id),
+      db.from('rs_project_stages').update({position:a.position}).eq('id',b.id)
+    ]);
+    await refreshProjectView();
+  }));
+}
+
+function openProjectModal(projectId, clientId){
+  const isNew = !projectId;
+  const p = isNew ? null : state.projects.find(p=>p.id===projectId);
+  const client = state.clients.find(c=>c.id=== (p? p.client_id : clientId));
+  showModal(`
+    <h3>${isNew?'New project':'Edit project'}</h3>
+    <div class="sub">${esc(client.name)}</div>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Project name</label><input type="text" id="pj_name" value="${esc(p?p.name:'')}" placeholder="e.g. Homepage redesign"></div>
+      <div><label>Type</label><select id="pj_type">${PROJECT_TYPES.map(t=>`<option value="${t}" ${p&&p.project_type===t?'selected':''}>${t}</option>`).join('')}<option value="Other" ${p && !PROJECT_TYPES.includes(p.project_type)?'selected':''}>Other</option></select></div>
+      <div><label>Label <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="pj_label" value="${esc(p&&p.label?p.label:'')}" placeholder="e.g. Rush, Q3"></div>
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn ghost" id="pj_archive">${p.active?'Archive':'Restore'}</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="pj_cancel">Cancel</button>
+        <button class="btn" id="pj_save">${isNew?'Create project':'Save changes'}</button>
+      </div>
+    </div>
+  `);
+  $('#pj_cancel').onclick = closeModal;
+  if(!isNew) $('#pj_archive').onclick = async ()=>{
+    await db.from('rs_projects').update({active:!p.active}).eq('id',p.id);
+    closeModal(); toast(p.active?'Project archived':'Project restored'); await refreshProjectView();
+  };
+  $('#pj_save').onclick = async ()=>{
+    const name = $('#pj_name').value.trim();
+    if(!name){ toast('Give the project a name'); return; }
+    const project_type = $('#pj_type').value;
+    const label = $('#pj_label').value.trim() || null;
+    if(isNew){
+      const { data, error } = await db.from('rs_projects').insert({ client_id:client.id, name, project_type, label }).select().single();
+      if(error){ toast('Could not create project'); console.error(error); return; }
+      const template = STAGE_TEMPLATES[project_type] || STAGE_TEMPLATES.default;
+      await Promise.all(template.map((sName,i)=>db.from('rs_project_stages').insert({ project_id:data.id, name:sName, position:i })));
+      closeModal(); toast('Project created');
+      state.projProjectId = data.id; state.projView = 'project';
+      await refreshProjectView();
+    } else {
+      const { error } = await db.from('rs_projects').update({ name, project_type, label }).eq('id', p.id);
+      if(error){ toast('Could not save'); console.error(error); return; }
+      closeModal(); toast('Project updated'); await refreshProjectView();
+    }
+  };
+}
+
+async function syncProjTaskRetainer(pt, project, client){
+  if(!pt.counts_toward_retainer){
+    if(pt.retainer_task_id) await db.from('rs_tasks').delete().eq('id', pt.retainer_task_id);
+    return null;
+  }
+  if(!client || !client.is_retainer){ toast("This client isn't marked as a retainer client — turn that on in Settings first"); return pt.retainer_task_id||null; }
+  const designer = state.members.find(m=>m.id===pt.assigned_designer_id);
+  if(!designer || !(pt.recorded_hours>0) || !pt.work_date){
+    toast('Assign a designer, recorded hours, and a work date to sync this to the retainer dashboard');
+    return pt.retainer_task_id||null;
+  }
+  const payload = {
+    client_id: client.id, member_id: designer.id, task_date: pt.work_date, hours: pt.recorded_hours,
+    description: `${project.name} — ${pt.title}`, weight_applied: designer.weight
+  };
+  if(pt.retainer_task_id){
+    const { error } = await db.from('rs_tasks').update(payload).eq('id', pt.retainer_task_id);
+    if(error){ console.error(error); toast('Retainer sync failed'); return pt.retainer_task_id; }
+    return pt.retainer_task_id;
+  }
+  const { data, error } = await db.from('rs_tasks').insert(payload).select().single();
+  if(error){ console.error(error); toast('Retainer sync failed'); return null; }
+  return data.id;
+}
+
+function openProjTaskModal(taskId, ctx){
+  const isNew = !taskId;
+  const t = isNew ? null : state.projTasks.find(x=>x.id===taskId);
+  const project = state.projects.find(p=>p.id===(t?t.project_id:ctx.projectId));
+  const client = state.clients.find(c=>c.id===project.client_id);
+  const stages = state.stages.filter(s=>s.project_id===project.id).sort((a,b)=>a.position-b.position);
+  const members = state.members.filter(m=>m.active);
+  const today = iso(new Date());
+  showModal(`
+    <h3>${isNew?'New task':'Edit task'}</h3>
+    <div class="sub">${esc(project.name)}</div>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Title</label><input type="text" id="pt_title" value="${esc(t?t.title:'')}" placeholder="Task name"></div>
+      <div><label>Stage</label><select id="pt_stage">${stages.map(s=>`<option value="${s.id}" ${s.id===(t?t.stage_id:ctx.stageId)?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>
+      <div><label>Priority</label><select id="pt_priority">${PRIORITIES.map(pr=>`<option value="${pr}" ${pr===(t?t.priority:'Medium')?'selected':''}>${pr}</option>`).join('')}</select></div>
+      <div><label>Assigned designer</label><select id="pt_designer"><option value="">—</option>${members.map(m=>`<option value="${m.id}" ${t&&m.id===t.assigned_designer_id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
+      <div><label>Assigned reviewer</label><select id="pt_reviewer"><option value="">—</option>${members.map(m=>`<option value="${m.id}" ${t&&m.id===t.assigned_reviewer_id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
+      <div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t&&t.recorded_hours!=null?t.recorded_hours:''}"></div>
+      <div><label>Due date</label><input type="date" id="pt_due" value="${t&&t.due_date?t.due_date:''}"></div>
+      <div class="full"><label>Work date <span style="color:var(--muted);font-weight:400">(used if synced to the retainer dashboard)</span></label><input type="date" id="pt_work" value="${t&&t.work_date?t.work_date:today}"></div>
+      <div class="full weighted-note" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="pt_retainer" ${t&&t.counts_toward_retainer&&t.retainer_task_id?'checked':''} style="width:auto">
+        <label style="margin:0" for="pt_retainer">Counts toward ${esc(client.name)}'s retainer dashboard</label>
+      </div>
+      ${!client.is_retainer? `<div class="full sub" style="color:var(--red);margin:0">This client isn't marked as a retainer client — enable it in Settings first.</div>`:''}
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn danger" id="pt_delete">Delete task</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="pt_cancel">Cancel</button>
+        <button class="btn" id="pt_save">${isNew?'Add task':'Save changes'}</button>
+      </div>
+    </div>
+  `);
+  $('#pt_cancel').onclick = closeModal;
+  if(!isNew) $('#pt_delete').onclick = async ()=>{
+    if(!confirm('Delete this task? This cannot be undone.')) return;
+    if(t.retainer_task_id) await db.from('rs_tasks').delete().eq('id', t.retainer_task_id);
+    const { error } = await db.from('rs_proj_tasks').delete().eq('id', t.id);
+    if(error){ toast('Delete failed'); return; }
+    closeModal(); toast('Task deleted'); await refreshProjectView();
+  };
+  $('#pt_save').onclick = async ()=>{
+    const title = $('#pt_title').value.trim();
+    if(!title){ toast('Give the task a title'); return; }
+    const fields = {
+      project_id: project.id, stage_id: $('#pt_stage').value, title,
+      priority: $('#pt_priority').value,
+      assigned_designer_id: $('#pt_designer').value || null,
+      assigned_reviewer_id: $('#pt_reviewer').value || null,
+      recorded_hours: $('#pt_hours').value ? +$('#pt_hours').value : null,
+      due_date: $('#pt_due').value || null,
+      work_date: $('#pt_work').value || null,
+      counts_toward_retainer: $('#pt_retainer').checked
+    };
+    let saved;
+    if(isNew){
+      const { data, error } = await db.from('rs_proj_tasks').insert(fields).select().single();
+      if(error){ toast('Could not save task'); console.error(error); return; }
+      saved = data;
+    } else {
+      const { error } = await db.from('rs_proj_tasks').update(fields).eq('id', t.id);
+      if(error){ toast('Could not save task'); console.error(error); return; }
+      saved = { ...t, ...fields };
+    }
+    const retainerTaskId = await syncProjTaskRetainer(saved, project, client);
+    if(retainerTaskId !== (saved.retainer_task_id||null)){
+      await db.from('rs_proj_tasks').update({ retainer_task_id: retainerTaskId }).eq('id', saved.id);
+    }
+    closeModal(); toast(isNew?'Task added':'Task updated');
+    await refreshProjectView();
+  };
+}
+
+function renderLog(){
+  const clients = state.clients.filter(c=>c.active && c.is_retainer);
   const members = state.members.filter(m=>m.active);
   const today = state.logDate || iso(new Date());
   state.logDate = null;
@@ -825,7 +1201,7 @@ function renderCalendar(){
   const startPad = (first.getDay()+6)%7;
   const daysIn = new Date(y, mo+1, 0).getDate();
   const todayIso = iso(new Date());
-  const activeClients = state.clients.filter(c=>c.active);
+  const activeClients = state.clients.filter(c=>c.active && c.is_retainer);
   const byDay = {};
   state.tasks.forEach(t=>{ if(state.calHidden.has(t.client_id)) return; (byDay[t.task_date]=byDay[t.task_date]||[]).push(t); });
   const renewByDay = {};
@@ -911,9 +1287,9 @@ function renderSettings(){
         <table><thead><tr><th></th><th>Name</th><th>Retainer</th><th>Renews on</th><th></th></tr></thead><tbody>
         ${state.clients.map(c=>`<tr style="${c.active?'':'opacity:.45'}">
           <td><span class="swatch" style="background:${colorFor(c)}"></span></td>
-          <td>${esc(c.name)}</td>
-          <td>${fmtH(c.retainer_hours)}</td>
-          <td>${ordinal(c.renewal_day)}</td>
+          <td>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}</td>
+          <td>${c.is_retainer? fmtH(c.retainer_hours) : '<span style="color:var(--muted)">—</span>'}</td>
+          <td>${c.is_retainer? ordinal(c.renewal_day) : '<span style="color:var(--muted)">—</span>'}</td>
           <td class="action-cell">
             <button class="btn small ghost" data-cedit="${c.id}">Edit</button>
             <button class="btn small ghost" data-cactive="${c.id}">${c.active?'Archive':'Restore'}</button>
@@ -924,6 +1300,8 @@ function renderSettings(){
         <div class="row-form">
           <input type="color" id="c_color" value="${PALETTE[state.clients.length%PALETTE.length]}" title="Dot colour">
           <input id="c_name" placeholder="Client name" style="flex:2">
+          <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;white-space:nowrap"><input type="checkbox" id="c_isretainer" checked style="width:auto">On retainer</label>
+          <span id="c_retainer_fields" style="display:flex;gap:8px;flex:1 1 260px">
           <select id="c_days">
             <optgroup label="Per month">
               <option value="8">1 day/mo (8h)</option>
@@ -938,6 +1316,7 @@ function renderSettings(){
             </optgroup>
           </select>
           <select id="c_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}">Renews ${i+1}</option>`).join('')}</select>
+          </span>
           <button class="btn small" id="c_add">Add</button>
         </div>
       </div>
@@ -973,12 +1352,16 @@ function renderSettings(){
       </div>
     </div>`;
 
+  $('#c_isretainer').addEventListener('change', e=>{ $('#c_retainer_fields').style.display = e.target.checked?'flex':'none'; });
   $('#c_add').onclick = async ()=>{
     const name = $('#c_name').value.trim(); if(!name){ toast('Client needs a name'); return; }
-    const retainer_hours = +$('#c_days').value, renewal_day = +$('#c_renew').value, color = $('#c_color').value;
-    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color }).select().single();
+    const is_retainer = $('#c_isretainer').checked;
+    const retainer_hours = is_retainer ? +$('#c_days').value : null;
+    const renewal_day = is_retainer ? +$('#c_renew').value : null;
+    const color = $('#c_color').value;
+    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer }).select().single();
     if(error){ toast('Could not add client'); console.error(error); return; }
-    await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
+    if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     await loadAll();
   };
   $('#m_add').onclick = async ()=>{
