@@ -216,6 +216,7 @@
   .stage-head .stage-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
 
   .retainer-tick{color:var(--green);font-weight:700}
+  .status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:9px;vertical-align:middle;flex:none}
 
   .avatar{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 3px;border-radius:50%;color:#fff;font-size:10.5px;font-weight:700;flex:none;border:2px solid #fff}
   .avatar-group{display:inline-flex}
@@ -243,6 +244,19 @@
   .brand{background:none;border:none;cursor:pointer;color:inherit}
   .brand:hover{opacity:.85}
 
+  .fab{position:fixed;bottom:28px;right:28px;width:58px;height:58px;border-radius:50%;background:var(--navy);color:#fff;font-size:30px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(4,14,107,.35);border:none;cursor:pointer;z-index:150}
+  .fab:hover{background:var(--navy-soft)}
+
+  .color-circle{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
+  .color-circle:hover{border-color:var(--navy-soft)}
+  .color-popover{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 8px 24px rgba(4,14,107,.14);width:224px}
+  .color-swatch-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}
+  .color-swatch{width:32px;height:32px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
+  .color-swatch:hover{border-color:var(--muted)}
+  .color-swatch.sel{border-color:var(--ink)}
+  .color-eyedropper-btn{width:100%;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--track);font-size:12.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;font-weight:500}
+  .color-eyedropper-btn:hover{background:#e2e4f2}
+
   .mini-progress{height:6px;background:var(--track);border-radius:99px;overflow:hidden;margin-top:8px}
   .mini-progress .fill{height:100%;background:var(--green);border-radius:99px}
 
@@ -252,8 +266,11 @@
   .milestone-chip{border-radius:8px;padding:6px 8px;color:#fff;margin-bottom:5px;font-size:11px;line-height:1.35;cursor:grab}
   .milestone-chip .mc1{font-weight:700;font-size:12px}
   .milestone-chip .mc2,.milestone-chip .mc3{opacity:.92}
-  .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
-  .week-grid .day{min-height:320px;padding:10px}
+  .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:0}
+  .week-grid .day{min-height:340px;padding:12px;border:none;border-right:1px solid var(--line);border-radius:0;background:transparent}
+  .week-grid .day:last-child{border-right:none}
+  .week-grid .day.today{background:var(--track)}
+  .week-grid .day .num{border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:10px}
   .year-month{margin-bottom:20px}
   .year-month h4{font-size:14px;font-weight:600;margin-bottom:8px}
   .year-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
@@ -268,8 +285,7 @@
     <nav id="nav" style="display:none">
       <button data-view="projects" class="active">Client Overview</button>
       <button data-view="milestones">Milestones</button>
-      <button data-view="dashboard">Retainer</button>
-      <button data-view="log">Log time</button>
+      <button data-view="dashboard">Retainers</button>
       <button data-view="settings">Settings</button>
     </nav>
   </div>
@@ -277,6 +293,7 @@
 
 <main id="main"></main>
 <div id="modalRoot"></div>
+<button class="fab" id="fabLogTime" style="display:none" title="Log time">+</button>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -286,7 +303,7 @@ const SUPABASE_ANON_KEY = "";
 /* ================================ */
 
 let db = null;
-let state = { view:'projects', clients:[], members:[], tasks:[], calMonth:null, logDate:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name',
+let state = { view:'projects', clients:[], members:[], tasks:[], calMonth:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name',
   projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null,
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
@@ -317,6 +334,7 @@ function cycleFor(renewalDay, ref){
 }
 
 const PALETTE = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200'];
+const COLOR_PRESETS = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200','#c9372c','#0369a1'];
 function clientColor(id){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return PALETTE[h%PALETTE.length]; }
 function colorFor(client){ return (client && client.color) ? client.color : clientColor(client.id); }
 
@@ -329,6 +347,12 @@ const PRIORITIES = ['Low','Medium','High','Urgent'];
 const TASK_STATUSES = ['To do','In progress','Implement feedback','Internal review','Client review','Hold','Pause','Complete'];
 const TASK_COLUMNS = [['status','Status'],['designer','Designer'],['reviewer','Reviewer'],['hours','Hours'],['due','Due date'],['priority','Priority'],['retainer','Retainer']];
 function statusSlug(s){ return (s||'To do').toLowerCase().replace(/[^a-z]+/g,''); }
+const STATUS_COLORS = {
+  'To do':'#7b7d92', 'In progress':'#2a37a8', 'Implement feedback':'#8a3ffc',
+  'Internal review':'#e08c00', 'Client review':'#0e7c86', 'Hold':'#7b7d92',
+  'Pause':'#7b7d92', 'Complete':'#1d7a4d'
+};
+function statusColor(s){ return STATUS_COLORS[s] || STATUS_COLORS['To do']; }
 
 function initials(name){ const p=(name||'').trim().split(/\s+/); return ((p[0]?.[0]||'')+(p[1]?.[0]||'')).toUpperCase() || '?'; }
 function avatarHtml(member){ if(!member) return ''; return `<span class="avatar" style="background:${clientColor(member.id)}" title="${esc(member.name)}">${initials(member.name)}</span>`; }
@@ -472,6 +496,57 @@ function openColumnDropdown(anchorEl){
   setTimeout(()=> document.addEventListener('mousedown', _colOutsideHandler), 0);
 }
 
+let _activeColorPopover = null, _colorOutsideHandler = null;
+function closeColorPicker(){
+  if(_activeColorPopover){ _activeColorPopover.remove(); _activeColorPopover=null; }
+  if(_colorOutsideHandler){ document.removeEventListener('mousedown', _colorOutsideHandler); _colorOutsideHandler=null; }
+}
+function openColorPicker(anchorEl, currentValue, onSelect){
+  closeColorPicker();
+  const pop = document.createElement('div');
+  pop.className = 'color-popover';
+  document.body.appendChild(pop);
+  _activeColorPopover = pop;
+  const hasEyeDropper = 'EyeDropper' in window;
+  const cur = (currentValue||'').toLowerCase();
+  pop.innerHTML = `
+    <div class="color-swatch-grid">${COLOR_PRESETS.map(c=>`<button type="button" class="color-swatch ${c.toLowerCase()===cur?'sel':''}" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>
+    <button type="button" class="color-eyedropper-btn" id="cpEyedrop">${hasEyeDropper?'🎨 Pick with eyedropper':'🎨 Custom colour'}</button>
+    ${!hasEyeDropper? `<input type="color" id="cpNative" value="${currentValue||'#2a37a8'}" style="width:100%;margin-top:8px;height:34px;padding:2px">` : ''}
+  `;
+  pop.querySelectorAll('[data-swatch]').forEach(b=>b.onclick=()=>{ onSelect(b.dataset.swatch); closeColorPicker(); });
+  if(hasEyeDropper){
+    $('#cpEyedrop').onclick = async ()=>{
+      try{ const res = await new window.EyeDropper().open(); onSelect(res.sRGBHex); closeColorPicker(); }
+      catch(e){ /* cancelled */ }
+    };
+  } else {
+    $('#cpEyedrop').onclick = ()=> $('#cpNative').click();
+    $('#cpNative').addEventListener('input', e=> onSelect(e.target.value));
+    $('#cpNative').addEventListener('change', ()=> closeColorPicker());
+  }
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.position = 'fixed';
+  pop.style.top = Math.min(rect.bottom+6, window.innerHeight-280)+'px';
+  pop.style.left = Math.min(rect.left, window.innerWidth-240)+'px';
+  pop.style.zIndex = 300;
+  _colorOutsideHandler = e=>{ if(_activeColorPopover && !_activeColorPopover.contains(e.target) && e.target!==anchorEl) closeColorPicker(); };
+  setTimeout(()=> document.addEventListener('mousedown', _colorOutsideHandler), 0);
+}
+
+function colorCircleHtml(id, color){
+  return `<button type="button" class="color-circle" id="${id}_btn" style="background:${color}" title="Choose colour"></button><input type="hidden" id="${id}" value="${color}">`;
+}
+function wireColorCircle(id){
+  $(`#${id}_btn`).onclick = (e)=>{
+    e.preventDefault();
+    openColorPicker(e.currentTarget, $(`#${id}`).value, (hex)=>{
+      $(`#${id}`).value = hex;
+      $(`#${id}_btn`).style.background = hex;
+    });
+  };
+}
+
 function openTaskModal(taskId){
   const t = state.tasks.find(t=>t.id===taskId) || (state._clientTaskCache||[]).find(t=>t.id===taskId);
   if(!t){ toast('Task not found'); return; }
@@ -534,7 +609,7 @@ function openNewClientModal(){
   showModal(`
     <h3>New client</h3>
     <form class="log" style="max-width:none">
-      <div><label>Dot colour</label><input type="color" id="nc_color" value="${PALETTE[state.clients.length%PALETTE.length]}"></div>
+      <div><label>Dot colour</label>${colorCircleHtml('nc_color', PALETTE[state.clients.length%PALETTE.length])}</div>
       <div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="nc_isretainer" style="width:auto"> On retainer</label></div>
       <div class="full"><label>Client name</label><input type="text" id="nc_name" placeholder="Client name"></div>
       <div class="full"><label>Miro link <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="nc_miro" placeholder="https://miro.com/..."></div>
@@ -563,6 +638,7 @@ function openNewClientModal(){
     </div>
   `);
   $('#nc_isretainer').addEventListener('change', e=>{ $('#nc_retainer_fields').style.display = e.target.checked?'contents':'none'; });
+  wireColorCircle('nc_color');
   $('#nc_cancel').onclick = closeModal;
   $('#nc_save').onclick = async ()=>{
     const name = $('#nc_name').value.trim();
@@ -589,7 +665,7 @@ function openClientEditModal(clientId){
     <h3>Edit ${esc(c.name)}</h3>
     <div class="sub">Retainer and renewal changes only apply from the effective date onward — tasks logged before it keep counting against the old numbers, so past cycles won't shift.</div>
     <form class="log" style="max-width:none">
-      <div><label>Dot colour</label><input type="color" id="ec_color" value="${colorFor(c)}"></div>
+      <div><label>Dot colour</label>${colorCircleHtml('ec_color', colorFor(c))}</div>
       <div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="ec_isretainer" ${c.is_retainer?'checked':''} style="width:auto"> On retainer</label></div>
       <div id="ec_retainer_fields" style="display:${c.is_retainer?'contents':'none'}">
         <div><label>Retainer</label><select id="ec_days">
@@ -620,6 +696,7 @@ function openClientEditModal(clientId){
     </div>
   `);
   $('#ec_isretainer').addEventListener('change', e=>{ $('#ec_retainer_fields').style.display = e.target.checked?'contents':'none'; });
+  wireColorCircle('ec_color');
   $('#ec_cancel').onclick = closeModal;
   $('#ec_save').onclick = async ()=>{
     const color = $('#ec_color').value;
@@ -645,17 +722,16 @@ function openClientEditModal(clientId){
   };
 }
 
-function openQuickLogModal(clientId){
-  const c = state.clients.find(c=>c.id===clientId);
-  if(!c){ toast('Client not found'); return; }
-  const clients = state.clients.filter(cc=>(cc.active && cc.is_retainer) || cc.id===clientId);
+function openQuickLogModal(clientId, dateOverride){
+  const clients = state.clients.filter(cc=>cc.active && cc.is_retainer);
+  if(!clients.length){ toast('Add a retainer client first — see Settings'); return; }
+  const c = clientId ? state.clients.find(c=>c.id===clientId) : null;
   const members = state.members.filter(m=>m.active);
   if(!members.length){ toast('Add a team member first — see Settings'); return; }
   const lastMember = store.get('rs_last_member') || '';
-  const today = state.logDate || iso(new Date());
-  state.logDate = null;
+  const today = dateOverride || iso(new Date());
   showModal(`
-    <h3>Log task — ${esc(c.name)}</h3>
+    <h3>Log time${c? ' — '+esc(c.name) : ''}</h3>
     <div class="sub">Raw hours are multiplied by the team member's factor</div>
     <form class="log" style="max-width:none">
       <div><label>Client</label><select id="q_client">${clients.map(cc=>`<option value="${cc.id}" ${cc.id===clientId?'selected':''}>${esc(cc.name)}</option>`).join('')}</select></div>
@@ -812,9 +888,10 @@ function render(){
   const flagged = activeClients.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
   document.querySelectorAll('#nav button').forEach(b=>{
     b.classList.toggle('active', b.dataset.view===state.view);
-    if(b.dataset.view==='dashboard') b.innerHTML = 'Dashboard' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
+    if(b.dataset.view==='dashboard') b.innerHTML = 'Retainers' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
   });
-  ({dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, log:renderLog, settings:renderSettings, client:renderClient}[state.view])();
+  $('#fabLogTime').style.display = (state.view==='dashboard') ? 'flex' : 'none';
+  ({dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, client:renderClient}[state.view])();
 }
 
 function renderRetainer(){
@@ -1077,10 +1154,10 @@ function openStagePreviewModal(stageId){
   const tasks = state.projTasks.filter(t=>t.stage_id===s.id);
   const sStatus = stageStatus(s.id);
   showModal(`
-    <h3><span class="stage-num">Stage ${idx}</span> ${esc(s.name)} <span class="status-pill status-${statusSlug(sStatus)}">${sStatus}</span></h3>
+    <h3><span class="stage-num">Stage ${idx}</span> ${esc(s.name)}${sStatus==='Complete'?` <span class="status-pill status-complete">Complete</span>`:''}</h3>
     <div class="sub">${esc(cl?cl.name:'')} · ${esc(proj.name)} ${tc?'· '+tc.icon+' '+esc(proj.project_type):''}${s.due_date?' · due '+fmtDateY(new Date(s.due_date+'T00:00'))+(s.due_time?' at '+formatTime12(s.due_time):''):''}</div>
     ${tasks.length? `<table><thead><tr><th>Task</th><th>Status</th><th>Assigned</th></tr></thead><tbody>
-      ${tasks.map(t=>`<tr><td>${esc(t.title)}</td><td><span class="status-pill status-${statusSlug(t.status)}">${esc(t.status||'To do')}</span></td><td>${avatarGroupHtml(t.assigned_designer_ids)}</td></tr>`).join('')}
+      ${tasks.map(t=>`<tr><td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td><td><span class="status-pill status-${statusSlug(t.status)}">${esc(t.status||'To do')}</span></td><td>${avatarGroupHtml(t.assigned_designer_ids)}</td></tr>`).join('')}
     </tbody></table>` : `<div class="empty">No tasks in this stage yet.</div>`}
     <div class="modal-actions">
       <div class="right">
@@ -1422,11 +1499,10 @@ function renderProjDetail(){
       html += `<div class="stage-section" data-stagesection="${s.id}">
         <div class="stage-head">
           <div>
-            <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}<span class="status-pill status-${statusSlug(sStatus)}">${sStatus}</span></h4>
+            <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">Complete</span>':''}</h4>
             <button type="button" class="stage-date-btn" data-stagedate="${s.id}">${dateLabel}</button>
           </div>
           <span class="stage-actions">
-            <button class="btn small ghost" data-stageedit="${s.id}">Edit</button>
             <button class="btn small" data-addtask="${s.id}">+ Task</button>
           </span>
         </div>
@@ -1449,7 +1525,7 @@ function renderProjDetail(){
                 : '<span style="color:var(--amber);font-weight:700" title="Ticked, but not syncing yet — check hours and designer">⚠</span>';
             }
             return `<tr class="task-row" draggable="true" data-projtask="${t.id}">
-              <td>${esc(t.title)}</td>
+              <td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td>
               ${state.taskCols.has('status')?`<td><select class="status-select status-${statusSlug(t.status)}" data-statusinline="${t.id}">${TASK_STATUSES.map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${st}</option>`).join('')}</select></td>`:''}
               ${state.taskCols.has('priority')?`<td><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></td>`:''}
               ${state.taskCols.has('designer')?`<td>${avatarGroupHtml(t.assigned_designer_ids)}</td>`:''}
@@ -1485,7 +1561,6 @@ function renderProjDetail(){
       await refreshProjectView();
     });
   });
-  main.querySelectorAll('[data-stageedit]').forEach(el=>el.addEventListener('click', ()=> openStageModal(p.id, el.dataset.stageedit)));
   main.querySelectorAll('[data-stagedate]').forEach(el=>el.addEventListener('click', ()=>{
     const s = stages.find(s=>s.id===el.dataset.stagedate);
     openMiniDatePicker(el, s.due_date, async (newDate, newTime)=>{
@@ -1780,93 +1855,6 @@ function openDiscordModal(projectId){
   };
 }
 
-function renderLog(){
-  const clients = state.clients.filter(c=>c.active && c.is_retainer);
-  const members = state.members.filter(m=>m.active);
-  const today = state.logDate || iso(new Date());
-  state.logDate = null;
-  const lastMember = store.get('rs_last_member') || '';
-  const lastClient = store.get('rs_last_client') || '';
-
-  main.innerHTML = `
-    <h2>Log time</h2><div class="sub">Raw hours are multiplied by the team member's factor</div>
-    <div class="card" style="max-width:680px">
-      <form class="log" id="logForm">
-        <div><label>Client</label><select id="f_client" required>
-          ${clients.map(c=>`<option value="${c.id}" ${c.id===lastClient?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
-        <div><label>Team member</label><select id="f_member" required>
-          ${members.map(m=>`<option value="${m.id}" ${m.id===lastMember?'selected':''}>${esc(m.name)} (×${m.weight})</option>`).join('')}</select></div>
-        <div>
-          <label>Date</label>
-          <input type="date" id="f_date" value="${today}" required>
-          <div class="quick-dates" style="margin-top:6px">
-            <button type="button" class="btn small ghost" id="qd_today">Today</button>
-            <button type="button" class="btn small ghost" id="qd_yesterday">Yesterday</button>
-          </div>
-        </div>
-        <div><label>Hours worked</label><input type="number" min="0.25" step="0.25" placeholder="e.g. 4" id="f_hours" required></div>
-        <div class="full"><label>Task</label><input type="text" id="f_desc" placeholder="What was the work?"></div>
-        <div class="full"><label>Notes (optional)</label><textarea id="f_notes" placeholder="Anything worth remembering…"></textarea></div>
-        <div class="weighted-note full" id="f_note">Counts as <b>—</b> against the retainer</div>
-        <div class="full"><button type="button" class="btn" id="f_submit">Log task</button></div>
-      </form>
-    </div>
-
-    <div style="margin-top:34px">
-      <h2 style="font-size:17px">Recent tasks</h2>
-      <div class="sub" style="margin-bottom:12px">Click any row to edit or add notes</div>
-      <div class="card" style="padding:8px 12px">
-        <table><thead><tr><th>Date</th><th>Client</th><th>Member</th><th>Task</th><th style="text-align:right">Hours</th><th style="text-align:right">Weighted</th></tr></thead>
-        <tbody>${state.tasks.slice(0,25).map(t=>{
-          const c=state.clients.find(c=>c.id===t.client_id), m=state.members.find(m=>m.id===t.member_id);
-          return `<tr class="task-row" data-task="${t.id}">
-            <td>${fmtDate(new Date(t.task_date+'T00:00'))}</td>
-            <td><span class="chip"><span class="dot" style="background:${c?colorFor(c):'#999'}"></span>${esc(c?c.name:'—')}</span></td>
-            <td>${avatarWithName(m)}</td>
-            <td>${esc(t.description||'')}${t.notes? '<span class="note-dot">●</span>':''}</td>
-            <td style="text-align:right">${fmtH(t.hours)}</td>
-            <td style="text-align:right"><b>${fmtH(t.hours*t.weight_applied)}</b></td>
-          </tr>`;}).join('') || '<tr><td colspan="6" class="empty">Nothing logged yet.</td></tr>'}
-        </tbody></table>
-      </div>
-    </div>`;
-
-  const note = $('#f_note');
-  function updateNote(){
-    const m = members.find(m=>m.id===$('#f_member').value);
-    const h = parseFloat($('#f_hours').value);
-    note.innerHTML = (m && h>0)
-      ? `${fmtH(h)} × ${m.weight} — counts as <b>${fmtH(h*m.weight)}</b> against the retainer`
-      : `Counts as <b>—</b> against the retainer`;
-  }
-  $('#f_member').addEventListener('change', updateNote);
-  $('#f_hours').addEventListener('input', updateNote);
-  updateNote();
-  $('#qd_today').addEventListener('click', ()=>{ $('#f_date').value = iso(new Date()); });
-  $('#qd_yesterday').addEventListener('click', ()=>{ const d=new Date(); d.setDate(d.getDate()-1); $('#f_date').value = iso(d); });
-
-  $('#f_submit').addEventListener('click', async ()=>{
-    const member = members.find(m=>m.id===$('#f_member').value);
-    const hours = parseFloat($('#f_hours').value);
-    if (!$('#f_client').value || !member || !(hours>0) || !$('#f_date').value){ toast('Fill in client, member, date and hours'); return; }
-    const { error } = await db.from('rs_tasks').insert({
-      client_id: $('#f_client').value, member_id: member.id,
-      task_date: $('#f_date').value, hours,
-      description: $('#f_desc').value.trim() || null,
-      notes: $('#f_notes').value.trim() || null,
-      weight_applied: member.weight
-    });
-    if (error){ toast('Could not save'); console.error(error); return; }
-    store.set('rs_last_member', member.id);
-    store.set('rs_last_client', $('#f_client').value);
-    state.logDate = $('#f_date').value; // keep the same date/client/member for fast catch-up logging
-    toast(`Logged — ${fmtH(hours*member.weight)} weighted`);
-    await loadAll();
-  });
-
-  main.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click', ()=>openTaskModal(el.dataset.task)));
-}
-
 function renderCalendar(){
   if (!state.calMonth) state.calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   const m0 = state.calMonth;
@@ -1926,7 +1914,7 @@ function renderCalendar(){
   }));
   main.querySelectorAll('.day[data-date]').forEach(el=>el.addEventListener('click', (e)=>{
     if(e.target.closest('[data-task]') || e.target.closest('[data-goto]')) return;
-    state.logDate = el.dataset.date; state.view='log'; render();
+    openQuickLogModal(null, el.dataset.date);
   }));
   main.querySelectorAll('.task-chip[data-task]').forEach(el=>{
     el.addEventListener('click', (e)=>{ e.stopPropagation(); openTaskModal(el.dataset.task); });
@@ -1974,7 +1962,7 @@ function renderSettings(){
         </tr>`).join('') || '<tr><td colspan="5" class="empty">No clients yet.</td></tr>'}
         </tbody></table>
         <div class="row-form">
-          <input type="color" id="c_color" value="${PALETTE[state.clients.length%PALETTE.length]}" title="Dot colour">
+          ${colorCircleHtml('c_color', PALETTE[state.clients.length%PALETTE.length])}
           <input id="c_name" placeholder="Client name" style="flex:2">
           <input type="url" id="c_miro" placeholder="Miro link (optional)" style="flex:1 1 160px">
           <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;white-space:nowrap"><input type="checkbox" id="c_isretainer" checked style="width:auto">On retainer</label>
@@ -2048,6 +2036,7 @@ function renderSettings(){
     </div>`;
 
   $('#c_isretainer').addEventListener('change', e=>{ $('#c_retainer_fields').style.display = e.target.checked?'flex':'none'; });
+  wireColorCircle('c_color');
   $('#c_add').onclick = async ()=>{
     const name = $('#c_name').value.trim(); if(!name){ toast('Client needs a name'); return; }
     const is_retainer = $('#c_isretainer').checked;
@@ -2140,6 +2129,7 @@ async function boot(){
   db = supabase.createClient(url, key);
   $('#nav').style.display = 'flex';
   $('#brandBtn').addEventListener('click', ()=>{ state.view='projects'; state.projView='clients'; render(); });
+  $('#fabLogTime').addEventListener('click', ()=> openQuickLogModal(null));
   document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{ state.view=b.dataset.view; render(); }));
   await loadAll();
 }
