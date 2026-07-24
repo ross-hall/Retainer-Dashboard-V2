@@ -1455,6 +1455,21 @@ function renderMilestones(){
   attachMilestoneInteractions();
 }
 
+function clientCardHtml(c){
+  const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
+  const body = c.is_retainer
+    ? `<div class="cycle">Flat task list · no projects</div>`
+    : (projects.length
+        ? `<div class="proj-pills">${projects.map(p=>`<button type="button" class="proj-pill" data-projectgoto="${p.id}" data-projectclientid="${c.id}">${esc(p.name)}</button>`).join('')}</div>`
+        : `<div class="cycle">No projects yet</div>`);
+  return `<div class="card client-card" data-projgoto="${c.id}">
+    <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}
+      <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options">⋮</button></span>
+    </h3>
+    ${body}
+  </div>`;
+}
+
 function renderProjClients(){
   const clients = state.clients.filter(c=>c.active);
   const retainerClients = clients.filter(c=>c.is_retainer);
