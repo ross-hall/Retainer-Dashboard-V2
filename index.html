@@ -321,6 +321,7 @@ let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clie
   projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null,
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
+  milestoneShowProjects:true, milestoneShowRetainer:true,
   retainerView:'dashboard' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
@@ -1248,11 +1249,23 @@ function milestoneChipHtml(s, proj, cl, weekStyle){
   const cls = weekStyle ? 'milestone-chip week-chip' : 'milestone-chip';
   const style = weekStyle ? `border-left-color:${cl?colorFor(cl):'#999'}` : `background:${cl?colorFor(cl):'#999'}`;
   const timeLine = weekStyle ? `<div class="mc-time">${s.due_time? formatTime12(s.due_time) : 'All day'}</div>` : '';
-  return `<div class="${cls}" draggable="true" data-milestone="${s.id}" style="${style}" title="${esc(proj.name)} — ${esc(s.name)}">
+  return `<div class="${cls}" draggable="true" data-msitem="stage:${s.id}" style="${style}" title="${esc(proj.name)} — ${esc(s.name)}">
     ${timeLine}
     <div class="mc1">${esc(cl?cl.name:'Unknown client')}</div>
     <div class="mc2">${tc?tc.icon+' ':''}${esc(proj.project_type)}</div>
     <div class="mc3">Stage ${idx} · ${esc(s.name)}</div>
+  </div>`;
+}
+
+function retainerMilestoneChipHtml(t, cl, weekStyle){
+  const cls = weekStyle ? 'milestone-chip week-chip' : 'milestone-chip';
+  const style = weekStyle ? `border-left-color:${cl?colorFor(cl):'#999'}` : `background:${cl?colorFor(cl):'#999'}`;
+  const timeLine = weekStyle ? `<div class="mc-time">All day</div>` : '';
+  return `<div class="${cls}" draggable="true" data-msitem="task:${t.id}" style="${style}" title="${esc(cl?cl.name:'')} — ${esc(t.title)}">
+    ${timeLine}
+    <div class="mc1">${esc(cl?cl.name:'Unknown client')}</div>
+    <div class="mc2">📋 Retainer delivery</div>
+    <div class="mc3">${esc(t.title)}</div>
   </div>`;
 }
 
@@ -1292,42 +1305,79 @@ function attachMilestoneInteractions(){
   }));
   if($('#mAll')) $('#mAll').onclick = ()=>{ state.milestoneHidden.clear(); renderMilestones(); };
   main.querySelectorAll('[data-mview]').forEach(el=>el.addEventListener('click', ()=>{ state.milestoneViewMode = el.dataset.mview; renderMilestones(); }));
-  main.querySelectorAll('[data-milestone]').forEach(el=>{
-    el.addEventListener('click', ()=> openStagePreviewModal(el.dataset.milestone));
-    el.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', el.dataset.milestone); e.dataTransfer.effectAllowed='move'; });
+  if($('#mShowProjects')) $('#mShowProjects').onclick = ()=>{ state.milestoneShowProjects = !state.milestoneShowProjects; renderMilestones(); };
+  if($('#mShowRetainer')) $('#mShowRetainer').onclick = ()=>{ state.milestoneShowRetainer = !state.milestoneShowRetainer; renderMilestones(); };
+  main.querySelectorAll('[data-msitem]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const [type,id] = el.dataset.msitem.split(':');
+      if(type==='stage') openStagePreviewModal(id);
+      else jumpToProjTask(id);
+    });
+    el.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', el.dataset.msitem); e.dataTransfer.effectAllowed='move'; });
   });
   main.querySelectorAll('.day[data-date]').forEach(dayEl=>{
     dayEl.addEventListener('dragover', e=>{ e.preventDefault(); dayEl.classList.add('drop-target'); });
     dayEl.addEventListener('dragleave', ()=> dayEl.classList.remove('drop-target'));
     dayEl.addEventListener('drop', async e=>{
       e.preventDefault(); dayEl.classList.remove('drop-target');
-      const stageId = e.dataTransfer.getData('text/plain');
+      const raw = e.dataTransfer.getData('text/plain');
+      const [type,id] = (raw||'').split(':');
       const newDate = dayEl.dataset.date;
-      if(!stageId || !newDate) return;
-      const { error } = await db.from('rs_project_stages').update({ due_date:newDate }).eq('id', stageId);
-      if(error){ toast('Could not move milestone'); return; }
+      if(!type || !id || !newDate) return;
+      const { error } = type==='stage'
+        ? await db.from('rs_project_stages').update({ due_date:newDate }).eq('id', id)
+        : await db.from('rs_proj_tasks').update({ due_date:newDate }).eq('id', id);
+      if(error){ toast('Could not move'); return; }
       toast(`Moved to ${fmtDate(new Date(newDate+'T00:00'))}`);
       await refreshProjectView();
     });
   });
 }
 
+function collectMilestoneItems(){
+  const byDay = {};
+  if(state.milestoneShowProjects){
+    state.stages.filter(s=>s.due_date).forEach(s=>{
+      const proj = state.projects.find(p=>p.id===s.project_id);
+      if(!proj || state.milestoneHidden.has(proj.client_id)) return;
+      (byDay[s.due_date]=byDay[s.due_date]||[]).push({ type:'stage', s, proj, time:s.due_time||'99:99' });
+    });
+  }
+  if(state.milestoneShowRetainer){
+    state.projTasks.filter(t=>t.due_date && t.client_id && !t.project_id).forEach(t=>{
+      if(state.milestoneHidden.has(t.client_id)) return;
+      (byDay[t.due_date]=byDay[t.due_date]||[]).push({ type:'task', t, time:'99:99' });
+    });
+  }
+  return byDay;
+}
+function milestoneItemChip(item, weekStyle){
+  if(item.type==='stage'){
+    const cl = state.clients.find(c=>c.id===item.proj.client_id);
+    return milestoneChipHtml(item.s, item.proj, cl, weekStyle);
+  }
+  const cl = state.clients.find(c=>c.id===item.t.client_id);
+  return retainerMilestoneChipHtml(item.t, cl, weekStyle);
+}
+
 function renderMilestones(){
   if(!state.milestoneAnchor) state.milestoneAnchor = new Date();
   const anchor = state.milestoneAnchor;
   const todayIso = iso(new Date());
-  const clients = state.clients.filter(c=>c.active && state.projects.some(p=>p.client_id===c.id));
-  const byDay = {};
-  state.stages.filter(s=>s.due_date).forEach(s=>{
-    const proj = state.projects.find(p=>p.id===s.project_id);
-    if(!proj || state.milestoneHidden.has(proj.client_id)) return;
-    (byDay[s.due_date]=byDay[s.due_date]||[]).push({s,proj});
-  });
+  const clients = state.clients.filter(c=>c.active && (
+    state.projects.some(p=>p.client_id===c.id) ||
+    state.projTasks.some(t=>t.client_id===c.id && !t.project_id && t.due_date)
+  ));
+  const byDay = collectMilestoneItems();
 
   const viewToggle = `<div class="view-toggle">
     <button class="btn small ${state.milestoneViewMode==='week'?'':'ghost'}" data-mview="week">Week</button>
     <button class="btn small ${state.milestoneViewMode==='month'?'':'ghost'}" data-mview="month">Month</button>
     <button class="btn small ${state.milestoneViewMode==='year'?'':'ghost'}" data-mview="year">Year</button>
+  </div>`;
+  const typeToggle = `<div class="view-toggle">
+    <button class="btn small ${state.milestoneShowProjects?'':'ghost'}" id="mShowProjects">Projects</button>
+    <button class="btn small ${state.milestoneShowRetainer?'':'ghost'}" id="mShowRetainer">Retainer</button>
   </div>`;
   const filters = `<div class="cal-filters">
       ${clients.map(c=>`<button class="filter-pill ${state.milestoneHidden.has(c.id)?'off':''}" data-mtoggle="${c.id}"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</button>`).join('')}
@@ -1341,8 +1391,8 @@ function renderMilestones(){
     const end = days[6];
     let cells = days.map(d=>{
       const dIso = iso(d);
-      const list = (byDay[dIso]||[]).slice().sort((a,b)=> (a.s.due_time||'99:99').localeCompare(b.s.due_time||'99:99'));
-      const chips = list.map(({s,proj})=>{ const cl=state.clients.find(c=>c.id===proj.client_id); return milestoneChipHtml(s,proj,cl,true); }).join('');
+      const list = (byDay[dIso]||[]).slice().sort((a,b)=> a.time.localeCompare(b.time));
+      const chips = list.map(item=>milestoneItemChip(item, true)).join('');
       return `<div class="day ${dIso===todayIso?'today':''}" data-date="${dIso}"><div class="num">${d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric'})}</div>${chips}</div>`;
     }).join('');
     body = `<div class="cal-head"><button class="btn ghost small" id="mPrev">←</button><h3>${fmtDateY(start)} – ${fmtDateY(end)}</h3><button class="btn ghost small" id="mNext">→</button><button class="btn ghost small" id="mToday">Today</button></div>
@@ -1355,9 +1405,14 @@ function renderMilestones(){
       const rows = [];
       for(let d=1; d<=daysIn; d++){
         const dIso = iso(new Date(y,m,d));
-        (byDay[dIso]||[]).forEach(({s,proj})=>{
-          const cl = state.clients.find(c=>c.id===proj.client_id);
-          rows.push(`<div class="year-row"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-milestone="${s.id}">${esc(cl?cl.name:'')} — ${esc(proj.name)} · ${esc(s.name)}</span></div>`);
+        (byDay[dIso]||[]).forEach(item=>{
+          if(item.type==='stage'){
+            const cl = state.clients.find(c=>c.id===item.proj.client_id);
+            rows.push(`<div class="year-row"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="stage:${item.s.id}">${esc(cl?cl.name:'')} — ${esc(item.proj.name)} · ${esc(item.s.name)}</span></div>`);
+          } else {
+            const cl = state.clients.find(c=>c.id===item.t.client_id);
+            rows.push(`<div class="year-row"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="task:${item.t.id}">${esc(cl?cl.name:'')} — ${esc(item.t.title)} <span style="color:var(--muted)">(retainer)</span></span></div>`);
+          }
         });
       }
       if(rows.length) months += `<div class="year-month"><h4>${new Date(y,m,1).toLocaleDateString('en-GB',{month:'long'})}</h4>${rows.join('')}</div>`;
@@ -1374,15 +1429,15 @@ function renderMilestones(){
     for(let d=1;d<=daysIn;d++){
       const dIso = iso(new Date(y,mo,d));
       const list = byDay[dIso]||[];
-      const chips = list.map(({s,proj})=>{ const cl=state.clients.find(c=>c.id===proj.client_id); return milestoneChipHtml(s,proj,cl); }).join('');
+      const chips = list.map(item=>milestoneItemChip(item, false)).join('');
       cells += `<div class="day ${dIso===todayIso?'today':''}" data-date="${dIso}"><div class="num">${d}</div>${chips}</div>`;
     }
     body = `<div class="cal-head"><button class="btn ghost small" id="mPrev">←</button><h3>${first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</h3><button class="btn ghost small" id="mNext">→</button><button class="btn ghost small" id="mToday">Today</button></div>
       <div class="cal milestones">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div>`;
   }
 
-  main.innerHTML = `<h2>Milestones</h2><div class="sub">Stage due dates across every project · drag a card to reschedule, click to jump to that project</div>
-    ${viewToggle}${filters}${body}`;
+  main.innerHTML = `<h2>Milestones</h2><div class="sub">Project stage due dates and retainer delivery dates · drag a card to reschedule, click to open</div>
+    ${viewToggle}${typeToggle}${filters}${body}`;
 
   $('#mPrev').onclick = ()=>{
     if(state.milestoneViewMode==='week'){ const d=new Date(anchor); d.setDate(d.getDate()-7); state.milestoneAnchor=d; }
@@ -1398,21 +1453,6 @@ function renderMilestones(){
   };
   $('#mToday').onclick = ()=>{ state.milestoneAnchor = new Date(); renderMilestones(); };
   attachMilestoneInteractions();
-}
-
-function clientCardHtml(c){
-  const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
-  const body = c.is_retainer
-    ? `<div class="cycle">Flat task list · no projects</div>`
-    : (projects.length
-        ? `<div class="proj-pills">${projects.map(p=>`<button type="button" class="proj-pill" data-projectgoto="${p.id}" data-projectclientid="${c.id}">${esc(p.name)}</button>`).join('')}</div>`
-        : `<div class="cycle">No projects yet</div>`);
-  return `<div class="card client-card" data-projgoto="${c.id}">
-    <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}
-      <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options">⋮</button></span>
-    </h3>
-    ${body}
-  </div>`;
 }
 
 function renderProjClients(){
@@ -1686,7 +1726,6 @@ function renderProjDetail(){
           ${miroButtonsHtml(c, p)}
           <button class="btn small ghost" id="discordBtn">Share to Discord</button>
           <button class="btn small ghost" id="editProjectBtn">Edit project</button>
-          <button class="btn small" id="addStageBtn">+ Add stage</button>
         </div>
       </div>
       <div class="sub" style="margin-bottom:${allTasks.length?'16px':'0'}"><span class="type-badge">${tc?tc.icon+' ':''}${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}${c.is_retainer?'':' · not a retainer client — retainer syncing is off'}</div>
@@ -1719,7 +1758,6 @@ function renderProjDetail(){
   $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('#editProjectBtn').onclick = ()=> openProjectModal(p.id, p.client_id);
   $('#discordBtn').onclick = ()=> openDiscordModal(p.id);
-  $('#addStageBtn').onclick = ()=> openStageModal(p.id, null);
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
   wireTaskRows(main);
@@ -1826,7 +1864,6 @@ function openProjectModal(projectId, clientId){
     <h3>${isNew?'New project':'Edit project'}</h3>
     <div class="sub">${esc(client.name)}</div>
     <form class="log" style="max-width:none">
-      <div class="full"><label>Project name</label><input type="text" id="pj_name" value="${esc(p?p.name:'')}" placeholder="e.g. Homepage redesign"></div>
       <div><label>Type</label><select id="pj_type">${activeTypes.map(t=>`<option value="${t.name}" ${p&&p.project_type===t.name?'selected':''}>${t.icon} ${t.name}</option>`).join('')}<option value="Other" ${p && !activeTypes.some(t=>t.name===p.project_type)?'selected':''}>Other</option></select></div>
       <div id="pj_extra_wrap" style="display:contents">${projExtraFieldHtml(initialType, p&&p.details)}</div>
       <div><label>Label <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="pj_label" value="${esc(p&&p.label?p.label:'')}" placeholder="e.g. Rush, Q3"></div>
@@ -1847,9 +1884,8 @@ function openProjectModal(projectId, clientId){
     closeModal(); toast(p.active?'Project archived':'Project restored'); await refreshProjectView();
   };
   $('#pj_save').onclick = async ()=>{
-    const name = $('#pj_name').value.trim();
-    if(!name){ toast('Give the project a name'); return; }
     const project_type = $('#pj_type').value;
+    const name = project_type;
     const label = $('#pj_label').value.trim() || null;
     const miro_link_external = $('#pj_miro_ext').value.trim() || null;
     const miro_link_internal = $('#pj_miro_int').value.trim() || null;
@@ -1950,52 +1986,6 @@ function openProjectTypeModal(typeId){
       if(error){ toast('Could not save'); console.error(error); return; }
     }
     closeModal(); toast('Saved'); await loadAll();
-  };
-}
-
-function openStageModal(projectId, stageId){
-  const isNew = !stageId;
-  const s = isNew ? null : state.stages.find(s=>s.id===stageId);
-  const siblingStages = state.stages.filter(st=>st.project_id===projectId).sort((a,b)=>a.position-b.position);
-  const currentNum = isNew ? siblingStages.length : siblingStages.findIndex(st=>st.id===s.id);
-  showModal(`
-    <h3>${isNew?'New stage':'Edit stage'}</h3>
-    <form class="log" style="max-width:none">
-      <div><label>Stage number</label><input type="number" min="0" id="sg_num" value="${currentNum}"></div>
-      <div><label>Stage name</label><input type="text" id="sg_name" value="${esc(s?s.name:'')}" placeholder="e.g. Review"></div>
-      <div><label>Due date <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="date" id="sg_due" value="${s&&s.due_date?s.due_date:''}"></div>
-      <div><label>Due time <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="time" id="sg_time" value="${s&&s.due_time?s.due_time:''}"></div>
-    </form>
-    <div class="modal-actions">
-      ${!isNew? `<button class="btn danger" id="sg_delete">Delete stage</button>`:'<span></span>'}
-      <div class="right">
-        <button class="btn ghost" id="sg_cancel">Cancel</button>
-        <button class="btn" id="sg_save">${isNew?'Add stage':'Save changes'}</button>
-      </div>
-    </div>
-  `);
-  $('#sg_cancel').onclick = closeModal;
-  if(!isNew) $('#sg_delete').onclick = async ()=>{
-    const count = state.projTasks.filter(t=>t.stage_id===s.id).length;
-    if(!confirm(`Delete stage "${s.name}"?${count?` This also deletes its ${count} task(s).`:''}`)) return;
-    const { error } = await db.from('rs_project_stages').delete().eq('id', s.id);
-    if(error){ toast('Delete failed'); return; }
-    closeModal(); toast('Stage deleted'); await refreshProjectView();
-  };
-  $('#sg_save').onclick = async ()=>{
-    const name = $('#sg_name').value.trim();
-    if(!name){ toast('Give the stage a name'); return; }
-    const due_date = $('#sg_due').value || null;
-    const due_time = due_date ? ($('#sg_time').value || null) : null;
-    const position = $('#sg_num').value!==''? +$('#sg_num').value : siblingStages.length;
-    if(isNew){
-      const { error } = await db.from('rs_project_stages').insert({ project_id:projectId, name, due_date, due_time, position });
-      if(error){ toast('Could not add stage'); return; }
-    } else {
-      const { error } = await db.from('rs_project_stages').update({ name, due_date, due_time, position }).eq('id', s.id);
-      if(error){ toast('Could not save'); return; }
-    }
-    closeModal(); toast(isNew?'Stage added':'Stage updated'); await refreshProjectView();
   };
 }
 
