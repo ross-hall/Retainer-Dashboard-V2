@@ -680,7 +680,7 @@ function openNewClientModal(){
     if(error){ toast('Could not create client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     closeModal(); toast('Client created');
-    state.projClientId = data.id; state.projView = 'clientProjects';
+    state.projClientId = data.id; state.projView = is_retainer ? 'retainerTasks' : 'clientProjects';
     await refreshProjectView();
   };
 }
@@ -971,21 +971,28 @@ function renderDashboard(){
     </div>`;
   }
 
+  function pendingTaskClient(t){
+    if(t.project_id){
+      const proj = state.projects.find(p=>p.id===t.project_id);
+      return proj ? state.clients.find(c=>c.id===proj.client_id) : null;
+    }
+    return t.client_id ? state.clients.find(c=>c.id===t.client_id) : null;
+  }
   const pending = state.projTasks.filter(t=>{
     if(!t.counts_toward_retainer || (t.retainer_task_ids||[]).length) return false;
-    const proj = state.projects.find(p=>p.id===t.project_id);
-    const cl = proj && state.clients.find(c=>c.id===proj.client_id);
+    const cl = pendingTaskClient(t);
     return cl && cl.is_retainer;
   });
   if(pending.length){
     html += `<div class="banner">
       <div>🕓</div>
-      <div><strong>${pending.length} task${pending.length===1?'':'s'}</strong> ${pending.length===1?'is':'are'} ticked for the retainer from Projects Overview but still missing hours (or a designer) — ${pending.length===1?'it':'they'} won't count until filled in.
+      <div><strong>${pending.length} task${pending.length===1?'':'s'}</strong> ${pending.length===1?'is':'are'} ticked for the retainer from Client Overview but still missing hours (or a designer) — ${pending.length===1?'it':'they'} won't count until filled in.
         <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start">
           ${pending.map(t=>{
-            const proj = state.projects.find(p=>p.id===t.project_id);
-            const cl = state.clients.find(c=>c.id===proj.client_id);
-            return `<button class="btn small ghost" data-jumptask="${t.id}">${esc(cl.name)} — ${esc(proj.name)}: ${esc(t.title)}</button>`;
+            const cl = pendingTaskClient(t);
+            const proj = t.project_id ? state.projects.find(p=>p.id===t.project_id) : null;
+            const label = proj ? `${esc(cl.name)} — ${esc(proj.name)}: ${esc(t.title)}` : `${esc(cl.name)}: ${esc(t.title)}`;
+            return `<button class="btn small ghost" data-jumptask="${t.id}">${label}</button>`;
           }).join('')}
         </div>
       </div>
@@ -1054,8 +1061,12 @@ function renderDashboard(){
 
 function jumpToProjTask(taskId){
   const t = state.projTasks.find(t=>t.id===taskId); if(!t) return;
-  const proj = state.projects.find(p=>p.id===t.project_id); if(!proj) return;
-  state.view='projects'; state.projView='project'; state.projClientId=proj.client_id; state.projProjectId=proj.id;
+  if(t.project_id){
+    const proj = state.projects.find(p=>p.id===t.project_id); if(!proj) return;
+    state.view='projects'; state.projView='project'; state.projClientId=proj.client_id; state.projProjectId=proj.id;
+  } else if(t.client_id){
+    state.view='projects'; state.projView='retainerTasks'; state.projClientId=t.client_id;
+  } else return;
   render();
   openProjTaskModal(taskId, {});
 }
@@ -1151,6 +1162,7 @@ async function renderClient(){
 /* ================= Project Overview ================= */
 function renderProjects(){
   if(state.projView==='project') renderProjDetail();
+  else if(state.projView==='retainerTasks') renderClientTaskList();
   else if(state.projView==='clientProjects') renderProjClientProjects();
   else renderProjClients();
 }
@@ -1338,7 +1350,10 @@ function renderProjClients(){
   main.innerHTML = html;
   $('#newClientBtn').onclick = openNewClientModal;
   main.querySelectorAll('[data-projgoto]').forEach(el=>el.addEventListener('click', ()=>{
-    state.projClientId = el.dataset.projgoto; state.projView='clientProjects'; render();
+    const cl = state.clients.find(c=>c.id===el.dataset.projgoto);
+    state.projClientId = el.dataset.projgoto;
+    state.projView = (cl && cl.is_retainer) ? 'retainerTasks' : 'clientProjects';
+    render();
   }));
   main.querySelectorAll('[data-clientmenu]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
@@ -1408,8 +1423,10 @@ function pillSelectorHtml(members, selectedIds){
   return `<div class="pill-select">${members.map(m=>`<button type="button" class="member-pill ${selectedIds.includes(m.id)?'selected':''}" data-pillmember="${m.id}"><span class="avatar" style="background:${clientColor(m.id)}">${initials(m.name)}</span>${esc(m.name)}</button>`).join('')}</div>`;
 }
 
-function blankProjTask(stageId, projectId){
-  return { id:null, project_id:projectId, stage_id:stageId, title:'', priority:'Medium', status:'To do',
+function blankProjTask(ctx){
+  ctx = ctx || {};
+  return { id:null, project_id:ctx.projectId||null, stage_id:ctx.stageId||null, client_id:ctx.clientId||null,
+    title:'', priority:'Medium', status:'To do',
     assigned_designer_ids:[], assigned_reviewer_ids:[], recorded_hours:null, due_date:null, work_date:iso(new Date()),
     counts_toward_retainer:false, retainer_task_ids:[] };
 }
@@ -1420,20 +1437,70 @@ function stageStatus(stageId){
   return tasks.every(t=>t.status==='Complete') ? 'Complete' : 'Active';
 }
 
+function taskRowHtml(t){
+  let retainerCell = '—';
+  if(t.counts_toward_retainer){
+    retainerCell = (t.retainer_task_ids && t.retainer_task_ids.length)
+      ? '<span class="retainer-tick">✓</span>'
+      : '<span style="color:var(--amber);font-weight:700" title="Ticked, but not syncing yet — check hours and designer">⚠</span>';
+  }
+  return `<tr class="task-row" draggable="true" data-projtask="${t.id}">
+    <td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td>
+    ${state.taskCols.has('status')?`<td><select class="status-select status-${statusSlug(t.status)}" data-statusinline="${t.id}">${TASK_STATUSES.map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${st}</option>`).join('')}</select></td>`:''}
+    ${state.taskCols.has('priority')?`<td><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></td>`:''}
+    ${state.taskCols.has('designer')?`<td>${avatarGroupHtml(t.assigned_designer_ids)}</td>`:''}
+    ${state.taskCols.has('reviewer')?`<td>${avatarGroupHtml(t.assigned_reviewer_ids)}</td>`:''}
+    ${state.taskCols.has('hours')?`<td style="text-align:right">${t.recorded_hours!=null?fmtH(t.recorded_hours):'—'}</td>`:''}
+    ${state.taskCols.has('due')?`<td>${t.due_date? fmtDate(new Date(t.due_date+'T00:00')):'—'}</td>`:''}
+    ${state.taskCols.has('retainer')?`<td style="text-align:center">${retainerCell}</td>`:''}
+  </tr>`;
+}
+
+function taskTableHtml(tasks, visibleCount, emptyText){
+  return `<table><thead><tr>
+      <th>Task</th>
+      ${state.taskCols.has('status')?'<th>Status</th>':''}
+      ${state.taskCols.has('priority')?'<th>Priority</th>':''}
+      ${state.taskCols.has('designer')?'<th>Designer</th>':''}
+      ${state.taskCols.has('reviewer')?'<th>Reviewer</th>':''}
+      ${state.taskCols.has('hours')?'<th style="text-align:right">Hours</th>':''}
+      ${state.taskCols.has('due')?'<th>Due</th>':''}
+      ${state.taskCols.has('retainer')?'<th style="text-align:center">Retainer</th>':''}
+    </tr></thead><tbody>
+    ${tasks.map(taskRowHtml).join('') || `<tr><td colspan="${visibleCount}" class="empty">${emptyText||'Nothing here yet.'}</td></tr>`}
+    </tbody></table>`;
+}
+
+function wireTaskRows(root){
+  root.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', (e)=>{
+    if(e.target.closest('[data-statusinline]')) return;
+    openProjTaskModal(el.dataset.projtask, {});
+  }));
+  root.querySelectorAll('[data-statusinline]').forEach(el=>{
+    el.addEventListener('click', e=> e.stopPropagation());
+    el.addEventListener('change', async e=>{
+      e.stopPropagation();
+      const { error } = await db.from('rs_proj_tasks').update({ status: el.value }).eq('id', el.dataset.statusinline);
+      if(error){ toast('Could not update status'); return; }
+      await refreshProjectView();
+    });
+  });
+}
+
 function openProjTaskModal(taskId, ctx){
   const isNew = !taskId;
-  const t = isNew ? blankProjTask(ctx.stageId, ctx.projectId) : state.projTasks.find(x=>x.id===taskId);
-  const project = state.projects.find(p=>p.id===t.project_id);
-  const client = state.clients.find(c=>c.id===project.client_id);
-  const stages = state.stages.filter(s=>s.project_id===project.id).sort((a,b)=>a.position-b.position);
+  const t = isNew ? blankProjTask(ctx) : state.projTasks.find(x=>x.id===taskId);
+  const project = t.project_id ? state.projects.find(p=>p.id===t.project_id) : null;
+  const client = state.clients.find(c=>c.id=== (project ? project.client_id : t.client_id));
+  const stages = project ? state.stages.filter(s=>s.project_id===project.id).sort((a,b)=>a.position-b.position) : [];
   const designerPool = state.members.filter(m=>m.active && m.can_design!==false);
   const reviewerPool = state.members.filter(m=>m.active && m.can_review!==false);
   showModal(`
     <h3>${isNew?'New task':'Edit task'}</h3>
-    <div class="sub">${esc(project.name)}</div>
+    <div class="sub">${esc(project? project.name : client.name)}</div>
     <form class="log" style="max-width:none">
       <div class="full"><label>Title</label><input type="text" id="pt_title" value="${esc(t.title)}" placeholder="Task name"></div>
-      <div><label>Stage</label><select id="pt_stage">${stages.map(s=>`<option value="${s.id}" ${s.id===t.stage_id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>
+      ${stages.length? `<div><label>Stage</label><select id="pt_stage">${stages.map(s=>`<option value="${s.id}" ${s.id===t.stage_id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>` : ''}
       <div><label>Status</label><select id="pt_status">${TASK_STATUSES.map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>Priority</label><select id="pt_priority">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
       <div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t.recorded_hours!=null?t.recorded_hours:''}"></div>
@@ -1470,7 +1537,10 @@ function openProjTaskModal(taskId, ctx){
     const title = $('#pt_title').value.trim();
     if(!title){ toast('Give the task a title'); return; }
     const fields = {
-      project_id: project.id, stage_id: $('#pt_stage').value, title,
+      project_id: project ? project.id : null,
+      stage_id: stages.length ? $('#pt_stage').value : null,
+      client_id: project ? null : client.id,
+      title,
       status: $('#pt_status').value,
       priority: $('#pt_priority').value,
       assigned_designer_ids: Array.from(document.querySelectorAll('#pt_designers .member-pill.selected')).map(b=>b.dataset.pillmember),
@@ -1482,8 +1552,10 @@ function openProjTaskModal(taskId, ctx){
     };
     let saved;
     if(isNew){
-      const stageTaskCount = state.projTasks.filter(x=>x.stage_id===fields.stage_id).length;
-      const { data, error } = await db.from('rs_proj_tasks').insert({ ...fields, position: stageTaskCount }).select().single();
+      const siblingCount = stages.length
+        ? state.projTasks.filter(x=>x.stage_id===fields.stage_id).length
+        : state.projTasks.filter(x=>x.client_id===fields.client_id && !x.project_id).length;
+      const { data, error } = await db.from('rs_proj_tasks').insert({ ...fields, position: siblingCount }).select().single();
       if(error){ toast('Could not save task'); console.error(error); return; }
       saved = data;
     } else {
@@ -1546,37 +1618,7 @@ function renderProjDetail(){
           <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">Complete</span>':''}</h4>
           <button type="button" class="stage-date-btn" data-stagedate="${s.id}" style="margin-left:auto;margin-top:0">${dateLabel}</button>
         </div>
-        <div class="card" style="padding:8px 12px">
-          <table><thead><tr>
-            <th>Task</th>
-            ${state.taskCols.has('status')?'<th>Status</th>':''}
-            ${state.taskCols.has('priority')?'<th>Priority</th>':''}
-            ${state.taskCols.has('designer')?'<th>Designer</th>':''}
-            ${state.taskCols.has('reviewer')?'<th>Reviewer</th>':''}
-            ${state.taskCols.has('hours')?'<th style="text-align:right">Hours</th>':''}
-            ${state.taskCols.has('due')?'<th>Due</th>':''}
-            ${state.taskCols.has('retainer')?'<th style="text-align:center">Retainer</th>':''}
-          </tr></thead><tbody>
-          ${tasks.map(t=>{
-            let retainerCell = '—';
-            if(t.counts_toward_retainer){
-              retainerCell = (t.retainer_task_ids && t.retainer_task_ids.length)
-                ? '<span class="retainer-tick">✓</span>'
-                : '<span style="color:var(--amber);font-weight:700" title="Ticked, but not syncing yet — check hours and designer">⚠</span>';
-            }
-            return `<tr class="task-row" draggable="true" data-projtask="${t.id}">
-              <td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td>
-              ${state.taskCols.has('status')?`<td><select class="status-select status-${statusSlug(t.status)}" data-statusinline="${t.id}">${TASK_STATUSES.map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${st}</option>`).join('')}</select></td>`:''}
-              ${state.taskCols.has('priority')?`<td><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></td>`:''}
-              ${state.taskCols.has('designer')?`<td>${avatarGroupHtml(t.assigned_designer_ids)}</td>`:''}
-              ${state.taskCols.has('reviewer')?`<td>${avatarGroupHtml(t.assigned_reviewer_ids)}</td>`:''}
-              ${state.taskCols.has('hours')?`<td style="text-align:right">${t.recorded_hours!=null?fmtH(t.recorded_hours):'—'}</td>`:''}
-              ${state.taskCols.has('due')?`<td>${t.due_date? fmtDate(new Date(t.due_date+'T00:00')):'—'}</td>`:''}
-              ${state.taskCols.has('retainer')?`<td style="text-align:center">${retainerCell}</td>`:''}
-            </tr>`;
-          }).join('') || `<tr><td colspan="${visibleCount}" class="empty">No tasks in this stage yet.</td></tr>`}
-          </tbody></table>
-        </div>
+        <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.')}</div>
         <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
       </div>`;
     });
@@ -1589,19 +1631,7 @@ function renderProjDetail(){
   $('#addStageBtn').onclick = ()=> openStageModal(p.id, null);
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
-  main.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', (e)=>{
-    if(e.target.closest('[data-statusinline]')) return;
-    openProjTaskModal(el.dataset.projtask, {});
-  }));
-  main.querySelectorAll('[data-statusinline]').forEach(el=>{
-    el.addEventListener('click', e=> e.stopPropagation());
-    el.addEventListener('change', async e=>{
-      e.stopPropagation();
-      const { error } = await db.from('rs_proj_tasks').update({ status: el.value }).eq('id', el.dataset.statusinline);
-      if(error){ toast('Could not update status'); return; }
-      await refreshProjectView();
-    });
-  });
+  wireTaskRows(main);
   main.querySelectorAll('[data-stagedate]').forEach(el=>el.addEventListener('click', ()=>{
     const s = stages.find(s=>s.id===el.dataset.stagedate);
     openMiniDatePicker(el, s.due_date, async (newDate, newTime)=>{
@@ -1635,6 +1665,43 @@ function renderProjDetail(){
       });
     });
   });
+}
+
+function renderClientTaskList(){
+  const c = state.clients.find(c=>c.id===state.projClientId);
+  if(!c){ state.projView='clients'; render(); return; }
+  const tasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id).sort((a,b)=>(a.position||0)-(b.position||0));
+  const todo = tasks.filter(t=>t.status!=='Complete');
+  const done = tasks.filter(t=>t.status==='Complete');
+  const legacyProjects = state.projects.filter(p=>p.client_id===c.id);
+  const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
+
+  let html = `<div class="breadcrumb"><button data-bc="clients">Client Overview</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+    <div class="card" style="margin-bottom:26px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
+        ${c.miro_link? `<a class="btn small ghost" href="${esc(c.miro_link)}" target="_blank" rel="noopener">Miro board ↗</a>`:''}
+      </div>
+      <div class="sub" style="margin-bottom:0"><span class="retainer-badge" style="margin-left:0">Retainer</span> · flat task list, no project stages</div>
+    </div>
+    ${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
+    <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>
+    <div class="stage-section">
+      <div class="stage-head"><h4>To do</h4></div>
+      <div class="card" style="padding:8px 12px">${taskTableHtml(todo, visibleCount, 'Nothing to do yet.')}</div>
+      <div style="margin-top:10px"><button class="btn small ghost" data-addclienttask="${c.id}">+ Task</button></div>
+    </div>
+    <div class="stage-section">
+      <div class="stage-head"><h4>Completed</h4></div>
+      <div class="card" style="padding:8px 12px">${taskTableHtml(done, visibleCount, 'Nothing completed yet.')}</div>
+    </div>`;
+
+  main.innerHTML = html;
+  $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
+  if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
+  $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
+  main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
+  wireTaskRows(main);
 }
 
 function projExtraFieldHtml(type, details){
@@ -1731,7 +1798,7 @@ async function syncProjTaskRetainer(pt, project, client){
   for(const d of designers){
     const { data, error } = await db.from('rs_tasks').insert({
       client_id: client.id, member_id: d.id, task_date: pt.work_date, hours: perDesignerHours,
-      description: `${project.name} — ${pt.title}`, weight_applied: d.weight
+      description: project ? `${project.name} — ${pt.title}` : pt.title, weight_applied: d.weight
     }).select().single();
     if(error){ console.error(error); toast('Retainer sync failed for '+d.name); }
     else newIds.push(data.id);
