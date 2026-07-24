@@ -2323,7 +2323,12 @@ async function boot(){
   $('#nav').style.display = 'flex';
   $('#brandBtn').addEventListener('click', ()=>{ state.view='home'; render(); });
   $('#fabLogTime').addEventListener('click', ()=> openQuickLogModal(null));
-  document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{ state.view=b.dataset.view; render(); }));
+  document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{
+    state.view = b.dataset.view;
+    if(state.view==='projects'){ state.projView='clients'; state.projClientId=null; state.projProjectId=null; }
+    if(state.view==='dashboard'){ state.retainerView='dashboard'; }
+    render();
+  }));
   await loadAll();
 }
 boot();
