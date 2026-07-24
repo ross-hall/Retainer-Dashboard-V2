@@ -253,6 +253,8 @@
 
   .fab{position:fixed;bottom:28px;right:28px;width:58px;height:58px;border-radius:50%;background:var(--navy);color:#fff;font-size:30px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(4,14,107,.35);border:none;cursor:pointer;z-index:150}
   .fab:hover{background:var(--navy-soft)}
+  .version-badge{position:fixed;bottom:14px;left:18px;font-size:11px;color:var(--muted);cursor:default;user-select:none;z-index:50;opacity:.55;padding:4px}
+  .version-badge:hover{opacity:1}
 
   .color-circle{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
   .color-circle:hover{border-color:var(--navy-soft)}
@@ -309,6 +311,7 @@
 <div id="modalRoot"></div>
 <button class="fab" id="fabLogTime" style="display:none" title="Log time">+</button>
 <div class="toast" id="toast"></div>
+<div id="versionBadge" class="version-badge">v0.3.2</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -321,8 +324,8 @@ let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clie
   projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null,
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
-  milestoneShowProjects:true, milestoneShowRetainer:true,
-  retainerView:'dashboard' };
+  milestoneShowProjects:true, milestoneShowRetainer:true, milestonesTab:'milestones',
+  retainerTasksView:'tasks' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -649,7 +652,10 @@ function openTaskModal(taskId){
 }
 async function refreshCurrentView(){
   await loadAll();
-  if(state.view==='client'){ renderClient(); }
+  if(state.view==='projects' && state.projView==='retainerTasks' && state.retainerTasksView==='allowance'){
+    const c = state.clients.find(c=>c.id===state.projClientId);
+    if(c) renderClientAllowanceView(c);
+  }
 }
 async function refreshProjectView(){ await refreshCurrentView(); }
 
@@ -942,13 +948,9 @@ function render(){
     if(b.dataset.view==='dashboard') b.innerHTML = 'Retainers' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
   });
   $('#fabLogTime').style.display = (state.view==='dashboard') ? 'flex' : 'none';
-  ({home:renderHome, dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, client:renderClient}[state.view])();
+  ({home:renderHome, dashboard:renderDashboard, projects:renderProjects, milestones:renderMilestones, settings:renderSettings}[state.view])();
 }
 
-function renderRetainer(){
-  if(state.retainerView==='calendar') renderCalendar();
-  else renderDashboard();
-}
 function typeConfig(name){ return state.projectTypes.find(t=>t.name===name); }
 
 const CURRENT_USER_NAME = 'Ross'; // no login system yet — hardcoded to one team member
@@ -1029,10 +1031,7 @@ function renderDashboard(){
   };
   items.sort(sorters[state.dashSort]||sorters.name);
 
-  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-    <div><h2>Retainers this cycle</h2><div class="sub" style="margin-bottom:0">Weighted hours against each client's own renewal month · click a card for full history</div></div>
-    <button class="btn small ghost" id="toCalendarBtn">Calendar view</button>
-  </div><div style="margin-bottom:22px"></div>`;
+  let html = `<h2>Retainers this cycle</h2><div class="sub">Weighted hours against each client's own renewal month · click a card for full history</div>`;
 
   if (flagged.length){
     const over = flagged.filter(x=>x.u.pct>=100);
@@ -1112,7 +1111,8 @@ function renderDashboard(){
   }
   main.innerHTML = html;
   main.querySelectorAll('[data-goto]').forEach(el=>el.addEventListener('click', ()=>{
-    state.clientId = el.dataset.goto; state.view='client'; render();
+    state.projClientId = el.dataset.goto; state.projView='retainerTasks'; state.retainerTasksView='tasks';
+    state.view='projects'; render();
   }));
   main.querySelectorAll('[data-quicklog]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation(); openQuickLogModal(el.dataset.quicklog);
@@ -1129,7 +1129,6 @@ function renderDashboard(){
   });
   $('#dashSort').addEventListener('change', e=>{ state.dashSort=e.target.value; renderDashboard(); });
   main.querySelectorAll('[data-jumptask]').forEach(el=>el.addEventListener('click', ()=> jumpToProjTask(el.dataset.jumptask)));
-  $('#toCalendarBtn').onclick = ()=>{ state.retainerView='calendar'; render(); };
 }
 
 function jumpToProjTask(taskId){
@@ -1144,13 +1143,56 @@ function jumpToProjTask(taskId){
   openProjTaskModal(taskId, {});
 }
 
-async function renderClient(){
-  const c = state.clients.find(c=>c.id===state.clientId);
-  if(!c){ state.view='dashboard'; render(); return; }
-  main.innerHTML = `<button class="btn ghost small back-btn" id="backBtn">← Back to dashboard</button>
-    <h2>${esc(c.name)}</h2><div class="sub">Full history, grouped by renewal cycle</div>
-    <div class="empty">Loading…</div>`;
-  $('#backBtn').onclick = ()=>{ state.view='dashboard'; render(); };
+function clientRetainerHeaderHtml(c){
+  return `<div class="breadcrumb"><button data-bc="clients">Client Overview</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c, null)}</div>
+      </div>
+      <div class="sub" style="margin-bottom:0"><span class="retainer-badge" style="margin-left:0">Retainer</span></div>
+    </div>
+    <div class="view-toggle" style="margin-bottom:20px">
+      <button class="btn small ${state.retainerTasksView==='tasks'?'':'ghost'}" data-rtab="tasks">Tasks</button>
+      <button class="btn small ${state.retainerTasksView==='allowance'?'':'ghost'}" data-rtab="allowance">Retainer allowance</button>
+    </div>`;
+}
+function wireClientRetainerHeader(){
+  if($('[data-bc="clients"]')) $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
+  main.querySelectorAll('[data-rtab]').forEach(el=>el.addEventListener('click', ()=>{ state.retainerTasksView = el.dataset.rtab; render(); }));
+}
+
+function renderClientTasksView(c){
+  const tasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id).sort((a,b)=>(a.position||0)-(b.position||0));
+  const todo = tasks.filter(t=>t.status!=='Complete');
+  const done = tasks.filter(t=>t.status==='Complete');
+  const legacyProjects = state.projects.filter(p=>p.client_id===c.id);
+  const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
+
+  let html = clientRetainerHeaderHtml(c);
+  html += `${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
+    <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>
+    <div class="stage-section">
+      <div class="stage-head"><h4>To do</h4></div>
+      <div class="card" style="padding:8px 12px">${taskTableHtml(todo, visibleCount, 'Nothing to do yet.')}</div>
+      <div style="margin-top:10px"><button class="btn small ghost" data-addclienttask="${c.id}">+ Task</button></div>
+    </div>
+    <div class="stage-section">
+      <div class="stage-head"><h4>Completed</h4></div>
+      <div class="card" style="padding:8px 12px">${taskTableHtml(done, visibleCount, 'Nothing completed yet.')}</div>
+    </div>`;
+
+  main.innerHTML = html;
+  wireClientRetainerHeader();
+  if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
+  $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
+  main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
+  wireTaskRows(main);
+}
+
+async function renderClientAllowanceView(c){
+  main.innerHTML = clientRetainerHeaderHtml(c) + `<div class="empty">Loading…</div>`;
+  wireClientRetainerHeader();
 
   const [{ data: tasks, error: tErr }, { data: hist, error: hErr }] = await Promise.all([
     db.from('rs_tasks').select('*').eq('client_id', c.id).order('task_date',{ascending:false}),
@@ -1160,7 +1202,6 @@ async function renderClient(){
   const history = (hist||[]).length ? hist : [{retainer_hours:c.retainer_hours, renewal_day:c.renewal_day, effective_from:'2000-01-01'}];
   state._clientTaskCache = tasks;
 
-  // group tasks into cycles using whatever settings applied on each task's date
   const groups = {};
   tasks.forEach(t=>{
     const s = settingsAt(history, new Date(t.task_date+'T00:00'));
@@ -1173,8 +1214,7 @@ async function renderClient(){
   const keys = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
 
   let historyHtml = '';
-  if(hErr){ /* table may not exist yet if migration v3 hasn't run */ }
-  else if(history.length>1){
+  if(!hErr && history.length>1){
     const rows = history.slice().reverse().map((h,i,arr)=>{
       const prev = arr[i+1];
       const change = prev ? `— changed from ${fmtH(prev.retainer_hours)} / renews ${ordinal(prev.renewal_day)}` : '— initial setting';
@@ -1183,11 +1223,8 @@ async function renderClient(){
     historyHtml = `<div class="history-list"><b style="display:block;margin-bottom:4px;color:var(--ink)">Retainer history</b>${rows}</div>`;
   }
 
-  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
-    <button class="btn ghost small" id="backBtn">← Back to dashboard</button>
-    <button class="btn small" id="quickLogBtn">+ Log task</button>
-  </div>
-    <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
+  let html = clientRetainerHeaderHtml(c);
+  html += `<div style="margin-bottom:18px"><button class="btn small" id="quickLogBtn">+ Log task</button></div>
     <div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · full history below</div>
     ${historyHtml}`;
 
@@ -1226,7 +1263,7 @@ async function renderClient(){
     });
   }
   main.innerHTML = html;
-  $('#backBtn').onclick = ()=>{ state.view='dashboard'; render(); };
+  wireClientRetainerHeader();
   $('#quickLogBtn').onclick = ()=> openQuickLogModal(c.id);
   main.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click', ()=>openTaskModal(el.dataset.task)));
   main.querySelectorAll('[data-pdf]').forEach(el=>el.addEventListener('click', ()=> generateClientPdf(c, groups[el.dataset.pdf])));
@@ -1360,7 +1397,22 @@ function milestoneItemChip(item, weekStyle){
   return retainerMilestoneChipHtml(item.t, cl, weekStyle);
 }
 
+function milestonesTabsHtml(){
+  return `<div class="view-toggle" style="margin-bottom:16px">
+    <button class="btn small ${state.milestonesTab==='milestones'?'':'ghost'}" data-mtab="milestones">Milestones</button>
+    <button class="btn small ${state.milestonesTab==='calendar'?'':'ghost'}" data-mtab="calendar">Retainer calendar</button>
+  </div>`;
+}
+function wireMilestonesTabs(){
+  main.querySelectorAll('[data-mtab]').forEach(el=>el.addEventListener('click', ()=>{ state.milestonesTab = el.dataset.mtab; renderMilestones(); }));
+}
+
 function renderMilestones(){
+  if(state.milestonesTab==='calendar') renderCalendar();
+  else renderMilestonesBody();
+}
+
+function renderMilestonesBody(){
   if(!state.milestoneAnchor) state.milestoneAnchor = new Date();
   const anchor = state.milestoneAnchor;
   const todayIso = iso(new Date());
@@ -1436,29 +1488,31 @@ function renderMilestones(){
       <div class="cal milestones">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div>`;
   }
 
-  main.innerHTML = `<h2>Milestones</h2><div class="sub">Project stage due dates and retainer delivery dates · drag a card to reschedule, click to open</div>
+  main.innerHTML = `${milestonesTabsHtml()}<h2>Milestones</h2><div class="sub">Project stage due dates and retainer delivery dates · drag a card to reschedule, click to open</div>
     ${viewToggle}${typeToggle}${filters}${body}`;
 
   $('#mPrev').onclick = ()=>{
     if(state.milestoneViewMode==='week'){ const d=new Date(anchor); d.setDate(d.getDate()-7); state.milestoneAnchor=d; }
     else if(state.milestoneViewMode==='year'){ state.milestoneAnchor = new Date(anchor.getFullYear()-1, anchor.getMonth(), 1); }
     else { state.milestoneAnchor = new Date(anchor.getFullYear(), anchor.getMonth()-1, 1); }
-    renderMilestones();
+    renderMilestonesBody();
   };
   $('#mNext').onclick = ()=>{
     if(state.milestoneViewMode==='week'){ const d=new Date(anchor); d.setDate(d.getDate()+7); state.milestoneAnchor=d; }
     else if(state.milestoneViewMode==='year'){ state.milestoneAnchor = new Date(anchor.getFullYear()+1, anchor.getMonth(), 1); }
     else { state.milestoneAnchor = new Date(anchor.getFullYear(), anchor.getMonth()+1, 1); }
-    renderMilestones();
+    renderMilestonesBody();
   };
-  $('#mToday').onclick = ()=>{ state.milestoneAnchor = new Date(); renderMilestones(); };
+  $('#mToday').onclick = ()=>{ state.milestoneAnchor = new Date(); renderMilestonesBody(); };
+  wireMilestonesTabs();
   attachMilestoneInteractions();
 }
 
 function clientCardHtml(c){
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
+  const openTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id && t.status!=='Complete');
   const body = c.is_retainer
-    ? `<div class="cycle">Flat task list · no projects</div>`
+    ? `<div class="cycle">${openTasks.length} open task${openTasks.length===1?'':'s'}</div>`
     : (projects.length
         ? `<div class="proj-pills">${projects.map(p=>`<button type="button" class="proj-pill" data-projectgoto="${p.id}" data-projectclientid="${c.id}">${esc(p.name)}</button>`).join('')}</div>`
         : `<div class="cycle">No projects yet</div>`);
@@ -1743,7 +1797,7 @@ function renderProjDetail(){
           <button class="btn small ghost" id="editProjectBtn">Edit project</button>
         </div>
       </div>
-      <div class="sub" style="margin-bottom:${allTasks.length?'16px':'0'}"><span class="type-badge">${tc?tc.icon+' ':''}${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}${c.is_retainer?'':' · not a retainer client — retainer syncing is off'}</div>
+      <div class="sub" style="margin-bottom:${allTasks.length?'16px':'0'}"><span class="type-badge">${tc?tc.icon+' ':''}${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
       ${allTasks.length? `<div style="max-width:320px"><div class="mini-progress"><div class="fill" style="width:${pctComplete}%"></div></div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">${pctComplete}% complete · ${doneCount}/${allTasks.length} tasks</div></div>`:''}
     </div>
     <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
@@ -1814,38 +1868,8 @@ function renderProjDetail(){
 function renderClientTaskList(){
   const c = state.clients.find(c=>c.id===state.projClientId);
   if(!c){ state.projView='clients'; render(); return; }
-  const tasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id).sort((a,b)=>(a.position||0)-(b.position||0));
-  const todo = tasks.filter(t=>t.status!=='Complete');
-  const done = tasks.filter(t=>t.status==='Complete');
-  const legacyProjects = state.projects.filter(p=>p.client_id===c.id);
-  const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
-
-  let html = `<div class="breadcrumb"><button data-bc="clients">Client Overview</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
-    <div class="card" style="margin-bottom:26px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-        <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
-        ${miroButtonsHtml(c, null)}
-      </div>
-      <div class="sub" style="margin-bottom:0"><span class="retainer-badge" style="margin-left:0">Retainer</span> · flat task list, no project stages</div>
-    </div>
-    ${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
-    <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>
-    <div class="stage-section">
-      <div class="stage-head"><h4>To do</h4></div>
-      <div class="card" style="padding:8px 12px">${taskTableHtml(todo, visibleCount, 'Nothing to do yet.')}</div>
-      <div style="margin-top:10px"><button class="btn small ghost" data-addclienttask="${c.id}">+ Task</button></div>
-    </div>
-    <div class="stage-section">
-      <div class="stage-head"><h4>Completed</h4></div>
-      <div class="card" style="padding:8px 12px">${taskTableHtml(done, visibleCount, 'Nothing completed yet.')}</div>
-    </div>`;
-
-  main.innerHTML = html;
-  $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
-  if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
-  $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
-  main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
-  wireTaskRows(main);
+  if(state.retainerTasksView==='allowance') renderClientAllowanceView(c);
+  else renderClientTasksView(c);
 }
 
 function projExtraFieldHtml(type, details){
@@ -2093,8 +2117,8 @@ function renderCalendar(){
   }
 
   main.innerHTML = `
-    <button class="btn ghost small back-btn" id="backToRetainerBtn">← Retainer</button>
-    <h2>Calendar</h2><div class="sub">Weighted hours per task · renewal dates marked automatically · click a day to log time, or a task to edit it</div>
+    ${milestonesTabsHtml()}
+    <h2>Retainer calendar</h2><div class="sub">Weighted hours per task · renewal dates marked automatically · click a day to log time, or a task to edit it</div>
     <div class="cal-filters" id="calFilters">
       ${activeClients.map(c=>`<button class="filter-pill ${state.calHidden.has(c.id)?'off':''}" data-toggle="${c.id}"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</button>`).join('')}
       ${activeClients.length? `<button class="filter-pill" id="calAll">Show all</button>`:''}
@@ -2111,7 +2135,7 @@ function renderCalendar(){
     </div>`;
 
   $('#calPrev').onclick = ()=>{ state.calMonth = new Date(y, mo-1, 1); renderCalendar(); };
-  $('#backToRetainerBtn').onclick = ()=>{ state.retainerView='dashboard'; render(); };
+  wireMilestonesTabs();
   $('#calNext').onclick = ()=>{ state.calMonth = new Date(y, mo+1, 1); renderCalendar(); };
   $('#calToday').onclick = ()=>{ state.calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1); renderCalendar(); };
   if($('#calAll')) $('#calAll').onclick = ()=>{ state.calHidden.clear(); renderCalendar(); };
@@ -2129,7 +2153,11 @@ function renderCalendar(){
       e.dataTransfer.effectAllowed = 'move';
     });
   });
-  main.querySelectorAll('.renew-chip[data-goto]').forEach(el=>el.addEventListener('click', (e)=>{ e.stopPropagation(); state.clientId=el.dataset.goto; state.view='client'; render(); }));
+  main.querySelectorAll('.renew-chip[data-goto]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    state.projClientId=el.dataset.goto; state.projView='retainerTasks'; state.retainerTasksView='tasks';
+    state.view='projects'; render();
+  }));
   main.querySelectorAll('.day[data-date]').forEach(dayEl=>{
     dayEl.addEventListener('dragover', e=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; dayEl.classList.add('drop-target'); });
     dayEl.addEventListener('dragleave', ()=> dayEl.classList.remove('drop-target'));
@@ -2330,6 +2358,37 @@ function showSetup(){
   };
 }
 
+const APP_VERSION = '0.3.2';
+let _versionClickCount = 0, _versionClickTimer = null;
+function handleVersionClick(){
+  _versionClickCount++;
+  clearTimeout(_versionClickTimer);
+  _versionClickTimer = setTimeout(()=>{ _versionClickCount = 0; }, 2500);
+  if(_versionClickCount >= 8){
+    _versionClickCount = 0;
+    openDevSettingsModal();
+  }
+}
+function openDevSettingsModal(){
+  const url = SUPABASE_URL || store.get('rs_rt_url') || '(not set)';
+  showModal(`
+    <h3>🔧 Developer settings</h3>
+    <div class="sub">Reciprocal Space — version ${APP_VERSION}</div>
+    <div class="weighted-note" style="margin-bottom:14px">Connected Supabase project:<br><b style="word-break:break-all">${esc(url)}</b></div>
+    <div class="modal-actions">
+      <button class="btn danger" id="dev_disconnect">Disconnect Supabase</button>
+      <div class="right"><button class="btn ghost" id="dev_close">Close</button></div>
+    </div>
+  `);
+  $('#dev_close').onclick = closeModal;
+  $('#dev_disconnect').onclick = ()=>{
+    if(!confirm('Disconnect from this Supabase project? You will need to re-enter connection details to use the app again.')) return;
+    localStorage.removeItem('rs_rt_url'); localStorage.removeItem('rs_rt_key');
+    location.reload();
+  };
+}
+document.getElementById('versionBadge').addEventListener('click', handleVersionClick);
+
 async function boot(){
   const url = SUPABASE_URL || store.get('rs_rt_url');
   const key = SUPABASE_ANON_KEY || store.get('rs_rt_key');
@@ -2341,7 +2400,7 @@ async function boot(){
   document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{
     state.view = b.dataset.view;
     if(state.view==='projects'){ state.projView='clients'; state.projClientId=null; state.projProjectId=null; }
-    if(state.view==='dashboard'){ state.retainerView='dashboard'; }
+    if(state.view==='milestones'){ state.milestonesTab='milestones'; }
     render();
   }));
   await loadAll();
