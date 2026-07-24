@@ -175,7 +175,7 @@
   .col-toggles{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
 
   .stage-section{margin-bottom:32px}
-  .stage-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+  .stage-head{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
   .stage-head h4{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:18px;font-weight:700}
   .stage-num{font-size:11px;font-weight:700;color:var(--muted);background:var(--track);padding:2px 7px;border-radius:99px}
   .stage-date-btn{display:inline-flex;align-items:center;gap:5px;background:var(--track);border:1px solid var(--line);padding:4px 12px;border-radius:99px;font-size:12.5px;color:var(--navy-soft);cursor:pointer;margin-top:6px;font-weight:500}
@@ -256,6 +256,12 @@
   .color-swatch.sel{border-color:var(--ink)}
   .color-eyedropper-btn{width:100%;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--track);font-size:12.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;font-weight:500}
   .color-eyedropper-btn:hover{background:#e2e4f2}
+
+  .menu-popover{background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px;box-shadow:0 8px 24px rgba(4,14,107,.14);min-width:190px}
+  .menu-popover button{display:block;width:100%;text-align:left;padding:9px 10px;border:none;background:none;font-size:13px;border-radius:8px;cursor:pointer;color:var(--ink)}
+  .menu-popover button:hover{background:var(--track)}
+  .menu-popover button.danger-item{color:var(--red)}
+  .menu-dots{padding:2px 9px !important;font-size:15px !important;line-height:1.4 !important;font-weight:700}
 
   .mini-progress{height:6px;background:var(--track);border-radius:99px;overflow:hidden;margin-top:8px}
   .mini-progress .fill{height:100%;background:var(--green);border-radius:99px}
@@ -545,6 +551,28 @@ function wireColorCircle(id){
       $(`#${id}_btn`).style.background = hex;
     });
   };
+}
+
+let _activeMenuPopover = null, _menuOutsideHandler = null;
+function closeMenuPopover(){
+  if(_activeMenuPopover){ _activeMenuPopover.remove(); _activeMenuPopover=null; }
+  if(_menuOutsideHandler){ document.removeEventListener('mousedown', _menuOutsideHandler); _menuOutsideHandler=null; }
+}
+function openMenuPopover(anchorEl, items){
+  closeMenuPopover();
+  const pop = document.createElement('div');
+  pop.className = 'menu-popover';
+  document.body.appendChild(pop);
+  _activeMenuPopover = pop;
+  pop.innerHTML = items.map((it,i)=>`<button type="button" data-mi="${i}" class="${it.danger?'danger-item':''}">${esc(it.label)}</button>`).join('');
+  pop.querySelectorAll('[data-mi]').forEach(b=>b.onclick=()=>{ closeMenuPopover(); items[+b.dataset.mi].onClick(); });
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.position = 'fixed';
+  pop.style.top = Math.min(rect.bottom+6, window.innerHeight-220)+'px';
+  pop.style.left = Math.max(8, Math.min(rect.right-190, window.innerWidth-200))+'px';
+  pop.style.zIndex = 300;
+  _menuOutsideHandler = e=>{ if(_activeMenuPopover && !_activeMenuPopover.contains(e.target) && e.target!==anchorEl) closeMenuPopover(); };
+  setTimeout(()=> document.addEventListener('mousedown', _menuOutsideHandler), 0);
 }
 
 function openTaskModal(taskId){
@@ -1300,7 +1328,9 @@ function renderProjClients(){
     html += `<div class="grid">` + clients.map(c=>{
       const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
       return `<div class="card client-card" data-projgoto="${c.id}">
-        <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}</h3>
+        <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}
+          <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options">⋮</button></span>
+        </h3>
         <div class="cycle">${projects.length} active project${projects.length===1?'':'s'}</div>
       </div>`;
     }).join('') + `</div>`;
@@ -1309,6 +1339,19 @@ function renderProjClients(){
   $('#newClientBtn').onclick = openNewClientModal;
   main.querySelectorAll('[data-projgoto]').forEach(el=>el.addEventListener('click', ()=>{
     state.projClientId = el.dataset.projgoto; state.projView='clientProjects'; render();
+  }));
+  main.querySelectorAll('[data-clientmenu]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const cl = state.clients.find(c=>c.id===el.dataset.clientmenu);
+    const items = [{ label:'Edit client', onClick:()=> openClientEditModal(cl.id) }];
+    if(cl.miro_link) items.push({ label:'Open Miro board ↗', onClick:()=> window.open(cl.miro_link,'_blank') });
+    items.push({ label:'Archive client', danger:true, onClick: async ()=>{
+      if(!confirm(`Archive ${cl.name}? Their projects and history stay intact — you can restore them from Settings.`)) return;
+      const { error } = await db.from('rs_clients').update({active:false}).eq('id', cl.id);
+      if(error){ toast('Could not archive'); return; }
+      toast('Client archived'); await refreshProjectView();
+    }});
+    openMenuPopover(e.currentTarget, items);
   }));
 }
 
@@ -1397,12 +1440,12 @@ function openProjTaskModal(taskId, ctx){
       <div class="full"><label>Designers</label><div id="pt_designers">${pillSelectorHtml(designerPool, t.assigned_designer_ids||[])}</div></div>
       <div class="full"><label>Reviewers</label><div id="pt_reviewers">${pillSelectorHtml(reviewerPool, t.assigned_reviewer_ids||[])}</div></div>
       <div><label>Due date</label><input type="date" id="pt_due" value="${t.due_date||''}"></div>
+      ${client.is_retainer? `
       <div><label>Work date <span style="color:var(--muted);font-weight:400">(for retainer sync)</span></label><input type="date" id="pt_work" value="${t.work_date||iso(new Date())}"></div>
       <div class="full weighted-note" style="display:flex;align-items:center;gap:8px">
         <input type="checkbox" id="pt_retainer" ${t.counts_toward_retainer?'checked':''} style="width:auto">
         <label style="margin:0" for="pt_retainer">Counts toward ${esc(client.name)}'s retainer dashboard</label>
-      </div>
-      ${!client.is_retainer? `<div class="full sub" style="color:var(--red);margin:0">This client isn't marked as a retainer client — enable it in Settings first.</div>`:''}
+      </div>` : ''}
     </form>
     <div class="modal-actions">
       ${!isNew? `<button class="btn danger" id="pt_delete">Delete task</button>`:'<span></span>'}
@@ -1434,8 +1477,8 @@ function openProjTaskModal(taskId, ctx){
       assigned_reviewer_ids: Array.from(document.querySelectorAll('#pt_reviewers .member-pill.selected')).map(b=>b.dataset.pillmember),
       recorded_hours: $('#pt_hours').value ? +$('#pt_hours').value : null,
       due_date: $('#pt_due').value || null,
-      work_date: $('#pt_work').value || null,
-      counts_toward_retainer: $('#pt_retainer').checked
+      work_date: document.getElementById('pt_work') ? ($('#pt_work').value || null) : (t.work_date||null),
+      counts_toward_retainer: document.getElementById('pt_retainer') ? $('#pt_retainer').checked : false
     };
     let saved;
     if(isNew){
@@ -1473,17 +1516,19 @@ function renderProjDetail(){
       <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
       <span class="current">${esc(p.name)}</span>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-      <h2>${esc(p.name)}</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${(p.miro_link||c.miro_link)? `<a class="btn small ghost" href="${esc(p.miro_link||c.miro_link)}" target="_blank" rel="noopener">Miro board ↗</a>`:''}
-        <button class="btn small ghost" id="discordBtn">Share to Discord</button>
-        <button class="btn small ghost" id="editProjectBtn">Edit project</button>
-        <button class="btn small" id="addStageBtn">+ Add stage</button>
+    <div class="card" style="margin-bottom:26px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+        <h2>${esc(p.name)}</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${(p.miro_link||c.miro_link)? `<a class="btn small ghost" href="${esc(p.miro_link||c.miro_link)}" target="_blank" rel="noopener">Miro board ↗</a>`:''}
+          <button class="btn small ghost" id="discordBtn">Share to Discord</button>
+          <button class="btn small ghost" id="editProjectBtn">Edit project</button>
+          <button class="btn small" id="addStageBtn">+ Add stage</button>
+        </div>
       </div>
+      <div class="sub" style="margin-bottom:${allTasks.length?'16px':'0'}"><span class="type-badge">${tc?tc.icon+' ':''}${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}${c.is_retainer?'':' · not a retainer client — retainer syncing is off'}</div>
+      ${allTasks.length? `<div style="max-width:320px"><div class="mini-progress"><div class="fill" style="width:${pctComplete}%"></div></div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">${pctComplete}% complete · ${doneCount}/${allTasks.length} tasks</div></div>`:''}
     </div>
-    <div class="sub"><span class="type-badge">${tc?tc.icon+' ':''}${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}${c.is_retainer?'':' · not a retainer client — retainer syncing is off'}</div>
-    ${allTasks.length? `<div style="max-width:320px;margin-bottom:20px"><div class="mini-progress"><div class="fill" style="width:${pctComplete}%"></div></div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">${pctComplete}% complete · ${doneCount}/${allTasks.length} tasks</div></div>`:''}
     <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
 
   if(!stages.length){
@@ -1498,13 +1543,8 @@ function renderProjDetail(){
         : 'Set due date';
       html += `<div class="stage-section" data-stagesection="${s.id}">
         <div class="stage-head">
-          <div>
-            <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">Complete</span>':''}</h4>
-            <button type="button" class="stage-date-btn" data-stagedate="${s.id}">${dateLabel}</button>
-          </div>
-          <span class="stage-actions">
-            <button class="btn small" data-addtask="${s.id}">+ Task</button>
-          </span>
+          <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">Complete</span>':''}</h4>
+          <button type="button" class="stage-date-btn" data-stagedate="${s.id}" style="margin-left:auto;margin-top:0">${dateLabel}</button>
         </div>
         <div class="card" style="padding:8px 12px">
           <table><thead><tr>
@@ -1537,6 +1577,7 @@ function renderProjDetail(){
           }).join('') || `<tr><td colspan="${visibleCount}" class="empty">No tasks in this stage yet.</td></tr>`}
           </tbody></table>
         </div>
+        <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
       </div>`;
     });
   }
