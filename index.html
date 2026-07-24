@@ -171,6 +171,13 @@
   .type-badge{display:inline-block;background:var(--track);color:var(--navy-soft);font-size:12px;font-weight:500;padding:3px 10px;border-radius:99px}
   .label-chip{display:inline-block;background:var(--amber-bg);color:var(--amber);font-size:12px;font-weight:500;padding:3px 10px;border-radius:99px;margin-left:7px}
   .retainer-badge{display:inline-block;background:#e8f2ec;color:var(--green);font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:99px;margin-left:7px}
+  .proj-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .home-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  @media(max-width:800px){.home-cols{grid-template-columns:1fr}}
+  .home-col h3{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .home-count{font-size:12px;font-weight:500;color:var(--muted);background:var(--track);padding:2px 9px;border-radius:99px}
+  .proj-pill{background:var(--track);border:1px solid var(--line);color:var(--navy-soft);font-size:12px;font-weight:500;padding:4px 12px;border-radius:99px;cursor:pointer}
+  .proj-pill:hover{background:#e2e4f2;border-color:var(--navy-soft)}
 
   .col-toggles{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
 
@@ -289,7 +296,8 @@
   <div class="head-inner">
     <button class="brand" id="brandBtn">Reciprocal Space</button>
     <nav id="nav" style="display:none">
-      <button data-view="projects" class="active">Client Overview</button>
+      <button data-view="home" class="active">Home</button>
+      <button data-view="projects">Client Overview</button>
       <button data-view="milestones">Milestones</button>
       <button data-view="dashboard">Retainers</button>
       <button data-view="settings">Settings</button>
@@ -309,7 +317,7 @@ const SUPABASE_ANON_KEY = "";
 /* ================================ */
 
 let db = null;
-let state = { view:'projects', clients:[], members:[], tasks:[], calMonth:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name',
+let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name',
   projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null,
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
@@ -343,6 +351,18 @@ const PALETTE = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4
 const COLOR_PRESETS = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200','#c9372c','#0369a1'];
 function clientColor(id){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return PALETTE[h%PALETTE.length]; }
 function colorFor(client){ return (client && client.color) ? client.color : clientColor(client.id); }
+
+/* Prefer a project's own Miro links, fall back to the client's */
+function miroExternal(client, project){ return (project && project.miro_link_external) || (client && client.miro_link_external) || null; }
+function miroInternal(client, project){ return (project && project.miro_link_internal) || (client && client.miro_link_internal) || null; }
+function miroButtonsHtml(client, project){
+  const ext = miroExternal(client, project), intl = miroInternal(client, project);
+  return `${ext? `<a class="btn small ghost" href="${esc(ext)}" target="_blank" rel="noopener">Miro (external) ↗</a>`:''}${intl? `<a class="btn small ghost" href="${esc(intl)}" target="_blank" rel="noopener">Miro (internal) ↗</a>`:''}`;
+}
+function miroFieldsHtml(prefix, extVal, intVal){
+  return `<div><label>Miro (external) <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="${prefix}_miro_ext" value="${esc(extVal||'')}" placeholder="https://miro.com/..."></div>
+    <div><label>Miro (internal) <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="${prefix}_miro_int" value="${esc(intVal||'')}" placeholder="https://miro.com/..."></div>`;
+}
 
 const PROJECT_TYPES = ['Website','Branding','Animations','Deck projects'];
 const BRANDING_SCOPES = ['Micro','Full','Refresh'];
@@ -640,7 +660,7 @@ function openNewClientModal(){
       <div><label>Dot colour</label>${colorCircleHtml('nc_color', PALETTE[state.clients.length%PALETTE.length])}</div>
       <div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="nc_isretainer" style="width:auto"> On retainer</label></div>
       <div class="full"><label>Client name</label><input type="text" id="nc_name" placeholder="Client name"></div>
-      <div class="full"><label>Miro link <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="nc_miro" placeholder="https://miro.com/..."></div>
+      ${miroFieldsHtml('nc', null, null)}
       <div id="nc_retainer_fields" style="display:none">
         <div><label>Retainer</label><select id="nc_days">
           <optgroup label="Per month">
@@ -675,8 +695,9 @@ function openNewClientModal(){
     const retainer_hours = is_retainer ? +$('#nc_days').value : null;
     const renewal_day = is_retainer ? +$('#nc_renew').value : null;
     const color = $('#nc_color').value;
-    const miro_link = $('#nc_miro').value.trim() || null;
-    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link }).select().single();
+    const miro_link_external = $('#nc_miro_ext').value.trim() || null;
+    const miro_link_internal = $('#nc_miro_int').value.trim() || null;
+    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link_external, miro_link_internal }).select().single();
     if(error){ toast('Could not create client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     closeModal(); toast('Client created');
@@ -713,7 +734,7 @@ function openClientEditModal(clientId){
         <div><label>Renews on</label><select id="ec_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===c.renewal_day?'selected':''}>${i+1}</option>`).join('')}</select></div>
         <div><label>Effective from</label><input type="date" id="ec_effective" value="${today}"></div>
       </div>
-      <div class="full"><label>Miro link <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_miro" value="${esc(c.miro_link||'')}" placeholder="https://miro.com/..."></div>
+      ${miroFieldsHtml('ec', c.miro_link_external, c.miro_link_internal)}
       <div class="full weighted-note">The retainer fields only matter if you tick "On retainer" — the colour updates immediately either way.</div>
     </form>
     <div class="modal-actions">
@@ -728,7 +749,8 @@ function openClientEditModal(clientId){
   $('#ec_cancel').onclick = closeModal;
   $('#ec_save').onclick = async ()=>{
     const color = $('#ec_color').value;
-    const miro_link = $('#ec_miro').value.trim() || null;
+    const miro_link_external = $('#ec_miro_ext').value.trim() || null;
+    const miro_link_internal = $('#ec_miro_int').value.trim() || null;
     const is_retainer = $('#ec_isretainer').checked;
     const retainer_hours = is_retainer ? +$('#ec_days').value : null;
     const renewal_day = is_retainer ? +$('#ec_renew').value : null;
@@ -736,7 +758,7 @@ function openClientEditModal(clientId){
     const turningOn = is_retainer && !c.is_retainer;
     const changed = is_retainer && !turningOn && (retainer_hours !== c.retainer_hours || renewal_day !== c.renewal_day);
 
-    const { error: updErr } = await db.from('rs_clients').update({ color, is_retainer, retainer_hours, renewal_day, miro_link }).eq('id', c.id);
+    const { error: updErr } = await db.from('rs_clients').update({ color, is_retainer, retainer_hours, renewal_day, miro_link_external, miro_link_internal }).eq('id', c.id);
     if(updErr){ toast('Save failed'); console.error(updErr); return; }
     if(turningOn){
       await db.from('rs_client_settings_history').insert({ client_id:c.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
@@ -919,7 +941,7 @@ function render(){
     if(b.dataset.view==='dashboard') b.innerHTML = 'Retainers' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
   });
   $('#fabLogTime').style.display = (state.view==='dashboard') ? 'flex' : 'none';
-  ({dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, client:renderClient}[state.view])();
+  ({home:renderHome, dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, client:renderClient}[state.view])();
 }
 
 function renderRetainer(){
@@ -927,6 +949,56 @@ function renderRetainer(){
   else renderDashboard();
 }
 function typeConfig(name){ return state.projectTypes.find(t=>t.name===name); }
+
+const CURRENT_USER_NAME = 'Ross'; // no login system yet — hardcoded to one team member
+function currentUser(){ return state.members.find(m=>(m.name||'').trim().toLowerCase()===CURRENT_USER_NAME.toLowerCase()); }
+
+function homeTaskContextHtml(t){
+  if(t.project_id){
+    const proj = state.projects.find(p=>p.id===t.project_id);
+    const cl = proj && state.clients.find(c=>c.id===proj.client_id);
+    return (cl && proj) ? `${esc(cl.name)} · ${esc(proj.name)}` : '—';
+  }
+  const cl = t.client_id ? state.clients.find(c=>c.id===t.client_id) : null;
+  return cl ? esc(cl.name) : '—';
+}
+
+function homeTaskTableHtml(tasks){
+  if(!tasks.length) return `<div class="empty">Nothing here — you're all caught up.</div>`;
+  return `<table><thead><tr><th>Client / Project</th><th>Task</th><th>Priority</th><th>Due</th></tr></thead><tbody>
+    ${tasks.map(t=>`<tr class="task-row" data-hometask="${t.id}">
+      <td style="color:var(--muted);font-size:12.5px;white-space:nowrap">${homeTaskContextHtml(t)}</td>
+      <td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td>
+      <td><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></td>
+      <td style="white-space:nowrap">${t.due_date? fmtDate(new Date(t.due_date+'T00:00')) : '—'}</td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+function renderHome(){
+  const me = currentUser();
+  let html = `<h2>Home</h2><div class="sub">${me? 'Welcome back, '+esc(me.name)+'.' : `Add a team member named "${CURRENT_USER_NAME}" in Settings to personalize this page.`}</div>`;
+  if(!me){ main.innerHTML = html; return; }
+
+  const toReview = state.projTasks.filter(t=> (t.assigned_reviewer_ids||[]).includes(me.id) && t.status!=='Complete')
+    .sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
+  const toDo = state.projTasks.filter(t=> (t.assigned_designer_ids||[]).includes(me.id) && t.status!=='Complete')
+    .sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
+
+  html += `<div class="home-cols">
+    <div class="home-col">
+      <h3>To review <span class="home-count">${toReview.length}</span></h3>
+      <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toReview)}</div>
+    </div>
+    <div class="home-col">
+      <h3>To do <span class="home-count">${toDo.length}</span></h3>
+      <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toDo)}</div>
+    </div>
+  </div>`;
+  main.innerHTML = html;
+  main.querySelectorAll('[data-hometask]').forEach(el=>el.addEventListener('click', ()=> jumpToProjTask(el.dataset.hometask)));
+}
+
 
 function meterHtml(u, retainerHours){
   const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
@@ -1328,8 +1400,25 @@ function renderMilestones(){
   attachMilestoneInteractions();
 }
 
+function clientCardHtml(c){
+  const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
+  const body = c.is_retainer
+    ? `<div class="cycle">Flat task list · no projects</div>`
+    : (projects.length
+        ? `<div class="proj-pills">${projects.map(p=>`<button type="button" class="proj-pill" data-projectgoto="${p.id}" data-projectclientid="${c.id}">${esc(p.name)}</button>`).join('')}</div>`
+        : `<div class="cycle">No projects yet</div>`);
+  return `<div class="card client-card" data-projgoto="${c.id}">
+    <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}
+      <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options">⋮</button></span>
+    </h3>
+    ${body}
+  </div>`;
+}
+
 function renderProjClients(){
   const clients = state.clients.filter(c=>c.active);
+  const retainerClients = clients.filter(c=>c.is_retainer);
+  const projectClients = clients.filter(c=>!c.is_retainer);
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div><h2>Client Overview</h2><div class="sub" style="margin-bottom:0">All client work — branding, animation, decks and retainer projects in one place</div></div>
       <button class="btn small" id="newClientBtn">+ New client</button>
@@ -1337,15 +1426,14 @@ function renderProjClients(){
   if(!clients.length){
     html += `<div class="empty">No clients yet — click "+ New client" to add one.</div>`;
   } else {
-    html += `<div class="grid">` + clients.map(c=>{
-      const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
-      return `<div class="card client-card" data-projgoto="${c.id}">
-        <h3><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}
-          <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options">⋮</button></span>
-        </h3>
-        <div class="cycle">${projects.length} active project${projects.length===1?'':'s'}</div>
-      </div>`;
-    }).join('') + `</div>`;
+    html += `<h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Retainer clients</h3>`;
+    html += retainerClients.length
+      ? `<div class="grid" style="margin-bottom:34px">${retainerClients.map(clientCardHtml).join('')}</div>`
+      : `<div class="empty" style="margin-bottom:34px">No retainer clients yet.</div>`;
+    html += `<h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Project clients</h3>`;
+    html += projectClients.length
+      ? `<div class="grid">${projectClients.map(clientCardHtml).join('')}</div>`
+      : `<div class="empty">No project clients yet.</div>`;
   }
   main.innerHTML = html;
   $('#newClientBtn').onclick = openNewClientModal;
@@ -1355,11 +1443,19 @@ function renderProjClients(){
     state.projView = (cl && cl.is_retainer) ? 'retainerTasks' : 'clientProjects';
     render();
   }));
+  main.querySelectorAll('[data-projectgoto]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    state.projClientId = el.dataset.projectclientid;
+    state.projProjectId = el.dataset.projectgoto;
+    state.projView = 'project';
+    render();
+  }));
   main.querySelectorAll('[data-clientmenu]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     const cl = state.clients.find(c=>c.id===el.dataset.clientmenu);
     const items = [{ label:'Edit client', onClick:()=> openClientEditModal(cl.id) }];
-    if(cl.miro_link) items.push({ label:'Open Miro board ↗', onClick:()=> window.open(cl.miro_link,'_blank') });
+    if(cl.miro_link_external) items.push({ label:'Open Miro (external) ↗', onClick:()=> window.open(cl.miro_link_external,'_blank') });
+    if(cl.miro_link_internal) items.push({ label:'Open Miro (internal) ↗', onClick:()=> window.open(cl.miro_link_internal,'_blank') });
     items.push({ label:'Archive client', danger:true, onClick: async ()=>{
       if(!confirm(`Archive ${cl.name}? Their projects and history stay intact — you can restore them from Settings.`)) return;
       const { error } = await db.from('rs_clients').update({active:false}).eq('id', cl.id);
@@ -1378,9 +1474,10 @@ function renderProjClientProjects(){
   let html = `<div class="breadcrumb"><button data-bc="clients">Client Overview</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
     <div class="sub">${c.is_retainer?'Retainer client':'Project client'} · click a project to open it</div>
-    <div style="margin-bottom:18px;display:flex;gap:8px">
+    <div style="margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" id="newProjectBtn">+ New project</button>
-      ${c.miro_link? `<a class="btn small ghost" href="${esc(c.miro_link)}" target="_blank" rel="noopener">Miro board ↗</a>` : `<button class="btn small ghost" id="addMiroBtn">+ Add Miro link</button>`}
+      ${miroButtonsHtml(c, null)}
+      <button class="btn small ghost" id="editClientBtn2">Edit client</button>
     </div>`;
 
   if(!projects.length){
@@ -1406,13 +1503,7 @@ function renderProjClientProjects(){
   main.innerHTML = html;
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
   $('#newProjectBtn').onclick = ()=> openProjectModal(null, c.id);
-  if($('#addMiroBtn')) $('#addMiroBtn').onclick = async ()=>{
-    const link = prompt(`Miro board link for ${c.name}`);
-    if(!link || !link.trim()) return;
-    const { error } = await db.from('rs_clients').update({ miro_link: link.trim() }).eq('id', c.id);
-    if(error){ toast('Could not save link'); return; }
-    await refreshProjectView();
-  };
+  $('#editClientBtn2').onclick = ()=> openClientEditModal(c.id);
   main.querySelectorAll('[data-projdetail]').forEach(el=>el.addEventListener('click', ()=>{
     state.projProjectId = el.dataset.projdetail; state.projView='project'; render();
   }));
@@ -1592,7 +1683,7 @@ function renderProjDetail(){
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
         <h2>${esc(p.name)}</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${(p.miro_link||c.miro_link)? `<a class="btn small ghost" href="${esc(p.miro_link||c.miro_link)}" target="_blank" rel="noopener">Miro board ↗</a>`:''}
+          ${miroButtonsHtml(c, p)}
           <button class="btn small ghost" id="discordBtn">Share to Discord</button>
           <button class="btn small ghost" id="editProjectBtn">Edit project</button>
           <button class="btn small" id="addStageBtn">+ Add stage</button>
@@ -1680,7 +1771,7 @@ function renderClientTaskList(){
     <div class="card" style="margin-bottom:26px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
-        ${c.miro_link? `<a class="btn small ghost" href="${esc(c.miro_link)}" target="_blank" rel="noopener">Miro board ↗</a>`:''}
+        ${miroButtonsHtml(c, null)}
       </div>
       <div class="sub" style="margin-bottom:0"><span class="retainer-badge" style="margin-left:0">Retainer</span> · flat task list, no project stages</div>
     </div>
@@ -1739,7 +1830,7 @@ function openProjectModal(projectId, clientId){
       <div><label>Type</label><select id="pj_type">${activeTypes.map(t=>`<option value="${t.name}" ${p&&p.project_type===t.name?'selected':''}>${t.icon} ${t.name}</option>`).join('')}<option value="Other" ${p && !activeTypes.some(t=>t.name===p.project_type)?'selected':''}>Other</option></select></div>
       <div id="pj_extra_wrap" style="display:contents">${projExtraFieldHtml(initialType, p&&p.details)}</div>
       <div><label>Label <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="pj_label" value="${esc(p&&p.label?p.label:'')}" placeholder="e.g. Rush, Q3"></div>
-      <div class="full"><label>Miro link <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="pj_miro" value="${esc(p&&p.miro_link?p.miro_link:'')}" placeholder="https://miro.com/..."></div>
+      ${miroFieldsHtml('pj', p&&p.miro_link_external, p&&p.miro_link_internal)}
     </form>
     <div class="modal-actions">
       ${!isNew? `<button class="btn ghost" id="pj_archive">${p.active?'Archive':'Restore'}</button>`:'<span></span>'}
@@ -1760,10 +1851,11 @@ function openProjectModal(projectId, clientId){
     if(!name){ toast('Give the project a name'); return; }
     const project_type = $('#pj_type').value;
     const label = $('#pj_label').value.trim() || null;
-    const miro_link = $('#pj_miro').value.trim() || null;
+    const miro_link_external = $('#pj_miro_ext').value.trim() || null;
+    const miro_link_internal = $('#pj_miro_int').value.trim() || null;
     const details = projExtraFieldValue(project_type);
     if(isNew){
-      const { data, error } = await db.from('rs_projects').insert({ client_id:client.id, name, project_type, label, miro_link, details }).select().single();
+      const { data, error } = await db.from('rs_projects').insert({ client_id:client.id, name, project_type, label, miro_link_external, miro_link_internal, details }).select().single();
       if(error){ toast('Could not create project'); console.error(error); return; }
       const cfg = typeConfig(project_type);
       const template = (cfg && cfg.stage_template && cfg.stage_template.length) ? cfg.stage_template : STAGE_TEMPLATES.default;
@@ -1772,7 +1864,7 @@ function openProjectModal(projectId, clientId){
       state.projProjectId = data.id; state.projView = 'project';
       await refreshProjectView();
     } else {
-      const { error } = await db.from('rs_projects').update({ name, project_type, label, miro_link, details }).eq('id', p.id);
+      const { error } = await db.from('rs_projects').update({ name, project_type, label, miro_link_external, miro_link_internal, details }).eq('id', p.id);
       if(error){ toast('Could not save'); console.error(error); return; }
       closeModal(); toast('Project updated'); await refreshProjectView();
     }
@@ -1927,8 +2019,9 @@ function buildDiscordCard(project){
   lines.push(`📋 ${tasks.length} task${tasks.length===1?'':'s'} across ${stages.length} stage${stages.length===1?'':'s'}`);
   const nextDue = stages.filter(s=>s.due_date && s.due_date>=today).sort((a,b)=>a.due_date.localeCompare(b.due_date))[0];
   if(nextDue) lines.push(`📅 Next due: **${nextDue.name}** — ${fmtDateY(new Date(nextDue.due_date+'T00:00'))}`);
-  const miro = project.miro_link || c.miro_link;
-  if(miro) lines.push(`🔗 Miro: ${miro}`);
+  const miroExt = miroExternal(c, project), miroInt = miroInternal(c, project);
+  if(miroExt) lines.push(`🔗 Miro (external): ${miroExt}`);
+  if(miroInt) lines.push(`🔗 Miro (internal): ${miroInt}`);
   lines.push('');
   lines.push('**Stages**');
   stages.forEach(s=>{
@@ -2072,7 +2165,8 @@ function renderSettings(){
         <div class="row-form">
           ${colorCircleHtml('c_color', PALETTE[state.clients.length%PALETTE.length])}
           <input id="c_name" placeholder="Client name" style="flex:2">
-          <input type="url" id="c_miro" placeholder="Miro link (optional)" style="flex:1 1 160px">
+          <input type="url" id="c_miro_ext" placeholder="Miro (external)" style="flex:1 1 130px">
+          <input type="url" id="c_miro_int" placeholder="Miro (internal)" style="flex:1 1 130px">
           <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;white-space:nowrap"><input type="checkbox" id="c_isretainer" checked style="width:auto">On retainer</label>
           <span id="c_retainer_fields" style="display:flex;gap:8px;flex:1 1 260px">
           <select id="c_days">
@@ -2151,8 +2245,9 @@ function renderSettings(){
     const retainer_hours = is_retainer ? +$('#c_days').value : null;
     const renewal_day = is_retainer ? +$('#c_renew').value : null;
     const color = $('#c_color').value;
-    const miro_link = $('#c_miro').value.trim() || null;
-    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link }).select().single();
+    const miro_link_external = $('#c_miro_ext').value.trim() || null;
+    const miro_link_internal = $('#c_miro_int').value.trim() || null;
+    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link_external, miro_link_internal }).select().single();
     if(error){ toast('Could not add client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     await loadAll();
@@ -2236,7 +2331,7 @@ async function boot(){
   if(!url || !key){ showSetup(); return; }
   db = supabase.createClient(url, key);
   $('#nav').style.display = 'flex';
-  $('#brandBtn').addEventListener('click', ()=>{ state.view='projects'; state.projView='clients'; render(); });
+  $('#brandBtn').addEventListener('click', ()=>{ state.view='home'; render(); });
   $('#fabLogTime').addEventListener('click', ()=> openQuickLogModal(null));
   document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{ state.view=b.dataset.view; render(); }));
   await loadAll();
