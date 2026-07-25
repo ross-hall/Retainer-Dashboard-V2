@@ -55,7 +55,7 @@
   .client-card:hover{border-color:var(--navy-soft);box-shadow:0 2px 10px rgba(4,14,107,.06)}
   .client-card h3{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
   .card-actions{margin-left:auto;display:flex;gap:6px}
-  .card-actions .btn{padding:1px 10px;font-size:12.5px;line-height:1.8}
+  .card-actions .btn{padding:6px 12px;font-size:12.5px}
   .quick-dates{display:flex;gap:8px}
   .dot{width:10px;height:10px;border-radius:50%;flex:none}
   .cycle{color:var(--muted);font-size:12.5px;margin:3px 0 20px}
@@ -114,14 +114,14 @@
   .filter-pill{border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;opacity:1}
   .filter-pill.off{opacity:.4}
   .filter-pill .dot{width:8px;height:8px}
-  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cal{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
   .cal .dow{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);text-align:center;padding:4px 0}
   .cal .day{background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:96px;padding:6px;font-size:12px;cursor:pointer}
   .cal .day:hover{border-color:var(--navy-soft)}
   .cal .day.blank{background:transparent;border:none;cursor:default}
   .cal .day .num{font-weight:600;color:var(--muted);margin-bottom:4px}
   .cal .day.today .num{color:var(--navy);background:var(--track);border-radius:6px;display:inline-block;padding:0 5px}
-  .task-chip{border-radius:6px;padding:2px 6px;color:#fff;margin-bottom:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+  .task-chip{border-radius:6px;padding:4px 7px;color:#fff;margin-bottom:5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
   .renew-chip{border:1px dashed var(--navy-soft);color:var(--navy-soft);background:#fff;border-radius:6px;padding:2px 6px;font-size:10.5px;margin-bottom:3px;cursor:pointer;font-weight:500}
 
   .settings-cols{display:flex;flex-direction:column;gap:24px;max-width:860px}
@@ -275,7 +275,7 @@
   .menu-popover button{display:block;width:100%;text-align:left;padding:9px 10px;border:none;background:none;font-size:13px;border-radius:8px;cursor:pointer;color:var(--ink)}
   .menu-popover button:hover{background:var(--track)}
   .menu-popover button.danger-item{color:var(--red)}
-  .menu-dots{padding:2px 9px !important;font-size:15px !important;line-height:1.4 !important;font-weight:700}
+  .menu-dots{font-size:15px !important;font-weight:700}
 
   .mini-progress{height:6px;background:var(--track);border-radius:99px;overflow:hidden;margin-top:8px}
   .mini-progress .fill{height:100%;background:var(--green);border-radius:99px}
@@ -283,10 +283,11 @@
   .view-toggle{display:flex;gap:6px;margin-bottom:14px}
   .cal.milestones .day{min-height:170px;padding:10px}
   .cal.milestones{gap:8px}
-  .milestone-chip{border-radius:8px;padding:6px 8px;color:#fff;margin-bottom:5px;font-size:11px;line-height:1.35;cursor:grab}
-  .milestone-chip .mc1{font-weight:700;font-size:12px}
+  .milestone-chip{border-radius:8px;padding:9px 10px;color:#fff;margin-bottom:7px;font-size:11px;line-height:1.55;cursor:grab}
+  .milestone-chip .mc1{font-weight:700;font-size:12px;margin-bottom:2px}
+  .milestone-chip .mc2{margin-bottom:2px}
   .milestone-chip .mc2,.milestone-chip .mc3{opacity:.92}
-  .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:0}
+  .week-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0}
   .week-grid .day{min-height:340px;padding:12px;border:none;border-right:1px solid var(--line);border-radius:0;background:transparent}
   .week-grid .day:last-child{border-right:none}
   .week-grid .day.today{background:var(--track)}
@@ -335,7 +336,7 @@ let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clie
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  retainerTasksView:'tasks', retainerView:'dashboard' };
+  retainerTasksView:'tasks', retainerView:'dashboard', homeCols:new Set(['priority','due']) };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -1016,12 +1017,15 @@ function homeTaskContextHtml(t){
 
 function homeTaskTableHtml(tasks){
   if(!tasks.length) return `<div class="empty">Nothing here — you're all caught up.</div>`;
-  return `<table class="task-table"><colgroup><col style="width:170px"><col style="width:auto"><col style="width:100px"><col style="width:104px"></colgroup><thead><tr><th>Client / Project</th><th>Task</th><th>Priority</th><th>Due</th></tr></thead><tbody>
+  const cols = [`<col style="width:170px">`, `<col style="width:auto">`];
+  if(state.homeCols.has('priority')) cols.push(`<col style="width:100px">`);
+  if(state.homeCols.has('due')) cols.push(`<col style="width:104px">`);
+  return `<table class="task-table"><colgroup>${cols.join('')}</colgroup><thead><tr><th>Client / Project</th><th>Task</th>${state.homeCols.has('priority')?'<th>Priority</th>':''}${state.homeCols.has('due')?'<th>Due</th>':''}</tr></thead><tbody>
     ${tasks.map(t=>`<tr class="task-row" data-hometask="${t.id}">
       <td style="color:var(--muted);font-size:12.5px">${homeTaskContextHtml(t)}</td>
       <td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td>
-      <td><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></td>
-      <td>${t.due_date? fmtDateNatural(t.due_date) : '—'}</td>
+      ${state.homeCols.has('priority')?`<td><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></td>`:''}
+      ${state.homeCols.has('due')?`<td>${t.due_date? fmtDateNatural(t.due_date) : '—'}</td>`:''}
     </tr>`).join('')}
   </tbody></table>`;
 }
@@ -1046,7 +1050,8 @@ function renderHome(){
   const toDo = state.projTasks.filter(t=> (t.assigned_designer_ids||[]).includes(me.id) && t.status!=='Complete')
     .sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
 
-  html += `<div class="home-cols">
+  html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="homeColDropdownBtn">Columns ▾</button></div>
+  <div class="home-cols">
     <div class="home-col">
       <h3>To review <span class="home-count">${toReview.length}</span></h3>
       <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toReview)}</div>
@@ -1058,6 +1063,16 @@ function renderHome(){
   </div>`;
   main.innerHTML = html;
   main.querySelectorAll('[data-hometask]').forEach(el=>el.addEventListener('click', ()=> jumpToProjTask(el.dataset.hometask)));
+  $('#homeColDropdownBtn').onclick = (e)=>{
+    e.stopPropagation();
+    openCheckboxDropdown(e.currentTarget, [
+      {key:'priority', label:'Priority'},
+      {key:'due', label:'Due date'}
+    ], key=>state.homeCols.has(key), (key,checked)=>{
+      checked ? state.homeCols.add(key) : state.homeCols.delete(key);
+      renderHome();
+    });
+  };
 }
 
 
@@ -1343,6 +1358,22 @@ function renderProjects(){
 
 function startOfWeek(d){ const dt=new Date(d); const day=(dt.getDay()+6)%7; dt.setDate(dt.getDate()-day); dt.setHours(0,0,0,0); return dt; }
 
+/* Builds month-grid day cells, weekdays only (Saturday/Sunday hidden) */
+function monthWeekdayCells(y, mo, todayIso, cellHtmlFn){
+  const daysIn = new Date(y, mo+1, 0).getDate();
+  let startCol = 0;
+  for(let d=1; d<=daysIn; d++){ const dow=new Date(y,mo,d).getDay(); if(dow!==0 && dow!==6){ startCol=(dow+6)%7; break; } }
+  let cells = '';
+  for(let i=0;i<startCol;i++) cells += `<div class="day blank"></div>`;
+  for(let d=1; d<=daysIn; d++){
+    const dow = new Date(y,mo,d).getDay();
+    if(dow===0 || dow===6) continue;
+    const dIso = iso(new Date(y,mo,d));
+    cells += cellHtmlFn(d, dIso, dIso===todayIso);
+  }
+  return cells;
+}
+
 function milestoneChipHtml(s, proj, cl, weekStyle){
   const stages = state.stages.filter(x=>x.project_id===proj.id).sort((a,b)=>a.position-b.position);
   const idx = stages.findIndex(x=>x.id===s.id);
@@ -1506,8 +1537,8 @@ function renderMilestones(){
   let body = '';
   if(state.milestoneViewMode==='week'){
     const start = startOfWeek(anchor);
-    const days = Array.from({length:7},(_,i)=>{ const d=new Date(start); d.setDate(d.getDate()+i); return d; });
-    const end = days[6];
+    const days = Array.from({length:5},(_,i)=>{ const d=new Date(start); d.setDate(d.getDate()+i); return d; });
+    const end = days[4];
     let cells = days.map(d=>{
       const dIso = iso(d);
       const list = (byDay[dIso]||[]).slice().sort((a,b)=> a.time.localeCompare(b.time));
@@ -1541,18 +1572,13 @@ function renderMilestones(){
   } else {
     const y = anchor.getFullYear(), mo = anchor.getMonth();
     const first = new Date(y, mo, 1);
-    const startPad = (first.getDay()+6)%7;
-    const daysIn = new Date(y, mo+1, 0).getDate();
-    let cells = '';
-    for(let i=0;i<startPad;i++) cells += `<div class="day blank"></div>`;
-    for(let d=1;d<=daysIn;d++){
-      const dIso = iso(new Date(y,mo,d));
+    const cells = monthWeekdayCells(y, mo, todayIso, (d,dIso,isToday)=>{
       const list = byDay[dIso]||[];
       const chips = list.map(item=>milestoneItemChip(item, false)).join('');
-      cells += `<div class="day ${dIso===todayIso?'today':''}" data-date="${dIso}"><div class="num">${d}</div>${chips}</div>`;
-    }
+      return `<div class="day ${isToday?'today':''}" data-date="${dIso}"><div class="num">${d}</div>${chips}</div>`;
+    });
     body = `<div class="cal-head"><button class="btn ghost small" id="mPrev">←</button><h3>${first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</h3><button class="btn ghost small" id="mNext">→</button><button class="btn ghost small" id="mToday">Today</button></div>
-      <div class="cal milestones">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div>`;
+      <div class="cal milestones">${['Mon','Tue','Wed','Thu','Fri'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div>`;
   }
 
   main.innerHTML = `<h2>Milestones</h2>
@@ -1877,7 +1903,7 @@ function renderProjDetail(){
           <button class="btn small ghost" id="editProjectBtn">Edit project</button>
         </div>
       </div>
-      ${p.label? `<div class="sub" style="margin-bottom:${allTasks.length?'16px':'0'}"><span class="label-chip" style="margin-left:0">${esc(p.label)}</span></div>` : ''}
+      ${(p.label || projectDetailsSummary(p))? `<div class="sub" style="margin-bottom:${allTasks.length?'16px':'0'}">${projectDetailsSummary(p)?`<span class="type-badge">${esc(projectDetailsSummary(p))}</span>`:''}${p.label?`<span class="label-chip"${projectDetailsSummary(p)?'':' style="margin-left:0"'}>${esc(p.label)}</span>`:''}</div>` : ''}
       ${allTasks.length? `<div style="max-width:320px"><div class="mini-progress"><div class="fill" style="width:${pctComplete}%"></div></div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">${pctComplete}% complete · ${doneCount}/${allTasks.length} tasks</div></div>`:''}
     </div>
     <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
@@ -1971,6 +1997,20 @@ function projExtraFieldValue(type){
   if(type==='Animations') return { seconds: el.value?+el.value:null };
   if(type==='Deck projects') return { slides: el.value?+el.value:null };
   return {};
+}
+
+/* Human-readable summary of a project's type-specific details, e.g. "45s"
+   for an animation or "12 slides" for a deck — shown on the project page */
+function projectDetailsSummary(p){
+  const d = p.details || {};
+  if(p.project_type==='Website'){
+    const parts = [d.pages? `${d.pages} page${d.pages===1?'':'s'}`:null, d.sections? `${d.sections} section${d.sections===1?'':'s'}`:null].filter(Boolean);
+    return parts.length? parts.join(' · ') : null;
+  }
+  if(p.project_type==='Branding') return d.scope ? `${d.scope} branding` : null;
+  if(p.project_type==='Animations') return d.seconds ? `${d.seconds}s length` : null;
+  if(p.project_type==='Deck projects') return d.slides ? `${d.slides} slide${d.slides===1?'':'s'}` : null;
+  return null;
 }
 
 function openProjectModal(projectId, clientId){
@@ -2168,7 +2208,6 @@ function renderCalendar(){
   const m0 = state.calMonth;
   const y = m0.getFullYear(), mo = m0.getMonth();
   const first = new Date(y, mo, 1);
-  const startPad = (first.getDay()+6)%7;
   const daysIn = new Date(y, mo+1, 0).getDate();
   const todayIso = iso(new Date());
   const activeClients = state.clients.filter(c=>c.active && c.is_retainer);
@@ -2180,10 +2219,7 @@ function renderCalendar(){
     if(c.renewal_day<=daysIn){ const dIso = iso(new Date(y,mo,c.renewal_day)); (renewByDay[dIso]=renewByDay[dIso]||[]).push(c); }
   });
 
-  let cells = '';
-  for(let i=0;i<startPad;i++) cells += `<div class="day blank"></div>`;
-  for(let d=1;d<=daysIn;d++){
-    const dIso = iso(new Date(y,mo,d));
+  const cells = monthWeekdayCells(y, mo, todayIso, (d,dIso,isToday)=>{
     const list = (byDay[dIso]||[]);
     const renews = (renewByDay[dIso]||[]);
     const chips = renews.map(c=>`<div class="renew-chip" data-goto="${c.id}">↻ ${esc(c.name)} renews</div>`).join('')
@@ -2191,8 +2227,8 @@ function renderCalendar(){
         const c = state.clients.find(c=>c.id===t.client_id);
         return `<div class="task-chip" draggable="true" data-task="${t.id}" style="background:${c?colorFor(c):'#999'}" title="${esc(t.description||'')} — drag to another day to reschedule">${esc(c?c.name:'?')} · ${fmtH(t.hours*t.weight_applied)}</div>`;
       }).join('') + (list.length>3? `<div style="color:var(--muted)">+${list.length-3} more</div>`:'');
-    cells += `<div class="day ${dIso===todayIso?'today':''}" data-date="${dIso}"><div class="num">${d}</div>${chips}</div>`;
-  }
+    return `<div class="day ${isToday?'today':''}" data-date="${dIso}"><div class="num">${d}</div>${chips}</div>`;
+  });
 
   main.innerHTML = `
     <button class="btn ghost small back-btn" id="backToRetainerBtn">← Retainer</button>
@@ -2205,7 +2241,7 @@ function renderCalendar(){
       <button class="btn ghost small" id="calToday">Today</button>
     </div>
     <div class="cal">
-      ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="dow">${d}</div>`).join('')}
+      ${['Mon','Tue','Wed','Thu','Fri'].map(d=>`<div class="dow">${d}</div>`).join('')}
       ${cells}
     </div>`;
 
