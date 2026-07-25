@@ -36,12 +36,13 @@
   .brand span{font-weight:400;opacity:.65;font-size:13px}
   nav{display:flex;gap:4px;margin-left:auto}
   nav button{background:transparent;border:none;color:#fff;opacity:.65;padding:18px 14px;font-size:14px;font-weight:500;border-bottom:3px solid transparent}
+  .nav-icon-btn{display:flex;align-items:center;padding:18px 12px !important}
   nav button.active{opacity:1;border-bottom-color:#fff}
   nav button:hover{opacity:1}
   nav .flag-count{background:var(--amber);color:#fff;border-radius:99px;font-size:11px;padding:1px 7px;margin-left:6px;font-weight:600}
 
   main{max-width:1100px;margin:0 auto;padding:28px 24px 80px}
-  h2{font-size:20px;font-weight:600;margin-bottom:4px}
+  h2{font-size:27px;font-weight:700;margin-bottom:10px;letter-spacing:-.01em}
   .sub{color:var(--muted);font-size:13px;margin-bottom:22px}
 
   .banner{display:flex;gap:10px;align-items:flex-start;background:var(--amber-bg);border:1px solid #f0d9ae;border-radius:var(--radius);padding:14px 16px;margin-bottom:22px;font-size:14px}
@@ -304,9 +305,14 @@
     <nav id="nav" style="display:none">
       <button data-view="home" class="active">Home</button>
       <button data-view="projects">Projects</button>
-      <button data-view="milestones">Milestones</button>
       <button data-view="dashboard">Retainers</button>
-      <button data-view="settings">Settings</button>
+      <button data-view="milestones">Milestones</button>
+      <button data-view="settings" class="nav-icon-btn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
+          <circle cx="12" cy="12" r="7.8" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.1 2.5"/>
+        </svg>
+      </button>
     </nav>
   </div>
 </header>
@@ -1020,9 +1026,19 @@ function homeTaskTableHtml(tasks){
   </tbody></table>`;
 }
 
+function timeOfDayGreeting(){
+  const h = new Date().getHours();
+  if(h<5) return 'Good night';
+  if(h<12) return 'Good morning';
+  if(h<18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 function renderHome(){
   const me = currentUser();
-  let html = `<h2>Home</h2><div class="sub">${me? 'Welcome back, '+esc(me.name)+'.' : `Add a team member named "${CURRENT_USER_NAME}" in Settings to personalize this page.`}</div>`;
+  let html = me
+    ? `<h2 style="font-size:34px;margin-bottom:22px">${timeOfDayGreeting()}, ${esc(me.name)}</h2>`
+    : `<h2>Home</h2><div class="sub">Add a team member named "${CURRENT_USER_NAME}" in Settings to personalize this page.</div>`;
   if(!me){ main.innerHTML = html; return; }
 
   const toReview = state.projTasks.filter(t=> (t.assigned_reviewer_ids||[]).includes(me.id) && t.status!=='Complete')
@@ -1074,7 +1090,7 @@ function renderDashboard(){
   items.sort(sorters[state.dashSort]||sorters.name);
 
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-    <div><h2>Retainers this cycle</h2><div class="sub" style="margin-bottom:0">Weighted hours against each client's own renewal month · click a card for full history</div></div>
+    <div><h2>Retainers this cycle</h2></div>
     <button class="btn small ghost" id="toCalendarBtn">Calendar view</button>
   </div><div style="margin-bottom:22px"></div>`;
 
@@ -1537,7 +1553,7 @@ function renderMilestones(){
       <div class="cal milestones">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div>`;
   }
 
-  main.innerHTML = `<h2>Milestones</h2><div class="sub">Project stage due dates and retainer delivery dates · drag a card to reschedule, click to open</div>
+  main.innerHTML = `<h2>Milestones</h2>
     ${viewToggle}${filters}${body}`;
 
   $('#mPrev').onclick = ()=>{
@@ -1572,7 +1588,7 @@ function clientCardHtml(c){
 function renderProjClients(){
   const clients = state.clients.filter(c=>c.active && !c.is_retainer);
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div><h2>Projects</h2><div class="sub" style="margin-bottom:0">Branding, animation, deck and website work — retainer clients live on the Retainers page</div></div>
+      <div><h2>Projects</h2></div>
       <button class="btn small" id="newClientBtn">+ New client</button>
     </div><div style="margin-bottom:20px"></div>`;
   html += clients.length
@@ -1615,7 +1631,6 @@ function renderProjClientProjects(){
 
   let html = `<div class="breadcrumb"><button data-bc="clients">Projects</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <h2><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px"></span>${esc(c.name)}</h2>
-    <div class="sub">${c.is_retainer?'Retainer client':'Project client'} · click a project to open it</div>
     <div style="margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" id="newProjectBtn">+ New project</button>
       ${miroButtonsHtml(c)}
