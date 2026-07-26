@@ -316,7 +316,7 @@
     <button class="brand" id="brandBtn">Reciprocal Space</button>
     <nav id="nav" style="display:none">
       <button data-view="home" class="active">Home</button>
-      <button data-view="projects">Projects</button>
+      <button data-view="projects">Clients</button>
       <button data-view="dashboard">Retainers</button>
       <button data-view="milestones">Milestones</button>
       <button data-view="settings" class="nav-icon-btn" title="Settings">
@@ -333,7 +333,7 @@
 <div id="modalRoot"></div>
 <button class="fab" id="fabLogTime" style="display:none" title="Log time">+</button>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.3.2</div>
+<div id="versionBadge" class="version-badge">v0.4.0</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -347,7 +347,7 @@ let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clie
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  retainerTasksView:'tasks', retainerView:'dashboard', homeCols:new Set(['priority','due']) };
+  retainerView:'dashboard', homeCols:new Set(['priority','due']) };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -728,7 +728,7 @@ function openTaskModal(taskId){
 }
 async function refreshCurrentView(){
   await loadAll();
-  if(state.view==='projects' && state.projView==='retainerTasks' && state.retainerTasksView==='allowance'){
+  if(state.view==='projects' && state.projView==='retainerAllowance'){
     const c = state.clients.find(c=>c.id===state.projClientId);
     if(c) renderClientAllowanceView(c);
   }
@@ -738,11 +738,27 @@ async function refreshProjectView(){ await refreshCurrentView(); }
 function openNewClientModal(){
   showModal(`
     <h3>New client</h3>
-    <div class="sub">Retainer clients are created from Settings — this adds a project client.</div>
     <form class="log" style="max-width:none">
       <div><label>Dot colour</label>${colorCircleHtml('nc_color', PALETTE[state.clients.length%PALETTE.length])}</div>
+      <div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="nc_isretainer" style="width:auto"> On retainer</label></div>
       <div class="full"><label>Client name</label><input type="text" id="nc_name" placeholder="Client name"></div>
       ${miroFieldsHtml('nc', null, null)}
+      <div id="nc_retainer_fields" style="display:none">
+        <div><label>Retainer</label><select id="nc_days">
+          <optgroup label="Per month">
+            <option value="8">1 day/mo (8h)</option>
+            <option value="16">2 days/mo (16h)</option>
+            <option value="24">3 days/mo (24h)</option>
+            <option value="32">4 days/mo (32h)</option>
+          </optgroup>
+          <optgroup label="Per week">
+            <option value="34.7">1 day/week (~34.7h/mo)</option>
+            <option value="69.3">2 days/week (~69.3h/mo)</option>
+            <option value="104">3 days/week (~104h/mo)</option>
+          </optgroup>
+        </select></div>
+        <div><label>Renews on</label><select id="nc_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('')}</select></div>
+      </div>
     </form>
     <div class="modal-actions">
       <div class="right">
@@ -751,18 +767,23 @@ function openNewClientModal(){
       </div>
     </div>
   `);
+  $('#nc_isretainer').addEventListener('change', e=>{ $('#nc_retainer_fields').style.display = e.target.checked?'contents':'none'; });
   wireColorCircle('nc_color');
   $('#nc_cancel').onclick = closeModal;
   $('#nc_save').onclick = async ()=>{
     const name = $('#nc_name').value.trim();
     if(!name){ toast('Give the client a name'); return; }
+    const is_retainer = $('#nc_isretainer').checked;
+    const retainer_hours = is_retainer ? +$('#nc_days').value : null;
+    const renewal_day = is_retainer ? +$('#nc_renew').value : null;
     const color = $('#nc_color').value;
     const miro_link_external = $('#nc_miro_ext').value.trim() || null;
     const miro_link_internal = $('#nc_miro_int').value.trim() || null;
-    const { data, error } = await db.from('rs_clients').insert({ name, color, is_retainer:false, miro_link_external, miro_link_internal }).select().single();
+    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link_external, miro_link_internal }).select().single();
     if(error){ toast('Could not create client'); console.error(error); return; }
+    if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     closeModal(); toast('Client created');
-    state.projClientId = data.id; state.projView = 'clientProjects';
+    state.projClientId = data.id; state.projView = is_retainer ? 'retainerTasks' : 'clientProjects';
     await refreshProjectView();
   };
 }
@@ -1013,7 +1034,7 @@ function renderRetainer(){
 
 function typeConfig(name){ return state.projectTypes.find(t=>t.name===name); }
 
-const CURRENT_USER_NAME = 'Ross'; // no login system yet — hardcoded to one team member
+const CURRENT_USER_NAME = 'Ross Hall'; // no login system yet — hardcoded to one team member
 function currentUser(){ return state.members.find(m=>(m.name||'').trim().toLowerCase()===CURRENT_USER_NAME.toLowerCase()); }
 
 function homeTaskContextHtml(t){
@@ -1198,7 +1219,7 @@ function renderDashboard(){
   }
   main.innerHTML = html;
   main.querySelectorAll('[data-goto]').forEach(el=>el.addEventListener('click', ()=>{
-    state.projClientId = el.dataset.goto; state.projView='retainerTasks'; state.retainerTasksView='tasks';
+    state.projClientId = el.dataset.goto; state.projView='retainerAllowance';
     state.view='projects'; render();
   }));
   main.querySelectorAll('[data-quicklog]').forEach(el=>el.addEventListener('click', (e)=>{
@@ -1231,23 +1252,21 @@ function jumpToProjTask(taskId){
   openProjTaskModal(taskId, {});
 }
 
-function clientRetainerHeaderHtml(c){
-  return `<div class="breadcrumb"><button data-bc="retainers">Retainers</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+function clientRetainerHeaderHtml(c, mode){
+  const bcLabel = mode==='allowance' ? 'Retainers' : 'Clients';
+  const bcTarget = mode==='allowance' ? 'retainers' : 'clients';
+  return `<div class="breadcrumb"><button data-bc="${bcTarget}">${bcLabel}</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <div class="card" style="margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}</div>
       </div>
       <div class="sub" style="margin-bottom:0"><span class="retainer-badge" style="margin-left:0">Retainer</span></div>
-    </div>
-    <div class="view-toggle" style="margin-bottom:20px">
-      <button class="btn small ${state.retainerTasksView==='tasks'?'':'ghost'}" data-rtab="tasks">Tasks</button>
-      <button class="btn small ${state.retainerTasksView==='allowance'?'':'ghost'}" data-rtab="allowance">Retainer allowance</button>
     </div>`;
 }
 function wireClientRetainerHeader(){
+  if($('[data-bc="clients"]')) $('[data-bc="clients"]').onclick = ()=>{ state.view='projects'; state.projView='clients'; render(); };
   if($('[data-bc="retainers"]')) $('[data-bc="retainers"]').onclick = ()=>{ state.view='dashboard'; render(); };
-  main.querySelectorAll('[data-rtab]').forEach(el=>el.addEventListener('click', ()=>{ state.retainerTasksView = el.dataset.rtab; render(); }));
 }
 
 function renderClientTasksView(c){
@@ -1257,7 +1276,7 @@ function renderClientTasksView(c){
   const legacyProjects = state.projects.filter(p=>p.client_id===c.id);
   const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
 
-  let html = clientRetainerHeaderHtml(c);
+  let html = clientRetainerHeaderHtml(c, 'tasks');
   html += `${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
     <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>
     <div class="todo-complete-group">
@@ -1281,7 +1300,7 @@ function renderClientTasksView(c){
 }
 
 async function renderClientAllowanceView(c){
-  main.innerHTML = clientRetainerHeaderHtml(c) + `<div class="empty">Loading…</div>`;
+  main.innerHTML = clientRetainerHeaderHtml(c, 'allowance') + `<div class="empty">Loading…</div>`;
   wireClientRetainerHeader();
 
   const [{ data: tasks, error: tErr }, { data: hist, error: hErr }] = await Promise.all([
@@ -1313,7 +1332,7 @@ async function renderClientAllowanceView(c){
     historyHtml = `<div class="history-list"><b style="display:block;margin-bottom:4px;color:var(--ink)">Retainer history</b>${rows}</div>`;
   }
 
-  let html = clientRetainerHeaderHtml(c);
+  let html = clientRetainerHeaderHtml(c, 'allowance');
   html += `<div style="margin-bottom:18px"><button class="btn small" id="quickLogBtn">+ Log task</button></div>
     <div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · full history below</div>
     ${historyHtml}`;
@@ -1362,7 +1381,12 @@ async function renderClientAllowanceView(c){
 /* ================= Project Overview ================= */
 function renderProjects(){
   if(state.projView==='project') renderProjDetail();
-  else if(state.projView==='retainerTasks') renderClientTaskList();
+  else if(state.projView==='retainerTasks' || state.projView==='retainerAllowance'){
+    const c = state.clients.find(c=>c.id===state.projClientId);
+    if(!c){ state.projView='clients'; render(); return; }
+    if(state.projView==='retainerTasks') renderClientTasksView(c);
+    else renderClientAllowanceView(c);
+  }
   else if(state.projView==='clientProjects') renderProjClientProjects();
   else renderProjClients();
 }
@@ -1681,6 +1705,15 @@ function renderMilestones(){
 }
 
 function clientCardHtml(c){
+  if(c.is_retainer){
+    const openTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id && t.status!=='Complete');
+    return `<div class="card client-card" data-projgoto="${c.id}">
+      <h3 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span>
+        <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options">⋮</button></span>
+      </h3>
+      <div class="cycle">${openTasks.length} open task${openTasks.length===1?'':'s'}</div>
+    </div>`;
+  }
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
   const body = projects.length
     ? `<div class="proj-pills">${projects.map(p=>{ const tc=typeConfig(p.project_type); return `<button type="button" class="proj-pill" data-projectgoto="${p.id}" data-projectclientid="${c.id}">${tc?tc.icon+' ':''}${esc(p.name)}</button>`; }).join('')}</div>`
@@ -1694,19 +1727,31 @@ function clientCardHtml(c){
 }
 
 function renderProjClients(){
-  const clients = state.clients.filter(c=>c.active && !c.is_retainer);
+  const clients = state.clients.filter(c=>c.active);
+  const retainerClients = clients.filter(c=>c.is_retainer);
+  const projectClients = clients.filter(c=>!c.is_retainer);
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div><h2>Projects</h2></div>
+      <div><h2>Clients</h2></div>
       <button class="btn small" id="newClientBtn">+ New client</button>
     </div><div style="margin-bottom:20px"></div>`;
-  html += clients.length
-    ? `<div class="grid">${clients.map(clientCardHtml).join('')}</div>`
-    : `<div class="empty">No project clients yet — click "+ New client" to add one.</div>`;
+  if(!clients.length){
+    html += `<div class="empty">No clients yet — click "+ New client" to add one.</div>`;
+  } else {
+    html += `<h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Retainer clients</h3>`;
+    html += retainerClients.length
+      ? `<div class="grid" style="margin-bottom:34px">${retainerClients.map(clientCardHtml).join('')}</div>`
+      : `<div class="empty" style="margin-bottom:34px">No retainer clients yet.</div>`;
+    html += `<h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Project clients</h3>`;
+    html += projectClients.length
+      ? `<div class="grid">${projectClients.map(clientCardHtml).join('')}</div>`
+      : `<div class="empty">No project clients yet.</div>`;
+  }
   main.innerHTML = html;
   $('#newClientBtn').onclick = openNewClientModal;
   main.querySelectorAll('[data-projgoto]').forEach(el=>el.addEventListener('click', ()=>{
+    const cl = state.clients.find(c=>c.id===el.dataset.projgoto);
     state.projClientId = el.dataset.projgoto;
-    state.projView = 'clientProjects';
+    state.projView = (cl && cl.is_retainer) ? 'retainerTasks' : 'clientProjects';
     render();
   }));
   main.querySelectorAll('[data-projectgoto]').forEach(el=>el.addEventListener('click', (e)=>{
@@ -1737,7 +1782,7 @@ function renderProjClientProjects(){
   if(!c){ state.projView='clients'; render(); return; }
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active).sort((a,b)=> a.name.localeCompare(b.name));
 
-  let html = `<div class="breadcrumb"><button data-bc="clients">Projects</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+  let html = `<div class="breadcrumb"><button data-bc="clients">Clients</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h2>
     <div style="margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" id="newProjectBtn">+ New project</button>
@@ -1749,11 +1794,15 @@ function renderProjClientProjects(){
     html += `<div class="empty">No projects yet for this client.</div>`;
   } else {
     html += `<div class="grid">` + projects.map(p=>{
-      const stages = state.stages.filter(s=>s.project_id===p.id);
+      const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
       const tasks = state.projTasks.filter(t=>t.project_id===p.id);
       const done = tasks.filter(t=>t.status==='Complete').length;
       const pct = tasks.length ? Math.round(done/tasks.length*100) : 0;
       const tc = typeConfig(p.project_type);
+      const nextStage = stages.find(s=>stageStatus(s.id)!=='Complete');
+      const nextLabel = nextStage
+        ? `${esc(nextStage.name)}${nextStage.due_date? ' · due '+fmtDateNatural(nextStage.due_date) : ''}`
+        : (stages.length? 'All stages complete' : null);
       return `<div class="card client-card" data-projdetail="${p.id}" style="${p.active?'':'opacity:.5'}">
         <h3 style="display:flex;align-items:center;gap:8px">${esc(p.name)}${p.active?'':' (archived)'}
           <span class="card-actions"><button class="btn small ghost menu-dots" data-projmenu="${p.id}" title="More options">⋮</button></span>
@@ -1763,6 +1812,7 @@ function renderProjClientProjects(){
           <div><span>Stages</span><span>${stages.length}</span></div>
           <div><span>Tasks</span><span>${tasks.length}</span></div>
         </div>
+        ${nextLabel? `<div style="margin-top:10px;font-size:12px"><span style="color:var(--muted)">Next:</span> <span style="color:var(--navy-soft);font-weight:500">${nextLabel}</span></div>`:''}
         ${tasks.length? `<div class="mini-progress"><div class="fill" style="width:${pct}%"></div></div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">${pct}% complete</div>`:''}
       </div>`;
     }).join('') + `</div>`;
@@ -1970,7 +2020,7 @@ function renderProjDetail(){
   const pctComplete = allTasks.length ? Math.round(doneCount/allTasks.length*100) : 0;
 
   let html = `<div class="breadcrumb">
-      <button data-bc="clients">Projects</button><span class="sep">/</span>
+      <button data-bc="clients">Clients</button><span class="sep">/</span>
       <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
       <span class="current">${esc(p.name)}</span>
     </div>
@@ -2052,13 +2102,6 @@ function renderProjDetail(){
       });
     });
   });
-}
-
-function renderClientTaskList(){
-  const c = state.clients.find(c=>c.id===state.projClientId);
-  if(!c){ state.projView='clients'; render(); return; }
-  if(state.retainerTasksView==='allowance') renderClientAllowanceView(c);
-  else renderClientTasksView(c);
 }
 
 function projExtraFieldHtml(type, details){
@@ -2371,7 +2414,7 @@ function renderCalendar(){
   });
   main.querySelectorAll('.renew-chip[data-goto]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
-    state.projClientId=el.dataset.goto; state.projView='retainerTasks'; state.retainerTasksView='tasks';
+    state.projClientId=el.dataset.goto; state.projView='retainerAllowance';
     state.view='projects'; render();
   }));
   main.querySelectorAll('.day[data-date]').forEach(dayEl=>{
@@ -2633,7 +2676,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.3.2';
+const APP_VERSION = '0.4.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
