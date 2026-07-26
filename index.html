@@ -102,6 +102,8 @@
   .task-grid-row:last-child{border-bottom:none}
   .task-grid-row > div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
   .task-grid-header{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:500;padding:8px 10px}
+  .col-resize-handle{position:absolute;top:-8px;right:-11px;width:12px;height:calc(100% + 16px);cursor:col-resize;z-index:2}
+  .col-resize-handle:hover, .col-resize-handle.resizing{background:linear-gradient(to right, transparent 5px, var(--navy-soft) 5px, var(--navy-soft) 6px, transparent 6px)}
   .tg-title{display:flex;align-items:center;overflow:hidden}
   .tg-actions{text-align:right}
   th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:500;padding:8px 10px;border-bottom:1px solid var(--line)}
@@ -246,7 +248,7 @@
   .member-pill .avatar{width:auto;height:20px;min-width:20px;font-size:9px;border:none}
   .member-pill.selected{border-color:var(--navy-soft);background:var(--track);font-weight:600}
 
-  .status-pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;display:inline-block;white-space:nowrap;color:#fff;letter-spacing:.2px}
+  .status-pill{font-size:12px;font-weight:700;padding:6px 14px;border-radius:99px;display:inline-block;white-space:nowrap;color:#fff;letter-spacing:.2px}
   .status-todo{background:#E8623D}
   .status-inprogress{background:#4C6EF5}
   .status-implementfeedback{background:#8B5CF6}
@@ -257,7 +259,7 @@
   .status-complete{background:#2FB380}
   .status-pending{background:#94A3B8}
   .status-active{background:#4C6EF5}
-  select.status-select{padding:4px 12px;font-size:12px;font-weight:700;border-radius:99px;border:none;width:auto;color:#fff;letter-spacing:.2px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:26px}
+  select.status-select{padding:6px 14px;font-size:12px;font-weight:700;border-radius:99px;border:none;width:auto;color:#fff;letter-spacing:.2px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
 
   .brand{background:none;border:none;cursor:pointer;color:inherit}
   .brand:hover{opacity:.85}
@@ -338,7 +340,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.5.1</div>
+<div id="versionBadge" class="version-badge">v0.5.2</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -352,7 +354,7 @@ let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clie
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  retainerView:'dashboard', homeCols:new Set(['priority','due']) };
+  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{} };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -1902,15 +1904,19 @@ function stageStatus(stageId){
   return tasks.every(t=>t.status==='Complete') ? 'Complete' : 'Active';
 }
 
+const TASK_COL_DEFAULTS = { status:224, priority:104, designer:112, reviewer:112, hours:80, due:104, retainer:80 };
+const TASKSAHEAD_COL_DEFAULTS = { due:96, project:150, status:224, priority:96, assigned:108 };
+function colWidth(store, key, defaults){ return (store[key] || defaults[key]) + 'px'; }
+
 function taskGridColumns(){
-  const cols = ['minmax(0,1fr)'];
-  if(state.taskCols.has('status')) cols.push('196px');
-  if(state.taskCols.has('priority')) cols.push('104px');
-  if(state.taskCols.has('designer')) cols.push('112px');
-  if(state.taskCols.has('reviewer')) cols.push('112px');
-  if(state.taskCols.has('hours')) cols.push('80px');
-  if(state.taskCols.has('due')) cols.push('104px');
-  if(state.taskCols.has('retainer')) cols.push('80px');
+  const cols = ['minmax(160px,1fr)'];
+  if(state.taskCols.has('status')) cols.push(colWidth(state.taskColWidths,'status',TASK_COL_DEFAULTS));
+  if(state.taskCols.has('priority')) cols.push(colWidth(state.taskColWidths,'priority',TASK_COL_DEFAULTS));
+  if(state.taskCols.has('designer')) cols.push(colWidth(state.taskColWidths,'designer',TASK_COL_DEFAULTS));
+  if(state.taskCols.has('reviewer')) cols.push(colWidth(state.taskColWidths,'reviewer',TASK_COL_DEFAULTS));
+  if(state.taskCols.has('hours')) cols.push(colWidth(state.taskColWidths,'hours',TASK_COL_DEFAULTS));
+  if(state.taskCols.has('due')) cols.push(colWidth(state.taskColWidths,'due',TASK_COL_DEFAULTS));
+  if(state.taskCols.has('retainer')) cols.push(colWidth(state.taskColWidths,'retainer',TASK_COL_DEFAULTS));
   cols.push('34px');
   return cols.join(' ');
 }
@@ -1935,17 +1941,21 @@ function taskRowHtml(t){
   </div>`;
 }
 
+function resizeHandle(key, storeName){
+  return `<span class="col-resize-handle" data-resizecol="${key}" data-widthstore="${storeName}"></span>`;
+}
+
 function taskTableHtml(tasks, visibleCount, emptyText){
   const gridCols = taskGridColumns();
   const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${gridCols}">
-      <div>Task</div>
-      ${state.taskCols.has('status')?'<div>Status</div>':''}
-      ${state.taskCols.has('priority')?'<div>Priority</div>':''}
-      ${state.taskCols.has('designer')?'<div>Designer</div>':''}
-      ${state.taskCols.has('reviewer')?'<div>Reviewer</div>':''}
-      ${state.taskCols.has('hours')?'<div style="text-align:right">Hours</div>':''}
-      ${state.taskCols.has('due')?'<div>Due</div>':''}
-      ${state.taskCols.has('retainer')?'<div style="text-align:center">Retainer</div>':''}
+      <div style="position:relative">Task</div>
+      ${state.taskCols.has('status')?`<div style="position:relative">Status${resizeHandle('status','task')}</div>`:''}
+      ${state.taskCols.has('priority')?`<div style="position:relative">Priority${resizeHandle('priority','task')}</div>`:''}
+      ${state.taskCols.has('designer')?`<div style="position:relative">Designer${resizeHandle('designer','task')}</div>`:''}
+      ${state.taskCols.has('reviewer')?`<div style="position:relative">Reviewer${resizeHandle('reviewer','task')}</div>`:''}
+      ${state.taskCols.has('hours')?`<div style="position:relative;text-align:right">Hours${resizeHandle('hours','task')}</div>`:''}
+      ${state.taskCols.has('due')?`<div style="position:relative">Due${resizeHandle('due','task')}</div>`:''}
+      ${state.taskCols.has('retainer')?`<div style="position:relative;text-align:center">Retainer${resizeHandle('retainer','task')}</div>`:''}
       <div></div>
     </div>`;
   const rows = tasks.map(taskRowHtml).join('') || `<div class="task-grid-row" style="grid-template-columns:${gridCols}"><div class="empty" style="grid-column:1/-1;padding:10px 0">${emptyText||'Nothing here yet.'}</div></div>`;
@@ -2004,7 +2014,17 @@ function wireTaskRows(root){
 }
 
 /* ================= Tasks Ahead (rolling 7-day view) ================= */
-function tasksAheadColumns(){ return ['96px','minmax(0,1fr)','150px','176px','96px','108px','34px'].join(' '); }
+function tasksAheadColumns(){
+  return [
+    colWidth(state.tasksAheadColWidths,'due',TASKSAHEAD_COL_DEFAULTS),
+    'minmax(160px,1fr)',
+    colWidth(state.tasksAheadColWidths,'project',TASKSAHEAD_COL_DEFAULTS),
+    colWidth(state.tasksAheadColWidths,'status',TASKSAHEAD_COL_DEFAULTS),
+    colWidth(state.tasksAheadColWidths,'priority',TASKSAHEAD_COL_DEFAULTS),
+    colWidth(state.tasksAheadColWidths,'assigned',TASKSAHEAD_COL_DEFAULTS),
+    '34px'
+  ].join(' ');
+}
 function tasksAheadRowHtml(t, projectName){
   const cols = tasksAheadColumns();
   return `<div class="task-grid-row task-row" data-projtask="${t.id}" style="grid-template-columns:${cols}">
@@ -2020,7 +2040,13 @@ function tasksAheadRowHtml(t, projectName){
 function tasksAheadTableHtml(items){
   const cols = tasksAheadColumns();
   const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${cols}">
-      <div>Due</div><div>Task</div><div>Project</div><div>Status</div><div>Priority</div><div>Assigned</div><div></div>
+      <div style="position:relative">Due${resizeHandle('due','tasksahead')}</div>
+      <div style="position:relative">Task</div>
+      <div style="position:relative">Project${resizeHandle('project','tasksahead')}</div>
+      <div style="position:relative">Status${resizeHandle('status','tasksahead')}</div>
+      <div style="position:relative">Priority${resizeHandle('priority','tasksahead')}</div>
+      <div style="position:relative">Assigned${resizeHandle('assigned','tasksahead')}</div>
+      <div></div>
     </div>`;
   const rows = items.map(({t,projectName})=>tasksAheadRowHtml(t,projectName)).join('')
     || `<div class="task-grid-row" style="grid-template-columns:${cols}"><div class="empty" style="grid-column:1/-1;padding:10px 0">Nothing due here.</div></div>`;
@@ -2821,7 +2847,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.5.1';
+const APP_VERSION = '0.5.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -2933,6 +2959,38 @@ async function runImport(){
   await loadAll();
 }
 document.getElementById('versionBadge').addEventListener('click', handleVersionClick);
+
+function initColumnResize(){
+  let dragging = null;
+  document.addEventListener('mousedown', e=>{
+    const handle = e.target.closest('[data-resizecol]');
+    if(!handle) return;
+    e.preventDefault();
+    const key = handle.dataset.resizecol;
+    const isTasksAhead = handle.dataset.widthstore === 'tasksahead';
+    const store = isTasksAhead ? state.tasksAheadColWidths : state.taskColWidths;
+    const defaults = isTasksAhead ? TASKSAHEAD_COL_DEFAULTS : TASK_COL_DEFAULTS;
+    dragging = { key, store, isTasksAhead, startX: e.clientX, startWidth: store[key] || defaults[key] };
+    handle.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const newWidth = Math.max(60, dragging.startWidth + (e.clientX - dragging.startX));
+    dragging.store[dragging.key] = newWidth;
+    const colsStr = dragging.isTasksAhead ? tasksAheadColumns() : taskGridColumns();
+    document.querySelectorAll('.task-grid-row').forEach(row=> row.style.gridTemplateColumns = colsStr);
+  });
+  document.addEventListener('mouseup', ()=>{
+    if(!dragging) return;
+    document.querySelectorAll('.col-resize-handle.resizing').forEach(h=>h.classList.remove('resizing'));
+    dragging = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+}
+initColumnResize();
 
 async function boot(){
   const url = SUPABASE_URL || store.get('rs_rt_url');
