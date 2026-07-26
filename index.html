@@ -333,7 +333,7 @@
 <div id="modalRoot"></div>
 <button class="fab" id="fabLogTime" style="display:none" title="Log time">+</button>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.4.0</div>
+<div id="versionBadge" class="version-badge">v0.4.1</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -1278,7 +1278,10 @@ function renderClientTasksView(c){
 
   let html = clientRetainerHeaderHtml(c, 'tasks');
   html += `${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
-    <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>
+    <div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn small" data-addclienttask="${c.id}">+ Task</button>
+      <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
+    </div>
     <div class="todo-complete-group">
       <div class="stage-section" style="margin-bottom:0;padding-bottom:24px;border-bottom:1px solid var(--line)">
         <div class="stage-head"><h4>To do</h4></div>
@@ -1311,6 +1314,7 @@ async function renderClientAllowanceView(c){
   const history = (hist||[]).length ? hist : [{retainer_hours:c.retainer_hours, renewal_day:c.renewal_day, effective_from:'2000-01-01'}];
   state._clientTaskCache = tasks;
 
+  // ledger entries drive the accurate hour totals per cycle
   const groups = {};
   tasks.forEach(t=>{
     const s = settingsAt(history, new Date(t.task_date+'T00:00'));
@@ -1319,6 +1323,21 @@ async function renderClientAllowanceView(c){
     if(!groups[key]) groups[key] = { cyc, retainer_hours:s.retainer_hours, tasks:[] };
     groups[key].tasks.push(t);
   });
+
+  // to-do list tasks (tracked or not) surfaced in the same cycles, by work date / due date
+  const projTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id);
+  const projGroups = {};
+  const undated = [];
+  projTasks.forEach(pt=>{
+    const dateStr = pt.work_date || pt.due_date;
+    if(!dateStr){ undated.push(pt); return; }
+    const s = settingsAt(history, new Date(dateStr+'T00:00'));
+    const cyc = cycleFor(s.renewal_day, new Date(dateStr+'T00:00'));
+    const key = iso(cyc.start);
+    if(!groups[key]) groups[key] = { cyc, retainer_hours:s.retainer_hours, tasks:[] };
+    (projGroups[key] = projGroups[key] || []).push(pt);
+  });
+
   const currentKey = iso(cycleFor(c.renewal_day).start);
   const keys = Object.keys(groups).sort((a,b)=> b.localeCompare(a));
 
@@ -1333,9 +1352,20 @@ async function renderClientAllowanceView(c){
   }
 
   let html = clientRetainerHeaderHtml(c, 'allowance');
-  html += `<div style="margin-bottom:18px"><button class="btn small" id="quickLogBtn">+ Log task</button></div>
-    <div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · full history below</div>
+  html += `<div style="margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn small" data-addclienttask="${c.id}">+ Task</button>
+      <button class="btn small ghost" id="quickLogBtn">+ Log task</button>
+    </div>
+    <div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · tasks below are organised by billing month</div>
     ${historyHtml}`;
+
+  if(undated.length){
+    html += `<div class="banner"><div>🕓</div><div><strong>${undated.length} task${undated.length===1?'':'s'}</strong> ${undated.length===1?'has':'have'} no due date or work date yet, so ${undated.length===1?'it':'they'} can't be placed in a billing month.
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+        ${undated.map(t=>`<button class="btn small ghost" data-projtask="${t.id}">${esc(t.title)}</button>`).join('')}
+      </div>
+    </div></div>`;
+  }
 
   if(!keys.length){
     html += `<div class="empty">No tasks logged for this client yet.</div>`;
@@ -1347,6 +1377,7 @@ async function renderClientAllowanceView(c){
       const isCurrent = key===currentKey;
       const badgeCls = pct>=100?'over':pct>=75?'warn':'ok';
       const badgeText = pct>=100 ? `${Math.round(pct)}% · over` : pct>=75 ? `${Math.round(pct)}% · reaching limit` : `${Math.round(pct)}%`;
+      const items = (projGroups[key]||[]).sort((a,b)=> (a.work_date||a.due_date||'').localeCompare(b.work_date||b.due_date||''));
       html += `<div class="cycle-block">
         <div class="cb-head">
           <h4>${fmtDateY(g.cyc.start)} – ${fmtDateY(g.cyc.end)} ${isCurrent?'<span class="badge">(current cycle)</span>':''}</h4>
@@ -1356,17 +1387,18 @@ async function renderClientAllowanceView(c){
           </span>
         </div>
         <div class="card" style="padding:8px 12px">
-          <table><thead><tr><th>Date</th><th>Member</th><th>Task</th><th style="text-align:right">Hours</th><th style="text-align:right">Weighted</th></tr></thead>
-          <tbody>${g.tasks.map(t=>{
-            const m = state.members.find(m=>m.id===t.member_id);
-            return `<tr class="task-row" data-task="${t.id}">
-              <td>${fmtDate(new Date(t.task_date+'T00:00'))}</td>
-              <td>${avatarWithName(m)}</td>
-              <td>${esc(t.description||'')}${t.notes? '<span class="note-dot">●</span>':''}</td>
-              <td style="text-align:right">${fmtH(t.hours)}</td>
-              <td style="text-align:right"><b>${fmtH(t.hours*t.weight_applied)}</b></td>
+          ${items.length? `<table><thead><tr><th>Date</th><th>Task</th><th>Assigned</th><th style="text-align:right">Hours</th><th style="text-align:center">Tracked</th></tr></thead>
+          <tbody>${items.map(pt=>{
+            const tracked = pt.counts_toward_retainer && pt.retainer_task_ids && pt.retainer_task_ids.length;
+            const dateStr = pt.work_date || pt.due_date;
+            return `<tr class="task-row" data-projtask="${pt.id}">
+              <td>${dateStr? fmtDate(new Date(dateStr+'T00:00')) : '—'}</td>
+              <td><span class="status-dot" style="background:${statusColor(pt.status)}"></span>${esc(pt.title)}</td>
+              <td>${avatarGroupHtml(pt.assigned_designer_ids)}</td>
+              <td style="text-align:right">${tracked? fmtH(pt.recorded_hours) : (pt.recorded_hours!=null? fmtH(pt.recorded_hours):'—')}</td>
+              <td style="text-align:center">${tracked? '<span class="retainer-tick" title="Counted toward this cycle">✓ Tracked</span>' : '<span style="color:var(--amber);font-weight:600" title="Not counting toward retainer hours yet">⚠ Not tracked</span>'}</td>
             </tr>`;
-          }).join('')}</tbody></table>
+          }).join('')}</tbody></table>` : `<div class="empty">No to-do list tasks fall in this period — hours below came from manually logged time.</div>`}
         </div>
       </div>`;
     });
@@ -1374,7 +1406,8 @@ async function renderClientAllowanceView(c){
   main.innerHTML = html;
   wireClientRetainerHeader();
   $('#quickLogBtn').onclick = ()=> openQuickLogModal(c.id);
-  main.querySelectorAll('[data-task]').forEach(el=>el.addEventListener('click', ()=>openTaskModal(el.dataset.task)));
+  main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
+  main.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(el.dataset.projtask, {})));
   main.querySelectorAll('[data-pdf]').forEach(el=>el.addEventListener('click', ()=> generateClientPdf(c, groups[el.dataset.pdf])));
 }
 
@@ -2676,7 +2709,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.4.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
