@@ -2652,15 +2652,97 @@ function openDevSettingsModal(){
     <div class="weighted-note" style="margin-bottom:14px">Connected Supabase project:<br><b style="word-break:break-all">${esc(url)}</b></div>
     <div class="modal-actions">
       <button class="btn danger" id="dev_disconnect">Disconnect Supabase</button>
-      <div class="right"><button class="btn ghost" id="dev_close">Close</button></div>
+      <div class="right">
+        <button class="btn ghost" id="dev_import">Import data</button>
+        <button class="btn ghost" id="dev_close">Close</button>
+      </div>
     </div>
   `);
   $('#dev_close').onclick = closeModal;
+  $('#dev_import').onclick = openImportModal;
   $('#dev_disconnect').onclick = ()=>{
     if(!confirm('Disconnect from this Supabase project? You will need to re-enter connection details to use the app again.')) return;
     localStorage.removeItem('rs_rt_url'); localStorage.removeItem('rs_rt_key');
     location.reload();
   };
+}
+
+function openImportModal(){
+  showModal(`
+    <h3>Import data</h3>
+    <div class="sub">Paste a JSON payload (clients / members / tasks) and run it. Matched by name — safe to re-run, existing clients/members/tasks won't be duplicated.</div>
+    <textarea id="imp_json" style="min-height:240px;font-family:ui-monospace,monospace;font-size:11.5px" placeholder='{"clients":[{"name":"Client Name","is_retainer":true}],"members":[{"name":"Person Name"}],"tasks":[{"client_name":"Client Name","title":"Task title","status":"Complete","due_date":"2026-07-01","assignee_names":["Person Name"]}]}'></textarea>
+    <div id="imp_log" style="margin-top:10px;font-size:12px;color:var(--muted);max-height:200px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,monospace"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="imp_close">Close</button>
+      <div class="right"><button class="btn" id="imp_run">Run import</button></div>
+    </div>
+  `);
+  $('#imp_close').onclick = closeModal;
+  $('#imp_run').onclick = runImport;
+}
+
+async function runImport(){
+  const logEl = document.getElementById('imp_log');
+  const append = (msg)=>{ logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; };
+  let data;
+  try{ data = JSON.parse(document.getElementById('imp_json').value); }
+  catch(e){ append('❌ Invalid JSON: '+e.message); return; }
+
+  const runBtn = document.getElementById('imp_run');
+  runBtn.disabled = true; runBtn.textContent = 'Importing…';
+  logEl.textContent = '';
+
+  const clientNameMap = {};
+  state.clients.forEach(c=> clientNameMap[c.name.trim().toLowerCase()] = c.id);
+  for(const c of (data.clients||[])){
+    const key = (c.name||'').trim().toLowerCase();
+    if(!key) continue;
+    if(clientNameMap[key]){ append(`↷ Client "${c.name}" already exists — skipped`); continue; }
+    const color = PALETTE[Object.keys(clientNameMap).length % PALETTE.length];
+    const { data: row, error } = await db.from('rs_clients').insert({ name:c.name.trim(), is_retainer: !!c.is_retainer, color }).select().single();
+    if(error){ append(`❌ Client "${c.name}": ${error.message}`); continue; }
+    clientNameMap[key] = row.id;
+    append(`✓ Created client "${c.name}"${c.is_retainer?' (retainer)':''}`);
+  }
+
+  const memberNameMap = {};
+  state.members.forEach(m=> memberNameMap[m.name.trim().toLowerCase()] = m.id);
+  for(const m of (data.members||[])){
+    const key = (m.name||'').trim().toLowerCase();
+    if(!key || memberNameMap[key]) continue;
+    const { data: row, error } = await db.from('rs_members').insert({ name:m.name.trim(), weight:1 }).select().single();
+    if(error){ append(`❌ Member "${m.name}": ${error.message}`); continue; }
+    memberNameMap[key] = row.id;
+    append(`✓ Created team member "${m.name}"`);
+  }
+
+  let taskCount=0, taskSkipped=0, taskErrors=0;
+  const existingTitlesByClient = {};
+  state.projTasks.forEach(pt=>{
+    if(pt.project_id || !pt.client_id) return;
+    (existingTitlesByClient[pt.client_id] = existingTitlesByClient[pt.client_id] || new Set()).add(pt.title.trim().toLowerCase());
+  });
+  for(const t of (data.tasks||[])){
+    const clientId = clientNameMap[(t.client_name||'').trim().toLowerCase()];
+    if(!clientId){ append(`❌ Task "${t.title}": no matching client "${t.client_name}"`); taskErrors++; continue; }
+    const seen = existingTitlesByClient[clientId] || (existingTitlesByClient[clientId] = new Set());
+    const titleKey = (t.title||'').trim().toLowerCase();
+    if(seen.has(titleKey)){ taskSkipped++; continue; }
+    const status = TASK_STATUSES.includes(t.status) ? t.status : 'To do';
+    const designerIds = (t.assignee_names||[]).map(n=> memberNameMap[(n||'').trim().toLowerCase()]).filter(Boolean);
+    const { error } = await db.from('rs_proj_tasks').insert({
+      client_id: clientId, project_id: null, stage_id: null, title: t.title,
+      status, priority: t.priority || 'Medium', due_date: t.due_date || null,
+      assigned_designer_ids: designerIds, assigned_reviewer_ids: [],
+      counts_toward_retainer: false, position: taskCount
+    });
+    if(error){ append(`❌ Task "${t.title}": ${error.message}`); taskErrors++; }
+    else { taskCount++; seen.add(titleKey); }
+  }
+  append(`\nDone. ${taskCount} task(s) imported${taskSkipped?`, ${taskSkipped} skipped (already existed)`:''}${taskErrors?`, ${taskErrors} error(s)`:''}.`);
+  runBtn.disabled = false; runBtn.textContent = 'Run import';
+  await loadAll();
 }
 document.getElementById('versionBadge').addEventListener('click', handleVersionClick);
 
