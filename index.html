@@ -241,18 +241,18 @@
   .member-pill .avatar{width:auto;height:20px;min-width:20px;font-size:9px;border:none}
   .member-pill.selected{border-color:var(--navy-soft);background:var(--track);font-weight:600}
 
-  .status-pill{font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;display:inline-block;white-space:nowrap}
-  .status-todo{background:var(--track);color:var(--muted)}
-  .status-inprogress{background:#e7e9fb;color:var(--navy-soft)}
-  .status-implementfeedback{background:#f3e8fd;color:#8a3ffc}
-  .status-internalreview{background:var(--amber-bg);color:var(--amber)}
-  .status-clientreview{background:#e0f3f5;color:#0e7c86}
-  .status-hold{background:var(--track);color:var(--muted)}
-  .status-pause{background:var(--track);color:var(--muted)}
-  .status-complete{background:#e8f2ec;color:var(--green)}
-  .status-pending{background:var(--track);color:var(--muted)}
-  .status-active{background:#e7e9fb;color:var(--navy-soft)}
-  select.status-select{padding:4px 8px;font-size:12px;font-weight:600;border-radius:99px;border:1px solid var(--line);background:#fff;width:auto}
+  .status-pill{font-size:12px;font-weight:700;padding:4px 12px;border-radius:99px;display:inline-block;white-space:nowrap;color:#fff;letter-spacing:.2px}
+  .status-todo{background:#E8623D}
+  .status-inprogress{background:#4C6EF5}
+  .status-implementfeedback{background:#8B5CF6}
+  .status-internalreview{background:#F0B429;color:#3a2c00}
+  .status-clientreview{background:#15AABF}
+  .status-hold{background:#94A3B8}
+  .status-pause{background:#94A3B8}
+  .status-complete{background:#2FB380}
+  .status-pending{background:#94A3B8}
+  .status-active{background:#4C6EF5}
+  select.status-select{padding:4px 12px;font-size:12px;font-weight:700;border-radius:99px;border:none;width:auto;color:#fff;letter-spacing:.2px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:26px}
 
   .brand{background:none;border:none;cursor:pointer;color:inherit}
   .brand:hover{opacity:.85}
@@ -333,7 +333,7 @@
 <div id="modalRoot"></div>
 <button class="fab" id="fabLogTime" style="display:none" title="Log time">+</button>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.4.1</div>
+<div id="versionBadge" class="version-badge">v0.4.2</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -415,11 +415,16 @@ const TASK_STATUSES = ['To do','In progress','Implement feedback','Internal revi
 const TASK_COLUMNS = [['status','Status'],['designer','Designer'],['reviewer','Reviewer'],['hours','Hours'],['due','Due date'],['priority','Priority'],['retainer','Retainer']];
 function statusSlug(s){ return (s||'To do').toLowerCase().replace(/[^a-z]+/g,''); }
 const STATUS_COLORS = {
-  'To do':'#7b7d92', 'In progress':'#2a37a8', 'Implement feedback':'#8a3ffc',
-  'Internal review':'#e08c00', 'Client review':'#0e7c86', 'Hold':'#7b7d92',
-  'Pause':'#7b7d92', 'Complete':'#1d7a4d'
+  'To do':'#E8623D', 'In progress':'#4C6EF5', 'Implement feedback':'#8B5CF6',
+  'Internal review':'#F0B429', 'Client review':'#15AABF', 'Hold':'#94A3B8',
+  'Pause':'#94A3B8', 'Complete':'#2FB380'
 };
 function statusColor(s){ return STATUS_COLORS[s] || STATUS_COLORS['To do']; }
+function statusIcon(s){
+  if(s==='Complete') return '✓';
+  if(s==='To do' || s==='Hold' || s==='Pause') return '○';
+  return '◐';
+}
 
 function initials(name){ const p=(name||'').trim().split(/\s+/); return ((p[0]?.[0]||'')+(p[1]?.[0]||'')).toUpperCase() || '?'; }
 function avatarHtml(member){ if(!member) return ''; return `<span class="avatar" style="background:${clientColor(member.id)}" title="${esc(member.name)}">${initials(member.name)}</span>`; }
@@ -1019,8 +1024,9 @@ async function exportTasksCsv(){
 function render(){
   const activeClients = state.clients.filter(c=>c.active && c.is_retainer);
   const flagged = activeClients.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
+  const effectiveNavView = (state.view==='projects' && state.projView==='retainerAllowance') ? 'dashboard' : state.view;
   document.querySelectorAll('#nav button').forEach(b=>{
-    b.classList.toggle('active', b.dataset.view===state.view);
+    b.classList.toggle('active', b.dataset.view===effectiveNavView);
     if(b.dataset.view==='dashboard') b.innerHTML = 'Retainers' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
   });
   $('#fabLogTime').style.display = (state.view==='dashboard') ? 'flex' : 'none';
@@ -1275,9 +1281,17 @@ function renderClientTasksView(c){
   const done = tasks.filter(t=>t.status==='Complete');
   const legacyProjects = state.projects.filter(p=>p.client_id===c.id);
   const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
+  const u = clientUsage(c);
 
   let html = clientRetainerHeaderHtml(c, 'tasks');
-  html += `${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
+  html += `<div class="card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
+        <span style="font-size:12.5px;color:var(--muted)">This cycle's retainer usage · ${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)}</span>
+        <button class="btn small ghost" id="viewAllowanceBtn">View allowance →</button>
+      </div>
+      ${meterHtml(u, c.retainer_hours)}
+    </div>
+    ${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
     <div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" data-addclienttask="${c.id}">+ Task</button>
       <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
@@ -1296,6 +1310,7 @@ function renderClientTasksView(c){
 
   main.innerHTML = html;
   wireClientRetainerHeader();
+  $('#viewAllowanceBtn').onclick = ()=>{ state.projView='retainerAllowance'; render(); };
   if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
@@ -1479,10 +1494,10 @@ function openStagePreviewModal(stageId){
   const tasks = state.projTasks.filter(t=>t.stage_id===s.id);
   const sStatus = stageStatus(s.id);
   showModal(`
-    <h3><span class="stage-num">Stage ${idx}</span> ${esc(s.name)}${sStatus==='Complete'?` <span class="status-pill status-complete">Complete</span>`:''}</h3>
+    <h3><span class="stage-num">Stage ${idx}</span> ${esc(s.name)}${sStatus==='Complete'?` <span class="status-pill status-complete">✓ Complete</span>`:''}</h3>
     <div class="sub">${esc(cl?cl.name:'')} · ${esc(proj.name)} ${tc?'· '+tc.icon+' '+esc(proj.project_type):''}${s.due_date?' · due '+fmtDateY(new Date(s.due_date+'T00:00'))+(s.due_time?' at '+formatTime12(s.due_time):''):''}</div>
     ${tasks.length? `<table><thead><tr><th>Task</th><th>Status</th><th>Assigned</th></tr></thead><tbody>
-      ${tasks.map(t=>`<tr><td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td><td><span class="status-pill status-${statusSlug(t.status)}">${esc(t.status||'To do')}</span></td><td>${avatarGroupHtml(t.assigned_designer_ids)}</td></tr>`).join('')}
+      ${tasks.map(t=>`<tr><td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td><td><span class="status-pill status-${statusSlug(t.status)}">${statusIcon(t.status)} ${esc(t.status||'To do')}</span></td><td>${avatarGroupHtml(t.assigned_designer_ids)}</td></tr>`).join('')}
     </tbody></table>` : `<div class="empty">No tasks in this stage yet.</div>`}
     <div class="modal-actions">
       <div class="right">
@@ -1884,10 +1899,16 @@ function pillSelectorHtml(members, selectedIds){
 
 function blankProjTask(ctx){
   ctx = ctx || {};
+  let clientId = ctx.clientId || null;
+  if(!clientId && ctx.projectId){
+    const proj = state.projects.find(p=>p.id===ctx.projectId);
+    if(proj) clientId = proj.client_id;
+  }
+  const client = clientId ? state.clients.find(c=>c.id===clientId) : null;
   return { id:null, project_id:ctx.projectId||null, stage_id:ctx.stageId||null, client_id:ctx.clientId||null,
     title:'', priority:'Medium', status:'To do',
     assigned_designer_ids:[], assigned_reviewer_ids:[], recorded_hours:null, due_date:null, work_date:iso(new Date()),
-    counts_toward_retainer:false, retainer_task_ids:[] };
+    counts_toward_retainer: !!(client && client.is_retainer), retainer_task_ids:[] };
 }
 
 function stageStatus(stageId){
@@ -1905,7 +1926,7 @@ function taskRowHtml(t){
   }
   return `<tr class="task-row" draggable="true" data-projtask="${t.id}">
     <td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td>
-    ${state.taskCols.has('status')?`<td><select class="status-select status-${statusSlug(t.status)}" data-statusinline="${t.id}">${TASK_STATUSES.map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${st}</option>`).join('')}</select></td>`:''}
+    ${state.taskCols.has('status')?`<td><select class="status-select status-${statusSlug(t.status)}" data-statusinline="${t.id}">${TASK_STATUSES.map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></td>`:''}
     ${state.taskCols.has('priority')?`<td><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></td>`:''}
     ${state.taskCols.has('designer')?`<td>${avatarGroupHtml(t.assigned_designer_ids)}</td>`:''}
     ${state.taskCols.has('reviewer')?`<td>${avatarGroupHtml(t.assigned_reviewer_ids)}</td>`:''}
@@ -1968,7 +1989,7 @@ function openProjTaskModal(taskId, ctx){
     <form class="log" style="max-width:none">
       <div class="full"><label>Title</label><input type="text" id="pt_title" value="${esc(t.title)}" placeholder="Task name"></div>
       ${stages.length? `<div><label>Stage</label><select id="pt_stage">${stages.map(s=>`<option value="${s.id}" ${s.id===t.stage_id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>` : ''}
-      <div><label>Status</label><select id="pt_status">${TASK_STATUSES.map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label>Status</label><select id="pt_status">${TASK_STATUSES.map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${statusIcon(s)} ${s}</option>`).join('')}</select></div>
       <div><label>Priority</label><select id="pt_priority">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
       <div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t.recorded_hours!=null?t.recorded_hours:''}"></div>
       <div class="full"><label>Designers</label><div id="pt_designers">${pillSelectorHtml(designerPool, t.assigned_designer_ids||[])}</div></div>
@@ -2083,7 +2104,7 @@ function renderProjDetail(){
         : 'Set due date';
       html += `<div class="stage-section" data-stagesection="${s.id}">
         <div class="stage-head">
-          <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">Complete</span>':''}</h4>
+          <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
           <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px">
             <button type="button" class="stage-date-btn" data-stagedate="${s.id}" style="margin-top:0">${dateLabel}</button>
             ${idx>0 && s.due_date ? `<span style="font-size:11px;color:var(--muted)">${reviewWindowLabel(s.due_date, p.review_days)}</span>` : ''}
@@ -2709,7 +2730,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.4.1';
+const APP_VERSION = '0.4.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
