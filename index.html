@@ -321,6 +321,7 @@
     <button class="brand" id="brandBtn">Reciprocal Space</button>
     <nav id="nav" style="display:none">
       <button data-view="home" class="active">Home</button>
+      <button data-view="tasksahead">Tasks Ahead</button>
       <button data-view="projects">Clients</button>
       <button data-view="dashboard">Retainers</button>
       <button data-view="milestones">Milestones</button>
@@ -337,7 +338,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.4.3</div>
+<div id="versionBadge" class="version-badge">v0.5.1</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -580,7 +581,7 @@ function openColumnDropdown(anchorEl){
   pop.querySelectorAll('[data-colkey2]').forEach(cb=>cb.addEventListener('change', ()=>{
     const k = cb.dataset.colkey2;
     cb.checked ? state.taskCols.add(k) : state.taskCols.delete(k);
-    renderProjDetail();
+    render();
   }));
   const rect = anchorEl.getBoundingClientRect();
   pop.style.position = 'fixed';
@@ -1033,7 +1034,7 @@ function render(){
     b.classList.toggle('active', b.dataset.view===effectiveNavView);
     if(b.dataset.view==='dashboard') b.innerHTML = 'Retainers' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
   });
-  ({home:renderHome, dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived}[state.view])();
+  ({home:renderHome, tasksahead:renderTasksAhead, dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived}[state.view])();
 }
 
 function renderRetainer(){
@@ -2002,6 +2003,69 @@ function wireTaskRows(root){
   }));
 }
 
+/* ================= Tasks Ahead (rolling 7-day view) ================= */
+function tasksAheadColumns(){ return ['96px','minmax(0,1fr)','150px','176px','96px','108px','34px'].join(' '); }
+function tasksAheadRowHtml(t, projectName){
+  const cols = tasksAheadColumns();
+  return `<div class="task-grid-row task-row" data-projtask="${t.id}" style="grid-template-columns:${cols}">
+    <div>${t.due_date? fmtDateNatural(t.due_date):'—'}</div>
+    <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</div>
+    <div style="color:var(--muted);font-size:12.5px">${projectName? esc(projectName) : '—'}</div>
+    <div><select class="status-select status-${statusSlug(t.status)}" data-statusinline="${t.id}">${TASK_STATUSES.map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></div>
+    <div><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></div>
+    <div>${avatarGroupHtml(t.assigned_designer_ids)}</div>
+    <div class="tg-actions"><button type="button" class="btn small ghost menu-dots" data-taskmenu="${t.id}" title="More options">⋮</button></div>
+  </div>`;
+}
+function tasksAheadTableHtml(items){
+  const cols = tasksAheadColumns();
+  const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${cols}">
+      <div>Due</div><div>Task</div><div>Project</div><div>Status</div><div>Priority</div><div>Assigned</div><div></div>
+    </div>`;
+  const rows = items.map(({t,projectName})=>tasksAheadRowHtml(t,projectName)).join('')
+    || `<div class="task-grid-row" style="grid-template-columns:${cols}"><div class="empty" style="grid-column:1/-1;padding:10px 0">Nothing due here.</div></div>`;
+  return `<div class="task-grid">${header}${rows}</div>`;
+}
+
+function renderTasksAhead(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayIso = iso(today);
+  const endDate = new Date(today); endDate.setDate(endDate.getDate()+6);
+  const endIso = iso(endDate);
+
+  const byClient = {};
+  state.projTasks.forEach(t=>{
+    if(!t.due_date || t.due_date<todayIso || t.due_date>endIso || t.status==='Complete') return;
+    let clientId = t.client_id, projectName = null;
+    if(t.project_id){
+      const proj = state.projects.find(p=>p.id===t.project_id);
+      if(!proj) return;
+      clientId = proj.client_id; projectName = proj.name;
+    }
+    if(!clientId) return;
+    const client = state.clients.find(c=>c.id===clientId);
+    if(!client || !client.active) return;
+    (byClient[clientId] = byClient[clientId] || { client, items:[] }).items.push({ t, projectName });
+  });
+  const groups = Object.values(byClient).sort((a,b)=>a.client.name.localeCompare(b.client.name));
+  const totalTasks = groups.reduce((a,g)=>a+g.items.length,0);
+
+  let html = `<h2>Tasks ahead</h2><div class="sub">Everything due ${fmtDateY(today)} – ${fmtDateY(endDate)}, across every client · rolls forward each day</div>`;
+  if(!groups.length){
+    html += `<div class="empty">Nothing due in the next 7 days.</div>`;
+  } else {
+    groups.forEach(g=>{
+      const items = g.items.sort((a,b)=> (a.t.due_date||'').localeCompare(b.t.due_date||''));
+      html += `<div class="stage-section">
+        <div class="gantt-client-row"><span class="dot" style="background:${colorFor(g.client)}"></span>${esc(g.client.name)}<span class="home-count" style="margin-left:8px">${items.length}</span></div>
+        <div class="card" style="padding:8px 12px">${tasksAheadTableHtml(items)}</div>
+      </div>`;
+    });
+  }
+  main.innerHTML = html;
+  wireTaskRows(main);
+}
+
 function openProjTaskModal(taskId, ctx){
   const isNew = !taskId;
   const t = isNew ? blankProjTask(ctx) : state.projTasks.find(x=>x.id===taskId);
@@ -2757,7 +2821,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.4.3';
+const APP_VERSION = '0.5.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
