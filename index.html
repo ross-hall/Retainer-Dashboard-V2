@@ -120,6 +120,7 @@
   .cal .day:hover{border-color:var(--navy-soft)}
   .cal .day.blank{background:transparent;border:none;cursor:default}
   .cal .day .num{font-weight:600;color:var(--muted);margin-bottom:4px}
+  .cal .day.today{background:#eef0fb;box-shadow:inset 0 0 0 2px var(--navy-soft)}
   .cal .day.today .num{color:var(--navy);background:var(--track);border-radius:6px;display:inline-block;padding:0 5px}
   .task-chip{border-radius:6px;padding:4px 7px;color:#fff;margin-bottom:5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
   .renew-chip{border:1px dashed var(--navy-soft);color:var(--navy-soft);background:#fff;border-radius:6px;padding:2px 6px;font-size:10.5px;margin-bottom:3px;cursor:pointer;font-weight:500}
@@ -290,11 +291,21 @@
   .week-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0}
   .week-grid .day{min-height:340px;padding:12px;border:none;border-right:1px solid var(--line);border-radius:0;background:transparent}
   .week-grid .day:last-child{border-right:none}
-  .week-grid .day.today{background:var(--track)}
+  .week-grid .day.today{background:#eef0fb;box-shadow:inset 0 0 0 2px var(--navy-soft)}
   .week-grid .day .num{border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:10px}
   .year-month{margin-bottom:20px}
   .year-month h4{font-size:14px;font-weight:600;margin-bottom:8px}
   .year-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+
+  .gantt-wrap{overflow-x:auto;padding-bottom:8px}
+  .gantt-header{display:grid;grid-template-columns:180px 1fr;position:relative;height:22px;margin-bottom:6px;min-width:640px}
+  .gantt-month-marker{position:absolute;top:0;font-size:11px;color:var(--muted);border-left:1px solid var(--line);padding-left:6px;white-space:nowrap}
+  .gantt-client-row{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;margin:18px 0 8px;color:var(--ink)}
+  .gantt-row{display:grid;grid-template-columns:180px 1fr;align-items:center;min-height:38px;border-bottom:1px solid var(--line);min-width:640px}
+  .gantt-label-col{font-size:12.5px;color:var(--muted);padding-right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gantt-track-col{position:relative;height:24px;background:var(--track);border-radius:6px}
+  .gantt-bar{position:absolute;top:2px;height:20px;border-radius:5px;color:#fff;font-size:10.5px;font-weight:500;padding:2px 7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;line-height:1.6}
+  .gantt-kickoff{position:absolute;top:-4px;width:3px;height:32px;border-radius:2px;cursor:pointer}
   .year-row:last-child{border-bottom:none}
 </style>
 </head>
@@ -992,7 +1003,7 @@ function render(){
     if(b.dataset.view==='dashboard') b.innerHTML = 'Retainers' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
   });
   $('#fabLogTime').style.display = (state.view==='dashboard') ? 'flex' : 'none';
-  ({home:renderHome, dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings}[state.view])();
+  ({home:renderHome, dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived}[state.view])();
 }
 
 function renderRetainer(){
@@ -1515,6 +1526,72 @@ function milestoneItemChip(item, weekStyle){
   return retainerMilestoneChipHtml(item.t, cl, weekStyle);
 }
 
+function renderGanttBody(){
+  const projects = state.projects.filter(p=>p.active && !state.milestoneHidden.has(p.client_id) && !state.milestoneTypeHidden.has(p.project_type));
+  const rows = [];
+  let minDate = null, maxDate = null;
+  projects.forEach(p=>{
+    const client = state.clients.find(c=>c.id===p.client_id);
+    if(!client) return;
+    const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
+    const dated = stages.filter(s=>s.due_date);
+    if(!dated.length) return;
+    dated.forEach(s=>{
+      const d = new Date(s.due_date+'T00:00');
+      if(!minDate || d<minDate) minDate = d;
+      if(!maxDate || d>maxDate) maxDate = d;
+    });
+    rows.push({ p, client, stages });
+  });
+  if(!rows.length) return `<div class="empty">No projects with stage due dates yet — set due dates on stages to see them here.</div>`;
+
+  minDate = new Date(minDate); minDate.setDate(minDate.getDate()-3);
+  maxDate = new Date(maxDate); maxDate.setDate(maxDate.getDate()+3);
+  const totalMs = maxDate - minDate;
+  const pct = d => Math.max(0, Math.min(100, (d-minDate)/totalMs*100));
+
+  const monthMarkers = [];
+  let cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  while(cursor<=maxDate){
+    monthMarkers.push({ label:cursor.toLocaleDateString('en-GB',{month:'short',year:'numeric'}), left:pct(cursor) });
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
+  }
+
+  const byClient = {};
+  rows.forEach(r=>{ (byClient[r.client.id] = byClient[r.client.id] || { client:r.client, items:[] }).items.push(r); });
+
+  let html = `<div class="gantt-wrap">
+    <div class="gantt-header">
+      <div class="gantt-label-col"></div>
+      <div class="gantt-track-col" style="background:none">${monthMarkers.map(m=>`<div class="gantt-month-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
+    </div>`;
+
+  Object.values(byClient).forEach(group=>{
+    const barColor = colorFor(group.client);
+    html += `<div class="gantt-client-row"><span class="dot" style="background:${barColor}"></span>${esc(group.client.name)}</div>`;
+    group.items.forEach(({p,stages})=>{
+      let segs = '';
+      let prevDate = null;
+      stages.forEach(s=>{
+        if(!s.due_date) return;
+        const d = new Date(s.due_date+'T00:00');
+        if(prevDate){
+          const left = pct(prevDate);
+          const width = Math.max(pct(d)-left, 0.6);
+          segs += `<div class="gantt-bar" draggable="true" data-msitem="stage:${s.id}" style="left:${left}%;width:${width}%;background:${barColor}" title="${esc(s.name)} — due ${fmtDate(d)}">${esc(s.name)}</div>`;
+        } else {
+          segs += `<div class="gantt-kickoff" data-msitem="stage:${s.id}" style="left:${pct(d)}%;background:${barColor}" title="Kickoff — ${fmtDate(d)}"></div>`;
+        }
+        prevDate = d;
+      });
+      html += `<div class="gantt-row"><div class="gantt-label-col">${esc(p.name)}</div><div class="gantt-track-col">${segs}</div></div>`;
+    });
+  });
+
+  html += `</div>`;
+  return html;
+}
+
 function renderMilestones(){
   if(!state.milestoneAnchor) state.milestoneAnchor = new Date();
   const anchor = state.milestoneAnchor;
@@ -1526,6 +1603,7 @@ function renderMilestones(){
       <button class="btn small ${state.milestoneViewMode==='week'?'':'ghost'}" data-mview="week">Week</button>
       <button class="btn small ${state.milestoneViewMode==='month'?'':'ghost'}" data-mview="month">Month</button>
       <button class="btn small ${state.milestoneViewMode==='year'?'':'ghost'}" data-mview="year">Year</button>
+      <button class="btn small ${state.milestoneViewMode==='gantt'?'':'ghost'}" data-mview="gantt">Gantt</button>
     </div>
     <div class="cal-filters" style="margin-bottom:0">
       <button class="btn small ghost" id="mShowBtn">Show ▾</button>
@@ -1569,6 +1647,8 @@ function renderMilestones(){
     }
     body = `<div class="cal-head"><button class="btn ghost small" id="mPrev">←</button><h3>${y}</h3><button class="btn ghost small" id="mNext">→</button><button class="btn ghost small" id="mToday">Today</button></div>
       ${months || '<div class="empty">No milestones this year.</div>'}`;
+  } else if(state.milestoneViewMode==='gantt'){
+    body = renderGanttBody();
   } else {
     const y = anchor.getFullYear(), mo = anchor.getMonth();
     const first = new Date(y, mo, 1);
@@ -1584,19 +1664,19 @@ function renderMilestones(){
   main.innerHTML = `<h2>Milestones</h2>
     ${controlsRow}${body}`;
 
-  $('#mPrev').onclick = ()=>{
+  if($('#mPrev')) $('#mPrev').onclick = ()=>{
     if(state.milestoneViewMode==='week'){ const d=new Date(anchor); d.setDate(d.getDate()-7); state.milestoneAnchor=d; }
     else if(state.milestoneViewMode==='year'){ state.milestoneAnchor = new Date(anchor.getFullYear()-1, anchor.getMonth(), 1); }
     else { state.milestoneAnchor = new Date(anchor.getFullYear(), anchor.getMonth()-1, 1); }
     renderMilestones();
   };
-  $('#mNext').onclick = ()=>{
+  if($('#mNext')) $('#mNext').onclick = ()=>{
     if(state.milestoneViewMode==='week'){ const d=new Date(anchor); d.setDate(d.getDate()+7); state.milestoneAnchor=d; }
     else if(state.milestoneViewMode==='year'){ state.milestoneAnchor = new Date(anchor.getFullYear()+1, anchor.getMonth(), 1); }
     else { state.milestoneAnchor = new Date(anchor.getFullYear(), anchor.getMonth()+1, 1); }
     renderMilestones();
   };
-  $('#mToday').onclick = ()=>{ state.milestoneAnchor = new Date(); renderMilestones(); };
+  if($('#mToday')) $('#mToday').onclick = ()=>{ state.milestoneAnchor = new Date(); renderMilestones(); };
   attachMilestoneInteractions();
 }
 
@@ -1655,7 +1735,7 @@ function renderProjClients(){
 function renderProjClientProjects(){
   const c = state.clients.find(c=>c.id===state.projClientId);
   if(!c){ state.projView='clients'; render(); return; }
-  const projects = state.projects.filter(p=>p.client_id===c.id).sort((a,b)=> Number(b.active)-Number(a.active) || a.name.localeCompare(b.name));
+  const projects = state.projects.filter(p=>p.client_id===c.id && p.active).sort((a,b)=> a.name.localeCompare(b.name));
 
   let html = `<div class="breadcrumb"><button data-bc="clients">Projects</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h2>
@@ -1921,7 +2001,10 @@ function renderProjDetail(){
       html += `<div class="stage-section" data-stagesection="${s.id}">
         <div class="stage-head">
           <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">Complete</span>':''}</h4>
-          <button type="button" class="stage-date-btn" data-stagedate="${s.id}" style="margin-left:auto;margin-top:0">${dateLabel}</button>
+          <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+            <button type="button" class="stage-date-btn" data-stagedate="${s.id}" style="margin-top:0">${dateLabel}</button>
+            ${idx>0 && s.due_date ? `<span style="font-size:11px;color:var(--muted)">${reviewWindowLabel(s.due_date, p.review_days)}</span>` : ''}
+          </div>
         </div>
         <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.')}</div>
         <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
@@ -2001,6 +2084,24 @@ function projExtraFieldValue(type){
 
 /* Human-readable summary of a project's type-specific details, e.g. "45s"
    for an animation or "12 slides" for a deck — shown on the project page */
+/* N business days after a date, skipping weekends — used for review windows */
+function addBusinessDays(dateStr, days){
+  let d = new Date(dateStr+'T00:00');
+  let count = 0;
+  while(count < days){
+    d.setDate(d.getDate()+1);
+    const dow = d.getDay();
+    if(dow!==0 && dow!==6) count++;
+  }
+  return d;
+}
+function reviewWindowLabel(dueDateStr, reviewDays){
+  if(!dueDateStr || !reviewDays) return null;
+  const start = addBusinessDays(dueDateStr, 1);
+  const end = addBusinessDays(dueDateStr, reviewDays);
+  return `Review ${fmtDate(start)} – ${fmtDate(end)}`;
+}
+
 function projectDetailsSummary(p){
   const d = p.details || {};
   if(p.project_type==='Website'){
@@ -2026,6 +2127,7 @@ function openProjectModal(projectId, clientId){
       <div><label>Type</label><select id="pj_type">${activeTypes.map(t=>`<option value="${t.name}" ${p&&p.project_type===t.name?'selected':''}>${t.icon} ${t.name}</option>`).join('')}<option value="Other" ${p && !activeTypes.some(t=>t.name===p.project_type)?'selected':''}>Other</option></select></div>
       <div id="pj_extra_wrap" style="display:contents">${projExtraFieldHtml(initialType, p&&p.details)}</div>
       <div><label>Label <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="pj_label" value="${esc(p&&p.label?p.label:'')}" placeholder="e.g. Rush, Q3"></div>
+      <div><label>Review days <span style="color:var(--muted);font-weight:400">(business days after a stage's due date)</span></label><input type="number" min="1" id="pj_review" value="${p&&p.review_days!=null?p.review_days:5}"></div>
       <div class="full sub" style="margin:0;color:var(--muted)">Miro board links are set once per client — edit them from that client's page or Settings.</div>
     </form>
     <div class="modal-actions">
@@ -2046,9 +2148,10 @@ function openProjectModal(projectId, clientId){
     const project_type = $('#pj_type').value;
     const name = project_type;
     const label = $('#pj_label').value.trim() || null;
+    const review_days = $('#pj_review').value ? +$('#pj_review').value : 5;
     const details = projExtraFieldValue(project_type);
     if(isNew){
-      const { data, error } = await db.from('rs_projects').insert({ client_id:client.id, name, project_type, label, details }).select().single();
+      const { data, error } = await db.from('rs_projects').insert({ client_id:client.id, name, project_type, label, review_days, details }).select().single();
       if(error){ toast('Could not create project'); console.error(error); return; }
       const cfg = typeConfig(project_type);
       const template = (cfg && cfg.stage_template && cfg.stage_template.length) ? cfg.stage_template : STAGE_TEMPLATES.default;
@@ -2057,7 +2160,7 @@ function openProjectModal(projectId, clientId){
       state.projProjectId = data.id; state.projView = 'project';
       await refreshProjectView();
     } else {
-      const { error } = await db.from('rs_projects').update({ name, project_type, label, details }).eq('id', p.id);
+      const { error } = await db.from('rs_projects').update({ name, project_type, label, review_days, details }).eq('id', p.id);
       if(error){ toast('Could not save'); console.error(error); return; }
       closeModal(); toast('Project updated'); await refreshProjectView();
     }
@@ -2289,9 +2392,67 @@ function renderCalendar(){
   });
 }
 
+function renderArchived(){
+  const archivedClients = state.clients.filter(c=>!c.active);
+  const archivedProjects = state.projects.filter(p=>!p.active).map(p=>({ p, client: state.clients.find(c=>c.id===p.client_id) }));
+
+  let html = `<div class="breadcrumb"><button data-bc="settings">Settings</button><span class="sep">/</span><span class="current">Archived</span></div>
+    <h2>Archived</h2><div class="sub">Read-only view of archived clients and projects — restore any of them to bring them back into the active pages.</div>
+    <h3 style="font-size:15px;font-weight:600;margin:20px 0 14px">Clients</h3>`;
+  html += archivedClients.length
+    ? `<div class="grid" style="margin-bottom:34px">${archivedClients.map(c=>`
+        <div class="card client-card">
+          <h3 style="display:flex;align-items:center;gap:8px">${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}</h3>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn small ghost" data-viewclient="${c.id}">View</button>
+            <button class="btn small ghost" data-restoreclient="${c.id}">Restore</button>
+          </div>
+        </div>`).join('')}</div>`
+    : `<div class="empty" style="margin-bottom:34px">No archived clients.</div>`;
+
+  html += `<h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Projects</h3>`;
+  html += archivedProjects.length
+    ? `<div class="grid">${archivedProjects.map(({p,client})=>`
+        <div class="card client-card">
+          <h3>${esc(p.name)}</h3>
+          <div class="cycle">${client? esc(client.name) : 'Unknown client'}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn small ghost" data-viewproject="${p.id}" ${client?'':'disabled'}>View</button>
+            <button class="btn small ghost" data-restoreproject="${p.id}">Restore</button>
+          </div>
+        </div>`).join('')}</div>`
+    : `<div class="empty">No archived projects.</div>`;
+
+  main.innerHTML = html;
+  $('[data-bc="settings"]').onclick = ()=>{ state.view='settings'; render(); };
+  main.querySelectorAll('[data-viewclient]').forEach(el=>el.addEventListener('click', ()=>{
+    const c = state.clients.find(c=>c.id===el.dataset.viewclient);
+    state.view='projects'; state.projClientId=c.id; state.projView = c.is_retainer?'retainerTasks':'clientProjects';
+    render();
+  }));
+  main.querySelectorAll('[data-restoreclient]').forEach(el=>el.addEventListener('click', async ()=>{
+    const { error } = await db.from('rs_clients').update({active:true}).eq('id', el.dataset.restoreclient);
+    if(error){ toast('Could not restore'); return; }
+    toast('Client restored'); await refreshProjectView();
+  }));
+  main.querySelectorAll('[data-viewproject]').forEach(el=>el.addEventListener('click', ()=>{
+    const p = state.projects.find(p=>p.id===el.dataset.viewproject);
+    state.view='projects'; state.projClientId=p.client_id; state.projProjectId=p.id; state.projView='project';
+    render();
+  }));
+  main.querySelectorAll('[data-restoreproject]').forEach(el=>el.addEventListener('click', async ()=>{
+    const { error } = await db.from('rs_projects').update({active:true}).eq('id', el.dataset.restoreproject);
+    if(error){ toast('Could not restore'); return; }
+    toast('Project restored'); await refreshProjectView();
+  }));
+}
+
 function renderSettings(){
   main.innerHTML = `
-    <h2>Settings</h2><div class="sub">Clients, retainers and team weighting</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div><h2>Settings</h2><div class="sub" style="margin-bottom:0">Clients, retainers and team weighting</div></div>
+      <button class="btn small ghost" id="viewArchivedBtn">View archived</button>
+    </div><div style="margin-bottom:20px"></div>
     <div class="settings-cols">
       <div class="card">
         <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Clients</h3>
@@ -2451,6 +2612,7 @@ function renderSettings(){
   });
   $('#exportJson').onclick = exportAllData;
   $('#exportCsv').onclick = exportTasksCsv;
+  $('#viewArchivedBtn').onclick = ()=>{ state.view='archived'; render(); };
 }
 
 /* ---------- setup / boot ---------- */
