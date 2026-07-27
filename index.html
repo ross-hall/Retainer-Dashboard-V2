@@ -26,6 +26,7 @@
     --radius:14px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
+  html{overflow-y:scroll;scrollbar-gutter:stable}
   body{font-family:'Rubik',sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;font-size:15px}
   button{font-family:inherit;cursor:pointer}
   input,select,textarea{font-family:inherit;font-size:14px}
@@ -340,7 +341,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.6.2</div>
+<div id="versionBadge" class="version-badge">v0.6.3</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -2944,7 +2945,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.6.2';
+const APP_VERSION = '0.6.3';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
