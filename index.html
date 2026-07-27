@@ -132,7 +132,7 @@
   .task-chip{border-radius:6px;padding:4px 7px;color:#fff;margin-bottom:5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
   .renew-chip{border:1px dashed var(--navy-soft);color:var(--navy-soft);background:#fff;border-radius:6px;padding:2px 6px;font-size:10.5px;margin-bottom:3px;cursor:pointer;font-weight:500}
 
-  .settings-cols{display:flex;flex-direction:column;gap:24px;max-width:860px}
+  .settings-cols{display:flex;flex-direction:column;gap:24px}
   @media(max-width:800px){form.log{grid-template-columns:1fr}}
   .row-form{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
   .row-form input,.row-form select{width:auto;flex:1;min-width:80px}
@@ -323,9 +323,9 @@
     <button class="brand" id="brandBtn">Reciprocal Space</button>
     <nav id="nav" style="display:none">
       <button data-view="home" class="active">Home</button>
-      <button data-view="tasksahead">Tasks Ahead</button>
-      <button data-view="projects">Clients</button>
+      <button data-view="projects">All Projects</button>
       <button data-view="dashboard">Retainers</button>
+      <button data-view="tasksahead">Week Tasks</button>
       <button data-view="milestones">Milestones</button>
       <button data-view="settings" class="nav-icon-btn" title="Settings">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -340,7 +340,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.6.1</div>
+<div id="versionBadge" class="version-badge">v0.6.2</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -1785,7 +1785,7 @@ function renderProjClients(){
   const retainerClients = clients.filter(c=>c.is_retainer);
   const projectClients = clients.filter(c=>!c.is_retainer);
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div><h2>Clients</h2></div>
+      <div><h2>All Projects</h2></div>
       <button class="btn small" id="newClientBtn">+ New client</button>
     </div><div style="margin-bottom:20px"></div>`;
   if(!clients.length){
@@ -1836,7 +1836,7 @@ function renderProjClientProjects(){
   if(!c){ state.projView='clients'; render(); return; }
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active).sort((a,b)=> a.name.localeCompare(b.name));
 
-  let html = `<div class="breadcrumb"><button data-bc="clients">Clients</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+  let html = `<div class="breadcrumb"><button data-bc="clients">All Projects</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h2>
     <div style="margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" id="newProjectBtn">+ New project</button>
@@ -2095,7 +2095,7 @@ function renderTasksAhead(){
   const groups = Object.values(byClient).sort((a,b)=>a.client.name.localeCompare(b.client.name));
   const totalTasks = groups.reduce((a,g)=>a+g.items.length,0);
 
-  let html = `<h2>Tasks ahead</h2><div class="sub">Everything due ${fmtDateY(today)} – ${fmtDateY(endDate)}, across every client · rolls forward each day</div>`;
+  let html = `<h2>Week Tasks</h2><div class="sub">Everything due ${fmtDateY(today)} – ${fmtDateY(endDate)}, across every client · rolls forward each day</div>`;
   if(!groups.length){
     html += `<div class="empty">Nothing due in the next 7 days.</div>`;
   } else {
@@ -2210,7 +2210,7 @@ function renderProjDetail(){
   const pctComplete = allTasks.length ? Math.round(doneCount/allTasks.length*100) : 0;
 
   let html = `<div class="breadcrumb">
-      <button data-bc="clients">Clients</button><span class="sep">/</span>
+      <button data-bc="clients">All Projects</button><span class="sep">/</span>
       <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
       <span class="current">${esc(p.name)}</span>
     </div>
@@ -2944,7 +2944,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.6.1';
+const APP_VERSION = '0.6.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
