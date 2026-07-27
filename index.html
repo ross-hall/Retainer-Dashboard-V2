@@ -340,7 +340,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.6.0</div>
+<div id="versionBadge" class="version-badge">v0.6.1</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -1923,8 +1923,8 @@ function stageStatus(stageId){
   return tasks.every(t=>isCompleteStatus(t.status)) ? 'Complete' : 'Active';
 }
 
-const TASK_COL_DEFAULTS = { status:224, priority:104, designer:112, reviewer:112, hours:80, due:104, retainer:80 };
-const TASKSAHEAD_COL_DEFAULTS = { due:96, project:150, status:224, priority:96, assigned:108 };
+const TASK_COL_DEFAULTS = { status:205, priority:104, designer:88, reviewer:88, hours:64, due:104, retainer:80 };
+const TASKSAHEAD_COL_DEFAULTS = { due:96, project:150, status:205, priority:96, assigned:88 };
 function colWidth(store, key, defaults){ return (store[key] || defaults[key]) + 'px'; }
 
 function taskGridColumns(){
@@ -2944,7 +2944,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.6.0';
+const APP_VERSION = '0.6.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
