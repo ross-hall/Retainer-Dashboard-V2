@@ -353,7 +353,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.7.2</div>
+<div id="versionBadge" class="version-badge">v0.7.3</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -1964,6 +1964,7 @@ function renderProjClients(){
     const items = [{ label:'Edit client', onClick:()=> openClientEditModal(cl.id) }];
     if(cl.miro_link_external) items.push({ label:'Open Miro (external) ↗', onClick:()=> window.open(cl.miro_link_external,'_blank') });
     if(cl.miro_link_internal) items.push({ label:'Open Miro (internal) ↗', onClick:()=> window.open(cl.miro_link_internal,'_blank') });
+    if(cl.slug) items.push({ label:'View dashboard ↗', onClick:()=> window.open(`${window.location.origin}${window.location.pathname}?client=${cl.slug}&admin=1`,'_blank') });
     items.push({ label:'Archive client', danger:true, onClick: async ()=>{
       if(!confirm(`Archive ${cl.name}? Their projects and history stay intact — you can restore them from Settings.`)) return;
       const { error } = await db.from('rs_clients').update({active:false}).eq('id', cl.id);
@@ -3089,7 +3090,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.7.2';
+const APP_VERSION = '0.7.3';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
