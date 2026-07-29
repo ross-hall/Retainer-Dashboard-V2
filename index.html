@@ -353,7 +353,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.7.3</div>
+<div id="versionBadge" class="version-badge">v0.7.4</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -1512,6 +1512,7 @@ function renderProjects(){
     else renderClientAllowanceView(c);
   }
   else if(state.projView==='clientProjects') renderProjClientProjects();
+  else if(state.projView==='clientList') renderClientListTable();
   else renderProjClients();
 }
 
@@ -1901,6 +1902,66 @@ function renderMilestones(){
   attachMilestoneInteractions();
 }
 
+/* Days between a project's first and last stage due dates, only once the
+   last stage is actually marked complete — treated as "not finished yet"
+   otherwise rather than guessing from an unfinished plan. */
+function projectDuration(p){
+  const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
+  if(stages.length<2) return null;
+  const first = stages[0], last = stages[stages.length-1];
+  if(!first.due_date || !last.due_date) return null;
+  if(stageStatus(last.id)!=='Complete') return null;
+  const days = Math.round((new Date(last.due_date+'T00:00') - new Date(first.due_date+'T00:00'))/86400000);
+  return days>=0 ? days : null;
+}
+function clientAvgDuration(c){
+  const durations = state.projects.filter(p=>p.client_id===c.id).map(projectDuration).filter(d=>d!=null);
+  if(!durations.length) return null;
+  return Math.round(durations.reduce((a,b)=>a+b,0)/durations.length);
+}
+function clientScopeTypes(c){
+  return [...new Set(state.projects.filter(p=>p.client_id===c.id).map(p=>p.project_type))];
+}
+
+function renderClientListTable(){
+  const clients = state.clients.filter(c=>c.active).sort((a,b)=>a.name.localeCompare(b.name));
+  let html = `<div class="breadcrumb"><button data-bc="clients">All Projects</button><span class="sep">/</span><span class="current">Client list</span></div>
+    <h2>Client list</h2>
+    <div class="sub">Every active client at a glance — scope, retainer terms, and how long finished projects typically take.</div>
+    <div class="card" style="padding:0;overflow-x:auto">
+    <table style="min-width:920px"><thead><tr>
+      <th>Client</th><th>Type</th><th>Scope</th><th>Retainer</th><th style="text-align:center">Active projects</th>
+      <th>Avg. project length</th><th>Client since</th><th></th><th></th>
+    </tr></thead><tbody>
+      ${clients.map(c=>{
+        const scope = clientScopeTypes(c);
+        const activeProjects = state.projects.filter(p=>p.client_id===c.id && p.active).length;
+        const avgDur = clientAvgDuration(c);
+        const since = c.created_at ? fmtDate(new Date(c.created_at)) : '—';
+        return `<tr class="task-row" data-clientrow="${c.id}">
+          <td><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px;vertical-align:middle"></span>${esc(c.name)}</td>
+          <td>${c.is_retainer? '<span class="retainer-badge" style="margin-left:0">Retainer</span>' : '<span style="color:var(--muted)">Project</span>'}</td>
+          <td>${scope.length? esc(scope.join(', ')) : '<span style="color:var(--muted)">—</span>'}</td>
+          <td>${c.is_retainer? `${fmtH(c.retainer_hours)} · renews ${ordinal(c.renewal_day)}` : '<span style="color:var(--muted)">—</span>'}</td>
+          <td style="text-align:center">${activeProjects || '<span style="color:var(--muted)">—</span>'}</td>
+          <td>${avgDur!=null? `${avgDur} day${avgDur===1?'':'s'}` : '<span style="color:var(--muted)">—</span>'}</td>
+          <td style="color:var(--muted)">${since}</td>
+          <td>${c.miro_link_internal? `<a class="btn small ghost" href="${esc(c.miro_link_internal)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Miro ↗</a>` : ''}</td>
+          <td>${c.slug? `<a class="btn small ghost" href="${window.location.origin}${window.location.pathname}?client=${c.slug}&admin=1" target="_blank" rel="noopener" onclick="event.stopPropagation()">Dashboard ↗</a>` : ''}</td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>
+    </div>`;
+  main.innerHTML = html;
+  $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
+  main.querySelectorAll('[data-clientrow]').forEach(el=>el.addEventListener('click', ()=>{
+    const cl = state.clients.find(c=>c.id===el.dataset.clientrow);
+    state.projClientId = cl.id;
+    state.projView = cl.is_retainer ? 'retainerTasks' : 'clientProjects';
+    render();
+  }));
+}
+
 function clientCardHtml(c){
   if(c.is_retainer){
     const openTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id && !isCompleteStatus(t.status));
@@ -1929,7 +1990,10 @@ function renderProjClients(){
   const projectClients = clients.filter(c=>!c.is_retainer);
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div><h2>All Projects</h2></div>
-      <button class="btn small" id="newClientBtn">+ New client</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn small ghost" id="clientListBtn">Client list</button>
+        <button class="btn small" id="newClientBtn">+ New client</button>
+      </div>
     </div><div style="margin-bottom:20px"></div>`;
   if(!clients.length){
     html += `<div class="empty">No clients yet — click "+ New client" to add one.</div>`;
@@ -1945,6 +2009,7 @@ function renderProjClients(){
   }
   main.innerHTML = html;
   $('#newClientBtn').onclick = openNewClientModal;
+  $('#clientListBtn').onclick = ()=>{ state.projView='clientList'; render(); };
   main.querySelectorAll('[data-projgoto]').forEach(el=>el.addEventListener('click', ()=>{
     const cl = state.clients.find(c=>c.id===el.dataset.projgoto);
     state.projClientId = el.dataset.projgoto;
@@ -3090,7 +3155,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.7.3';
+const APP_VERSION = '0.7.4';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
