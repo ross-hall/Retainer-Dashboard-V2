@@ -353,7 +353,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.7.1</div>
+<div id="versionBadge" class="version-badge">v0.7.2</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -890,7 +890,7 @@ function openClientEditModal(clientId){
       <div><label>Dashboard link</label>
         <div style="display:flex;gap:6px">
           <input type="text" id="ec_slug" value="${esc(c.slug||'')}" placeholder="client-slug">
-          <button type="button" class="btn small ghost" id="ec_copylink" style="white-space:nowrap">Copy link</button>
+          <button type="button" class="btn small ghost" id="ec_copylink" style="white-space:nowrap">Copy admin link</button>
         </div>
       </div>
       <div><label>Accent colour</label>${colorCircleHtml('ec_dashcolor', c.dash_accent_color||'#040e6b')}</div>
@@ -913,8 +913,8 @@ function openClientEditModal(clientId){
   $('#ec_copylink').onclick = ()=>{
     const slug = $('#ec_slug').value.trim() || c.slug;
     if(!slug){ toast('Add a dashboard link first, then save'); return; }
-    const url = `${window.location.origin}${window.location.pathname}?client=${slug}`;
-    navigator.clipboard?.writeText(url).then(()=> toast('Dashboard link copied')).catch(()=> toast(url));
+    const url = `${window.location.origin}${window.location.pathname}?client=${slug}&admin=1`;
+    navigator.clipboard?.writeText(url).then(()=> toast('Admin dashboard link copied')).catch(()=> toast(url));
   };
   $('#ec_cancel').onclick = closeModal;
   $('#ec_save').onclick = async ()=>{
@@ -1336,7 +1336,7 @@ function jumpToProjTask(taskId){
 
 function dashboardLinkButtonHtml(c){
   if(!c.slug) return '';
-  const url = `${window.location.origin}${window.location.pathname}?client=${c.slug}`;
+  const url = `${window.location.origin}${window.location.pathname}?client=${c.slug}&admin=1`;
   return `<a class="btn small ghost" href="${esc(url)}" target="_blank" rel="noopener">View dashboard ↗</a>`;
 }
 function clientRetainerHeaderHtml(c, mode){
@@ -1560,7 +1560,8 @@ function retainerMilestoneChipHtml(t, cl, weekStyle){
   </div>`;
 }
 
-function openStageCategoryModal(ctx){
+function openStageCategoryModal(ctx, onDone){
+  onDone = onDone || refreshProjectView;
   const stageId = ctx.stageId || null, projectId = ctx.projectId || null;
   showModal(`
     <h3>New category</h3>
@@ -1582,11 +1583,12 @@ function openStageCategoryModal(ctx){
     const position = state.stageCategories.filter(c=> stageId ? c.stage_id===stageId : c.project_id===projectId).length;
     const { error } = await db.from('rs_stage_categories').insert({ stage_id:stageId, project_id:projectId, name, position });
     if(error){ toast('Could not add category'); console.error(error); return; }
-    closeModal(); toast('Category added'); await refreshProjectView();
+    closeModal(); toast('Category added'); await onDone();
   };
 }
 
-function openStageLinkModal(categoryId, linkId){
+function openStageLinkModal(categoryId, linkId, onDone){
+  onDone = onDone || refreshProjectView;
   const l = linkId ? state.stageLinks.find(x=>x.id===linkId) : { label:'', url:'', icon:'link', description:'' };
   const isNew = !linkId;
   showModal(`
@@ -1610,7 +1612,7 @@ function openStageLinkModal(categoryId, linkId){
     if(!confirm('Delete this link?')) return;
     const { error } = await db.from('rs_stage_links').delete().eq('id', linkId);
     if(error){ toast('Delete failed'); return; }
-    closeModal(); toast('Link deleted'); await refreshProjectView();
+    closeModal(); toast('Link deleted'); await onDone();
   };
   $('#lk_save').onclick = async ()=>{
     const label = $('#lk_label').value.trim();
@@ -1622,11 +1624,11 @@ function openStageLinkModal(categoryId, linkId){
       const position = state.stageLinks.filter(x=>x.category_id===categoryId).length;
       const { error } = await db.from('rs_stage_links').insert({ category_id:categoryId, label, url, icon, description, position });
       if(error){ toast('Could not add link'); console.error(error); return; }
-      closeModal(); toast('Link added'); await refreshProjectView();
+      closeModal(); toast('Link added'); await onDone();
     } else {
       const { error } = await db.from('rs_stage_links').update({ label, url, icon, description }).eq('id', linkId);
       if(error){ toast('Could not save'); console.error(error); return; }
-      closeModal(); toast('Link updated'); await refreshProjectView();
+      closeModal(); toast('Link updated'); await onDone();
     }
   };
 }
@@ -2370,35 +2372,6 @@ function renderProjDetail(){
     </div>
     <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
 
-  const projCats = state.stageCategories.filter(cat=>cat.project_id===p.id).sort((a,b)=>a.position-b.position);
-  const projLinkCount = projCats.reduce((n,cat)=>n+state.stageLinks.filter(l=>l.category_id===cat.id).length, 0);
-  html += `<details style="margin-bottom:24px" ${projCats.length?'open':''}>
-    <summary style="cursor:pointer;font-size:12.5px;color:var(--muted);font-weight:600">🔗 General assets — always visible on the client dashboard (${projLinkCount})</summary>
-    <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
-      ${projCats.map(cat=>{
-        const links = state.stageLinks.filter(l=>l.category_id===cat.id).sort((a,b)=>a.position-b.position);
-        return `<div class="card" style="padding:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
-            <b style="font-size:12.5px">${esc(cat.name)}</b>
-            <div style="display:flex;gap:6px;flex-shrink:0">
-              <button class="btn small ghost" data-addlink="${cat.id}">+ Link</button>
-              <button class="btn small ghost" data-delcat="${cat.id}">Delete category</button>
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${links.map(l=>`<div style="display:flex;align-items:center;gap:8px;font-size:12.5px">
-              <span style="color:var(--navy-soft)">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
-              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.label)} <span style="color:var(--muted)">— ${esc(l.url)}</span></span>
-              <button class="btn small ghost" data-editlink="${l.id}">Edit</button>
-              <button class="btn small ghost" data-dellink="${l.id}">Delete</button>
-            </div>`).join('') || '<div class="empty" style="padding:6px 0">No links yet</div>'}
-          </div>
-        </div>`;
-      }).join('')}
-      <button class="btn small ghost" data-addprojcat="${p.id}">+ Category</button>
-    </div>
-  </details>`;
-
   if(!stages.length){
     html += `<div class="empty">No stages yet — click "Add stage" to get started.</div>`;
   } else {
@@ -2409,8 +2382,6 @@ function renderProjDetail(){
       const dateLabel = s.due_date
         ? `${overdue?'⚠️ ':''}${fmtDateNatural(s.due_date)}${s.due_time?' · '+formatTime12(s.due_time):''}${overdue?' (overdue)':''}`
         : 'Set due date';
-      const cats = state.stageCategories.filter(cat=>cat.stage_id===s.id).sort((a,b)=>a.position-b.position);
-      const linkCount = cats.reduce((n,cat)=>n+state.stageLinks.filter(l=>l.category_id===cat.id).length, 0);
       html += `<div class="stage-section" data-stagesection="${s.id}">
         <div class="stage-head">
           <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
@@ -2421,32 +2392,6 @@ function renderProjDetail(){
         </div>
         <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.')}</div>
         <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
-        <details style="margin-top:14px">
-          <summary style="cursor:pointer;font-size:12px;color:var(--muted);font-weight:600">🔗 Client-facing links (${linkCount})</summary>
-          <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
-            ${cats.map(cat=>{
-              const links = state.stageLinks.filter(l=>l.category_id===cat.id).sort((a,b)=>a.position-b.position);
-              return `<div class="card" style="padding:12px">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
-                  <b style="font-size:12.5px">${esc(cat.name)}</b>
-                  <div style="display:flex;gap:6px;flex-shrink:0">
-                    <button class="btn small ghost" data-addlink="${cat.id}">+ Link</button>
-                    <button class="btn small ghost" data-delcat="${cat.id}">Delete category</button>
-                  </div>
-                </div>
-                <div style="display:flex;flex-direction:column;gap:6px">
-                  ${links.map(l=>`<div style="display:flex;align-items:center;gap:8px;font-size:12.5px">
-                    <span style="color:var(--navy-soft)">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
-                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.label)} <span style="color:var(--muted)">— ${esc(l.url)}</span></span>
-                    <button class="btn small ghost" data-editlink="${l.id}">Edit</button>
-                    <button class="btn small ghost" data-dellink="${l.id}">Delete</button>
-                  </div>`).join('') || '<div class="empty" style="padding:6px 0">No links yet</div>'}
-                </div>
-              </div>`;
-            }).join('')}
-            <button class="btn small ghost" data-addcat="${s.id}">+ Category</button>
-          </div>
-        </details>
       </div>`;
     });
   }
@@ -2457,25 +2402,6 @@ function renderProjDetail(){
   $('#discordBtn').onclick = ()=> openDiscordModal(p.id);
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
-  main.querySelectorAll('[data-addcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ stageId: el.dataset.addcat })));
-  main.querySelectorAll('[data-addprojcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ projectId: el.dataset.addprojcat })));
-  main.querySelectorAll('[data-delcat]').forEach(el=>el.addEventListener('click', async ()=>{
-    if(!confirm('Delete this category and all its links? This cannot be undone.')) return;
-    const { error } = await db.from('rs_stage_categories').delete().eq('id', el.dataset.delcat);
-    if(error){ toast('Delete failed'); return; }
-    toast('Category deleted'); await refreshProjectView();
-  }));
-  main.querySelectorAll('[data-addlink]').forEach(el=>el.addEventListener('click', ()=> openStageLinkModal(el.dataset.addlink, null)));
-  main.querySelectorAll('[data-editlink]').forEach(el=>{
-    const link = state.stageLinks.find(l=>l.id===el.dataset.editlink);
-    el.addEventListener('click', ()=> openStageLinkModal(link.category_id, link.id));
-  });
-  main.querySelectorAll('[data-dellink]').forEach(el=>el.addEventListener('click', async ()=>{
-    if(!confirm('Delete this link?')) return;
-    const { error } = await db.from('rs_stage_links').delete().eq('id', el.dataset.dellink);
-    if(error){ toast('Delete failed'); return; }
-    toast('Link deleted'); await refreshProjectView();
-  }));
   wireTaskRows(main);
   main.querySelectorAll('[data-stagedate]').forEach(el=>el.addEventListener('click', ()=>{
     const s = stages.find(s=>s.id===el.dataset.stagedate);
@@ -3163,7 +3089,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.7.1';
+const APP_VERSION = '0.7.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -3310,7 +3236,7 @@ function initColumnResize(){
 initColumnResize();
 
 /* ================= Public client dashboard (?client=slug) ================= */
-async function bootPublicDashboard(slug){
+async function bootPublicDashboard(slug, isAdmin){
   const { data: client, error } = await db.from('rs_clients').select('*').eq('slug', slug).eq('active', true).maybeSingle();
   if(error || !client){
     document.body.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Rubik',sans-serif;background:var(--paper);text-align:center">
@@ -3333,24 +3259,58 @@ async function bootPublicDashboard(slug){
   const links = linksRes.data||[];
   // stageStatus()/isCompleteStatus() (shared with the internal app) read from
   // state — populate just enough of it here since the public path skips loadAll().
+  // openStageCategoryModal/openStageLinkModal (used in admin mode) also read
+  // state.stageCategories/stageLinks to work out new-item positions.
   const [tasksRes, statusesRes] = await Promise.all([
     stageIds.length ? db.from('rs_proj_tasks').select('*').in('stage_id', stageIds) : { data: [] },
     db.from('rs_task_statuses').select('*').order('position')
   ]);
   state.projTasks = tasksRes.data||[];
   state.taskStatuses = (statusesRes.data && statusesRes.data.length) ? statusesRes.data : DEFAULT_TASK_STATUSES;
-  renderPublicDashboard(client, projects||[], stages, categories, links);
+  state.stageCategories = categories;
+  state.stageLinks = links;
+  renderPublicDashboard(client, projects||[], stages, categories, links, !!isAdmin);
 }
 
-function renderPublicDashboard(client, projects, allStages, allCategories, allLinks){
+function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin){
   const pub = { projectId: projects[0]?.id || null, viewedStageId: null };
   const accent = client.dash_accent_color || '#040e6b';
   const initials = (client.name||'?').charAt(0).toUpperCase();
+  async function reload(){ await bootPublicDashboard(client.slug, true); }
 
   function stagesFor(projectId){ return allStages.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
   function catsFor(stageId){ return allCategories.filter(c=>c.stage_id===stageId).sort((a,b)=>a.position-b.position); }
   function projectCatsFor(projectId){ return allCategories.filter(c=>c.project_id===projectId && !c.stage_id).sort((a,b)=>a.position-b.position); }
   function linksFor(categoryId){ return allLinks.filter(l=>l.category_id===categoryId).sort((a,b)=>a.position-b.position); }
+
+  function categoryBlockHtml(cat){
+    const catLinks = linksFor(cat.id);
+    if(!isAdmin && !catLinks.length) return '';
+    return `<div style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="pd-cat-label" style="margin-bottom:0">${esc(cat.name)}</div>
+        ${isAdmin? `<div style="display:flex;gap:6px"><button class="btn small ghost" data-addlink="${cat.id}">+ Link</button><button class="btn small ghost" data-delcat="${cat.id}">Delete category</button></div>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${catLinks.map(l=> isAdmin ? `
+          <div class="pd-link-card">
+            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
+            <span style="flex:1;min-width:0">
+              <a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" style="display:block;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none">${esc(l.label)}</a>
+              ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}
+            </span>
+            <button class="btn small ghost" data-editlink="${l.id}">Edit</button>
+          </div>` : `<a class="pd-link-card" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span>
+              ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}
+            </span>
+          </a>`
+        ).join('') || (isAdmin? '<div class="empty" style="padding:6px 0">No links yet</div>' : '')}
+      </div>
+    </div>`;
+  }
 
   function paint(){
     const proj = projects.find(p=>p.id===pub.projectId) || projects[0] || null;
@@ -3377,47 +3337,29 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>`;
     }).join('') : `<div class="empty" style="padding:20px 0">No stages yet.</div>`;
 
-    const assetsHtml = viewedStage ? (catsFor(viewedStage.id).map(cat=>{
-      const catLinks = linksFor(cat.id);
-      if(!catLinks.length) return '';
-      return `<div style="margin-bottom:18px">
-        <div class="pd-cat-label">${esc(cat.name)}</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${catLinks.map(l=>`<a class="pd-link-card" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
-            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
-            <span style="flex:1;min-width:0">
-              <span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span>
-              ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}
-            </span>
-          </a>`).join('')}
-        </div>
-      </div>`;
-    }).join('') || `<div class="empty" style="padding:20px 0">Nothing shared for this stage yet.</div>`) : '';
+    const stageCatsList = viewedStage ? catsFor(viewedStage.id) : [];
+    const assetsBody = stageCatsList.map(categoryBlockHtml).join('');
+    const assetsHtml = viewedStage
+      ? (assetsBody || (isAdmin? '' : `<div class="empty" style="padding:20px 0">Nothing shared for this stage yet.</div>`))
+        + (isAdmin? `<button class="btn small ghost" data-addcat="${viewedStage.id}">+ Category</button>` : '')
+      : '';
 
     const generalCats = proj ? projectCatsFor(proj.id) : [];
-    const generalLinksHtml = generalCats.map(cat=>{
-      const catLinks = linksFor(cat.id);
-      if(!catLinks.length) return '';
-      return `<div style="margin-bottom:14px">
-        <div class="pd-cat-label">${esc(cat.name)}</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${catLinks.map(l=>`<a class="pd-link-card" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
-            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
-            <span style="flex:1;min-width:0">
-              <span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span>
-              ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}
-            </span>
-          </a>`).join('')}
-        </div>
-      </div>`;
-    }).join('');
-    const generalAssetsHtml = generalLinksHtml ? `<div class="card" style="max-width:1000px;margin:0 auto 20px;margin-left:auto;margin-right:auto">
-      <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">General assets</div>
-      ${generalLinksHtml}
+    const generalBody = generalCats.map(categoryBlockHtml).join('');
+    const generalAssetsHtml = (generalBody || isAdmin) ? `<div class="card" style="max-width:1000px;margin:0 auto 20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">General assets</div>
+        ${isAdmin && proj ? `<button class="btn small ghost" data-addprojcat="${proj.id}">+ Category</button>` : ''}
+      </div>
+      ${generalBody || (isAdmin? '<div class="empty">No general assets yet.</div>' : '')}
     </div>` : '';
 
     document.body.innerHTML = `
       <div style="min-height:100vh;background:var(--paper);font-family:'Rubik',sans-serif;color:var(--ink)">
+        ${isAdmin? `<div style="background:${accent};color:#fff;text-align:center;padding:8px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px">
+          <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
+          <button class="btn small" style="background:#fff;color:${accent}" id="pdCopyClient">Copy client link</button>
+        </div>` : ''}
         <div style="max-width:1000px;margin:0 auto;padding:40px 24px 20px">
           <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px">
             <div style="width:60px;height:60px;border-radius:14px;flex-shrink:0;background:${client.dash_logo_url?'var(--track)':accent};display:flex;align-items:center;justify-content:center;overflow:hidden">
@@ -3450,10 +3392,33 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           </div>
         </div>
         <div style="display:flex;align-items:center;justify-content:center;padding:20px;opacity:.5;font-size:12px;color:var(--muted)">Reciprocal Space</div>
-      </div>`;
+      </div>
+      <div id="modalRoot"></div>
+      <div class="toast" id="toast"></div>`;
 
     document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; paint(); }));
     document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; paint(); }));
+
+    if(isAdmin){
+      const copyBtn = document.getElementById('pdCopyClient');
+      if(copyBtn) copyBtn.addEventListener('click', ()=>{
+        const url = `${window.location.origin}${window.location.pathname}?client=${client.slug}`;
+        navigator.clipboard?.writeText(url).then(()=> toast('Client link copied')).catch(()=> toast(url));
+      });
+      document.querySelectorAll('[data-addcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ stageId: el.dataset.addcat }, reload)));
+      document.querySelectorAll('[data-addprojcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ projectId: el.dataset.addprojcat }, reload)));
+      document.querySelectorAll('[data-delcat]').forEach(el=>el.addEventListener('click', async ()=>{
+        if(!confirm('Delete this category and all its links? This cannot be undone.')) return;
+        const { error } = await db.from('rs_stage_categories').delete().eq('id', el.dataset.delcat);
+        if(error){ toast('Delete failed'); return; }
+        toast('Category deleted'); await reload();
+      }));
+      document.querySelectorAll('[data-addlink]').forEach(el=>el.addEventListener('click', ()=> openStageLinkModal(el.dataset.addlink, null, reload)));
+      document.querySelectorAll('[data-editlink]').forEach(el=>{
+        const link = allLinks.find(l=>l.id===el.dataset.editlink);
+        el.addEventListener('click', ()=> openStageLinkModal(link.category_id, link.id, reload));
+      });
+    }
   }
   paint();
 }
@@ -3464,8 +3429,9 @@ async function boot(){
   if(!url || !key){ showSetup(); return; }
   db = supabase.createClient(url, key);
 
-  const clientSlug = new URLSearchParams(window.location.search).get('client');
-  if(clientSlug){ await bootPublicDashboard(clientSlug); return; }
+  const qs = new URLSearchParams(window.location.search);
+  const clientSlug = qs.get('client');
+  if(clientSlug){ await bootPublicDashboard(clientSlug, qs.get('admin')==='1'); return; }
 
   $('#nav').style.display = 'flex';
   $('#brandBtn').addEventListener('click', ()=>{ state.view='home'; render(); });
