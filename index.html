@@ -353,7 +353,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.7.0</div>
+<div id="versionBadge" class="version-badge">v0.7.1</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -1334,6 +1334,11 @@ function jumpToProjTask(taskId){
   openProjTaskModal(taskId, {});
 }
 
+function dashboardLinkButtonHtml(c){
+  if(!c.slug) return '';
+  const url = `${window.location.origin}${window.location.pathname}?client=${c.slug}`;
+  return `<a class="btn small ghost" href="${esc(url)}" target="_blank" rel="noopener">View dashboard ↗</a>`;
+}
 function clientRetainerHeaderHtml(c, mode){
   const bcLabel = mode==='allowance' ? 'Retainers' : 'Clients';
   const bcTarget = mode==='allowance' ? 'retainers' : 'clients';
@@ -1341,7 +1346,7 @@ function clientRetainerHeaderHtml(c, mode){
     <div class="card" style="margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span></h2>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}${dashboardLinkButtonHtml(c)}</div>
       </div>
     </div>`;
 }
@@ -1555,7 +1560,8 @@ function retainerMilestoneChipHtml(t, cl, weekStyle){
   </div>`;
 }
 
-function openStageCategoryModal(stageId){
+function openStageCategoryModal(ctx){
+  const stageId = ctx.stageId || null, projectId = ctx.projectId || null;
   showModal(`
     <h3>New category</h3>
     <div class="sub">e.g. "Design files", "Brand assets" — links you add underneath will show grouped under this name on the client's dashboard.</div>
@@ -1573,8 +1579,8 @@ function openStageCategoryModal(stageId){
   $('#cat_save').onclick = async ()=>{
     const name = $('#cat_name').value.trim();
     if(!name){ toast('Give the category a name'); return; }
-    const position = state.stageCategories.filter(c=>c.stage_id===stageId).length;
-    const { error } = await db.from('rs_stage_categories').insert({ stage_id:stageId, name, position });
+    const position = state.stageCategories.filter(c=> stageId ? c.stage_id===stageId : c.project_id===projectId).length;
+    const { error } = await db.from('rs_stage_categories').insert({ stage_id:stageId, project_id:projectId, name, position });
     if(error){ toast('Could not add category'); console.error(error); return; }
     closeModal(); toast('Category added'); await refreshProjectView();
   };
@@ -1976,6 +1982,7 @@ function renderProjClientProjects(){
     <div style="margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" id="newProjectBtn">+ New project</button>
       ${miroButtonsHtml(c)}
+      ${dashboardLinkButtonHtml(c)}
       <button class="btn small ghost" id="editClientBtn2">Edit client</button>
     </div>`;
 
@@ -2363,6 +2370,35 @@ function renderProjDetail(){
     </div>
     <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
 
+  const projCats = state.stageCategories.filter(cat=>cat.project_id===p.id).sort((a,b)=>a.position-b.position);
+  const projLinkCount = projCats.reduce((n,cat)=>n+state.stageLinks.filter(l=>l.category_id===cat.id).length, 0);
+  html += `<details style="margin-bottom:24px" ${projCats.length?'open':''}>
+    <summary style="cursor:pointer;font-size:12.5px;color:var(--muted);font-weight:600">🔗 General assets — always visible on the client dashboard (${projLinkCount})</summary>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
+      ${projCats.map(cat=>{
+        const links = state.stageLinks.filter(l=>l.category_id===cat.id).sort((a,b)=>a.position-b.position);
+        return `<div class="card" style="padding:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+            <b style="font-size:12.5px">${esc(cat.name)}</b>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn small ghost" data-addlink="${cat.id}">+ Link</button>
+              <button class="btn small ghost" data-delcat="${cat.id}">Delete category</button>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${links.map(l=>`<div style="display:flex;align-items:center;gap:8px;font-size:12.5px">
+              <span style="color:var(--navy-soft)">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.label)} <span style="color:var(--muted)">— ${esc(l.url)}</span></span>
+              <button class="btn small ghost" data-editlink="${l.id}">Edit</button>
+              <button class="btn small ghost" data-dellink="${l.id}">Delete</button>
+            </div>`).join('') || '<div class="empty" style="padding:6px 0">No links yet</div>'}
+          </div>
+        </div>`;
+      }).join('')}
+      <button class="btn small ghost" data-addprojcat="${p.id}">+ Category</button>
+    </div>
+  </details>`;
+
   if(!stages.length){
     html += `<div class="empty">No stages yet — click "Add stage" to get started.</div>`;
   } else {
@@ -2421,7 +2457,8 @@ function renderProjDetail(){
   $('#discordBtn').onclick = ()=> openDiscordModal(p.id);
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
-  main.querySelectorAll('[data-addcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal(el.dataset.addcat)));
+  main.querySelectorAll('[data-addcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ stageId: el.dataset.addcat })));
+  main.querySelectorAll('[data-addprojcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ projectId: el.dataset.addprojcat })));
   main.querySelectorAll('[data-delcat]').forEach(el=>el.addEventListener('click', async ()=>{
     if(!confirm('Delete this category and all its links? This cannot be undone.')) return;
     const { error } = await db.from('rs_stage_categories').delete().eq('id', el.dataset.delcat);
@@ -3126,7 +3163,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.7.0';
+const APP_VERSION = '0.7.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -3287,7 +3324,9 @@ async function bootPublicDashboard(slug){
   const stagesRes = projectIds.length ? await db.from('rs_project_stages').select('*').in('project_id', projectIds).order('position') : { data: [] };
   const stages = stagesRes.data||[];
   const stageIds = stages.map(s=>s.id);
-  const catsRes = stageIds.length ? await db.from('rs_stage_categories').select('*').in('stage_id', stageIds).order('position') : { data: [] };
+  const catsRes = (stageIds.length || projectIds.length)
+    ? await db.from('rs_stage_categories').select('*').or(`stage_id.in.(${stageIds.join(',')||'00000000-0000-0000-0000-000000000000'}),project_id.in.(${projectIds.join(',')||'00000000-0000-0000-0000-000000000000'})`).order('position')
+    : { data: [] };
   const categories = catsRes.data||[];
   const catIds = categories.map(c=>c.id);
   const linksRes = catIds.length ? await db.from('rs_stage_links').select('*').in('category_id', catIds).order('position') : { data: [] };
@@ -3310,6 +3349,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
   function stagesFor(projectId){ return allStages.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
   function catsFor(stageId){ return allCategories.filter(c=>c.stage_id===stageId).sort((a,b)=>a.position-b.position); }
+  function projectCatsFor(projectId){ return allCategories.filter(c=>c.project_id===projectId && !c.stage_id).sort((a,b)=>a.position-b.position); }
   function linksFor(categoryId){ return allLinks.filter(l=>l.category_id===categoryId).sort((a,b)=>a.position-b.position); }
 
   function paint(){
@@ -3354,6 +3394,28 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>`;
     }).join('') || `<div class="empty" style="padding:20px 0">Nothing shared for this stage yet.</div>`) : '';
 
+    const generalCats = proj ? projectCatsFor(proj.id) : [];
+    const generalLinksHtml = generalCats.map(cat=>{
+      const catLinks = linksFor(cat.id);
+      if(!catLinks.length) return '';
+      return `<div style="margin-bottom:14px">
+        <div class="pd-cat-label">${esc(cat.name)}</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${catLinks.map(l=>`<a class="pd-link-card" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span>
+              ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}
+            </span>
+          </a>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+    const generalAssetsHtml = generalLinksHtml ? `<div class="card" style="max-width:1000px;margin:0 auto 20px;margin-left:auto;margin-right:auto">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">General assets</div>
+      ${generalLinksHtml}
+    </div>` : '';
+
     document.body.innerHTML = `
       <div style="min-height:100vh;background:var(--paper);font-family:'Rubik',sans-serif;color:var(--ink)">
         <div style="max-width:1000px;margin:0 auto;padding:40px 24px 20px">
@@ -3373,7 +3435,8 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           ${client.dash_greeting? `<p style="font-size:14px;color:var(--muted);line-height:1.6;max-width:640px;margin-bottom:8px">${esc(client.dash_greeting)}</p>`:''}
         </div>
         ${tabsHtml}
-        <div style="max-width:1000px;margin:0 auto;padding:24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdGrid">
+        <div style="max-width:1000px;margin:0 auto;padding:24px 24px 0">${generalAssetsHtml}</div>
+        <div style="max-width:1000px;margin:0 auto;padding:0 24px 24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdGrid">
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
               <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Stage progress</div>
