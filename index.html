@@ -314,6 +314,18 @@
   .gantt-track-col{position:relative;height:24px;background:var(--track);border-radius:6px}
   .gantt-bar{position:absolute;top:2px;height:20px;border-radius:5px;color:#fff;font-size:10.5px;font-weight:500;padding:2px 7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;line-height:1.6}
   .gantt-kickoff{position:absolute;top:-4px;width:3px;height:32px;border-radius:2px;cursor:pointer}
+
+  .pd-tabs{max-width:1000px;margin:0 auto;padding:0 24px;display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+  .pd-tab{padding:10px 16px;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;font-family:'Rubik',sans-serif;font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
+  .pd-stage-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer}
+  .pd-stage-row:hover{background:var(--track)}
+  .pd-stage-dot{width:24px;height:24px;border-radius:50%;flex:none;background:var(--track);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+  .pd-stage-label{flex:1;font-size:13.5px;color:var(--ink)}
+  .pd-stage-date{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .pd-cat-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .pd-link-card{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;background:var(--paper);border:1px solid var(--line);border-radius:10px;text-decoration:none;transition:border-color .15s}
+  .pd-link-card:hover{border-color:var(--navy-soft)}
+  @media(max-width:760px){ #pdGrid{grid-template-columns:1fr !important} }
   .year-row:last-child{border-bottom:none}
 </style>
 </head>
@@ -341,12 +353,12 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.6.3</div>
+<div id="versionBadge" class="version-badge">v0.7.0</div>
 
 <script>
 /* ============ CONFIG ============ */
-const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
+const SUPABASE_URL = "https://glbfuurfebepqzvlkjwa.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj";
 /* ================================ */
 
 let db = null;
@@ -355,7 +367,7 @@ let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clie
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[] };
+  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[] };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -365,6 +377,22 @@ const store = {
 };
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
 function esc(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function slugify(name){ return (name||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+function uniqueSlug(name){
+  const base = slugify(name) || 'client';
+  let candidate = base, n = 1;
+  while(state.clients.some(c=>c.slug===candidate)) candidate = `${base}-${++n}`;
+  return candidate;
+}
+const LINK_ICONS = {
+  figma: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M8 24c2.208 0 4-1.792 4-4v-4H8c-2.208 0-4 1.792-4 4s1.792 4 4 4z"/><path d="M4 12c0-2.208 1.792-4 4-4h4v8H8c-2.208 0-4-1.792-4-4z"/><path d="M4 4c0-2.208 1.792-4 4-4h4v8H8C5.792 8 4 6.208 4 4z"/><path d="M12 0h4c2.208 0 4 1.792 4 4s-1.792 4-4 4h-4V0z"/><path d="M20 12c0 2.208-1.792 4-4 4s-4-1.792-4-4 1.792-4 4-4 4 1.792 4 4z"/></svg>',
+  dropbox: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M6 1.5L0 5.25l6 3.75 6-3.75L6 1.5zM18 1.5l-6 3.75 6 3.75 6-3.75L18 1.5zM0 12.75L6 16.5l6-3.75-6-3.75L0 12.75zM18 9l-6 3.75 6 3.75 6-3.75L18 9zM6 17.625L12 21.375l6-3.75-6-3.75-6 3.75z"/></svg>',
+  miro: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M17.392 0H6.608L0 6.608v10.784L6.608 24h10.784L24 17.392V6.608L17.392 0zm-1.084 16.256h-2.424l-2.64-4.2-1.08 1.332v2.868H7.9V7.744h2.264v3.396l3.48-3.396h2.748l-3.372 3.564 3.288 4.948z"/></svg>',
+  notion: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933z"/></svg>',
+  slack: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52z"/></svg>',
+  drive: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M7.71 3.5L1.15 15l3.43 6 6.56-11.5zm0 0M16.29 3.5H3.16l-2 3.46h13.14zm0 0M22.85 15L16.29 3.5l-3.44 6 6.57 11.5zm0 0M21.42 18.04H8.28l-2 3.46h13.14zm0 0M15 12.04L12 6.5l-3 5.54 3 5.46zm0 0"/></svg>',
+  link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+};
 function fmtH(n){ const v=Math.round(n*100)/100; return (v%1===0? v.toFixed(0):v.toFixed(2).replace(/0$/,''))+'h'; }
 function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
@@ -488,16 +516,20 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
     db.from('rs_project_types').select('*').order('position'),
-    db.from('rs_task_statuses').select('*').order('position')
+    db.from('rs_task_statuses').select('*').order('position'),
+    db.from('rs_stage_categories').select('*').order('position'),
+    db.from('rs_stage_links').select('*').order('position')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
+  state.stageCategories = sc.data||[]; state.stageLinks = sl.data||[];
   if(ts.error) console.warn('Task statuses table not found — run retainer-tracker-migration-v13.sql', ts.error);
+  if(sc.error) console.warn('Client dashboard tables not found — run retainer-tracker-migration-v14.sql', sc.error);
   if(pr.error) console.warn('Project Overview tables not found — run retainer-tracker-migration-v4.sql', pr.error);
   render();
 }
@@ -811,7 +843,8 @@ function openNewClientModal(){
     const color = $('#nc_color').value;
     const miro_link_external = $('#nc_miro_ext').value.trim() || null;
     const miro_link_internal = $('#nc_miro_int').value.trim() || null;
-    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link_external, miro_link_internal }).select().single();
+    const slug = uniqueSlug(name);
+    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link_external, miro_link_internal, slug }).select().single();
     if(error){ toast('Could not create client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     closeModal(); toast('Client created');
@@ -850,6 +883,22 @@ function openClientEditModal(clientId){
       </div>
       ${miroFieldsHtml('ec', c.miro_link_external, c.miro_link_internal)}
       <div class="full weighted-note">The retainer fields only matter if you tick "On retainer" — the colour updates immediately either way.</div>
+
+      <div class="full" style="border-top:1px solid var(--line);margin-top:6px;padding-top:16px">
+        <label style="margin-bottom:8px;display:block">Client dashboard <span style="color:var(--muted);font-weight:400">— what this client sees at their public link</span></label>
+      </div>
+      <div><label>Dashboard link</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="ec_slug" value="${esc(c.slug||'')}" placeholder="client-slug">
+          <button type="button" class="btn small ghost" id="ec_copylink" style="white-space:nowrap">Copy link</button>
+        </div>
+      </div>
+      <div><label>Accent colour</label>${colorCircleHtml('ec_dashcolor', c.dash_accent_color||'#040e6b')}</div>
+      <div class="full"><label>Tagline <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="ec_tagline" value="${esc(c.dash_logo_text||'')}" placeholder="e.g. Series A biotech"></div>
+      <div class="full"><label>Welcome message <span style="color:var(--muted);font-weight:400">(optional)</span></label><textarea id="ec_greeting" style="min-height:60px">${esc(c.dash_greeting||'')}</textarea></div>
+      <div><label>Logo image URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_logourl" value="${esc(c.dash_logo_url||'')}" placeholder="https://..."></div>
+      <div><label>Contact email <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="email" id="ec_contactemail" value="${esc(c.dash_contact_email||'')}" placeholder="team@reciprocal.space"></div>
+      <div class="full"><label>Website URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_websiteurl" value="${esc(c.dash_website_url||'')}" placeholder="https://reciprocal.space"></div>
     </form>
     <div class="modal-actions">
       <div class="right">
@@ -860,6 +909,13 @@ function openClientEditModal(clientId){
   `);
   $('#ec_isretainer').addEventListener('change', e=>{ $('#ec_retainer_fields').style.display = e.target.checked?'contents':'none'; });
   wireColorCircle('ec_color');
+  wireColorCircle('ec_dashcolor');
+  $('#ec_copylink').onclick = ()=>{
+    const slug = $('#ec_slug').value.trim() || c.slug;
+    if(!slug){ toast('Add a dashboard link first, then save'); return; }
+    const url = `${window.location.origin}${window.location.pathname}?client=${slug}`;
+    navigator.clipboard?.writeText(url).then(()=> toast('Dashboard link copied')).catch(()=> toast(url));
+  };
   $('#ec_cancel').onclick = closeModal;
   $('#ec_save').onclick = async ()=>{
     const color = $('#ec_color').value;
@@ -871,8 +927,16 @@ function openClientEditModal(clientId){
     const effective_from = $('#ec_effective').value || today;
     const turningOn = is_retainer && !c.is_retainer;
     const changed = is_retainer && !turningOn && (retainer_hours !== c.retainer_hours || renewal_day !== c.renewal_day);
+    const newSlug = slugify($('#ec_slug').value) || c.slug || uniqueSlug(c.name);
+    if(newSlug !== c.slug && state.clients.some(x=>x.id!==c.id && x.slug===newSlug)){ toast('That dashboard link is already taken by another client'); return; }
+    const dash_accent_color = $('#ec_dashcolor').value;
+    const dash_logo_text = $('#ec_tagline').value.trim() || null;
+    const dash_greeting = $('#ec_greeting').value.trim() || null;
+    const dash_logo_url = $('#ec_logourl').value.trim() || null;
+    const dash_contact_email = $('#ec_contactemail').value.trim() || null;
+    const dash_website_url = $('#ec_websiteurl').value.trim() || null;
 
-    const { error: updErr } = await db.from('rs_clients').update({ color, is_retainer, retainer_hours, renewal_day, miro_link_external, miro_link_internal }).eq('id', c.id);
+    const { error: updErr } = await db.from('rs_clients').update({ color, is_retainer, retainer_hours, renewal_day, miro_link_external, miro_link_internal, slug:newSlug, dash_accent_color, dash_logo_text, dash_greeting, dash_logo_url, dash_contact_email, dash_website_url }).eq('id', c.id);
     if(updErr){ toast('Save failed'); console.error(updErr); return; }
     if(turningOn){
       await db.from('rs_client_settings_history').insert({ client_id:c.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
@@ -1489,6 +1553,76 @@ function retainerMilestoneChipHtml(t, cl, weekStyle){
     <div class="mc2">📋 Retainer delivery</div>
     <div class="mc3">${esc(t.title)}</div>
   </div>`;
+}
+
+function openStageCategoryModal(stageId){
+  showModal(`
+    <h3>New category</h3>
+    <div class="sub">e.g. "Design files", "Brand assets" — links you add underneath will show grouped under this name on the client's dashboard.</div>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Category name</label><input type="text" id="cat_name" placeholder="e.g. Design files"></div>
+    </form>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="cat_cancel">Cancel</button>
+        <button class="btn" id="cat_save">Add category</button>
+      </div>
+    </div>
+  `);
+  $('#cat_cancel').onclick = closeModal;
+  $('#cat_save').onclick = async ()=>{
+    const name = $('#cat_name').value.trim();
+    if(!name){ toast('Give the category a name'); return; }
+    const position = state.stageCategories.filter(c=>c.stage_id===stageId).length;
+    const { error } = await db.from('rs_stage_categories').insert({ stage_id:stageId, name, position });
+    if(error){ toast('Could not add category'); console.error(error); return; }
+    closeModal(); toast('Category added'); await refreshProjectView();
+  };
+}
+
+function openStageLinkModal(categoryId, linkId){
+  const l = linkId ? state.stageLinks.find(x=>x.id===linkId) : { label:'', url:'', icon:'link', description:'' };
+  const isNew = !linkId;
+  showModal(`
+    <h3>${isNew?'New link':'Edit link'}</h3>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Label</label><input type="text" id="lk_label" value="${esc(l.label)}" placeholder="e.g. Figma board"></div>
+      <div class="full"><label>URL</label><input type="url" id="lk_url" value="${esc(l.url)}" placeholder="https://..."></div>
+      <div><label>Icon</label><select id="lk_icon">${Object.keys(LINK_ICONS).map(k=>`<option value="${k}" ${l.icon===k?'selected':''}>${k[0].toUpperCase()+k.slice(1)}</option>`).join('')}</select></div>
+      <div class="full"><label>Description <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="lk_desc" value="${esc(l.description||'')}" placeholder="Shown under the label"></div>
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn danger" id="lk_delete">Delete</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="lk_cancel">Cancel</button>
+        <button class="btn" id="lk_save">${isNew?'Add link':'Save changes'}</button>
+      </div>
+    </div>
+  `);
+  $('#lk_cancel').onclick = closeModal;
+  if(!isNew) $('#lk_delete').onclick = async ()=>{
+    if(!confirm('Delete this link?')) return;
+    const { error } = await db.from('rs_stage_links').delete().eq('id', linkId);
+    if(error){ toast('Delete failed'); return; }
+    closeModal(); toast('Link deleted'); await refreshProjectView();
+  };
+  $('#lk_save').onclick = async ()=>{
+    const label = $('#lk_label').value.trim();
+    const url = $('#lk_url').value.trim();
+    if(!label || !url){ toast('Label and URL are both required'); return; }
+    const icon = $('#lk_icon').value;
+    const description = $('#lk_desc').value.trim() || null;
+    if(isNew){
+      const position = state.stageLinks.filter(x=>x.category_id===categoryId).length;
+      const { error } = await db.from('rs_stage_links').insert({ category_id:categoryId, label, url, icon, description, position });
+      if(error){ toast('Could not add link'); console.error(error); return; }
+      closeModal(); toast('Link added'); await refreshProjectView();
+    } else {
+      const { error } = await db.from('rs_stage_links').update({ label, url, icon, description }).eq('id', linkId);
+      if(error){ toast('Could not save'); console.error(error); return; }
+      closeModal(); toast('Link updated'); await refreshProjectView();
+    }
+  };
 }
 
 function openStagePreviewModal(stageId){
@@ -2239,6 +2373,8 @@ function renderProjDetail(){
       const dateLabel = s.due_date
         ? `${overdue?'⚠️ ':''}${fmtDateNatural(s.due_date)}${s.due_time?' · '+formatTime12(s.due_time):''}${overdue?' (overdue)':''}`
         : 'Set due date';
+      const cats = state.stageCategories.filter(cat=>cat.stage_id===s.id).sort((a,b)=>a.position-b.position);
+      const linkCount = cats.reduce((n,cat)=>n+state.stageLinks.filter(l=>l.category_id===cat.id).length, 0);
       html += `<div class="stage-section" data-stagesection="${s.id}">
         <div class="stage-head">
           <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
@@ -2249,6 +2385,32 @@ function renderProjDetail(){
         </div>
         <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.')}</div>
         <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
+        <details style="margin-top:14px">
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted);font-weight:600">🔗 Client-facing links (${linkCount})</summary>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
+            ${cats.map(cat=>{
+              const links = state.stageLinks.filter(l=>l.category_id===cat.id).sort((a,b)=>a.position-b.position);
+              return `<div class="card" style="padding:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+                  <b style="font-size:12.5px">${esc(cat.name)}</b>
+                  <div style="display:flex;gap:6px;flex-shrink:0">
+                    <button class="btn small ghost" data-addlink="${cat.id}">+ Link</button>
+                    <button class="btn small ghost" data-delcat="${cat.id}">Delete category</button>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  ${links.map(l=>`<div style="display:flex;align-items:center;gap:8px;font-size:12.5px">
+                    <span style="color:var(--navy-soft)">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
+                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.label)} <span style="color:var(--muted)">— ${esc(l.url)}</span></span>
+                    <button class="btn small ghost" data-editlink="${l.id}">Edit</button>
+                    <button class="btn small ghost" data-dellink="${l.id}">Delete</button>
+                  </div>`).join('') || '<div class="empty" style="padding:6px 0">No links yet</div>'}
+                </div>
+              </div>`;
+            }).join('')}
+            <button class="btn small ghost" data-addcat="${s.id}">+ Category</button>
+          </div>
+        </details>
       </div>`;
     });
   }
@@ -2259,6 +2421,24 @@ function renderProjDetail(){
   $('#discordBtn').onclick = ()=> openDiscordModal(p.id);
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
+  main.querySelectorAll('[data-addcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal(el.dataset.addcat)));
+  main.querySelectorAll('[data-delcat]').forEach(el=>el.addEventListener('click', async ()=>{
+    if(!confirm('Delete this category and all its links? This cannot be undone.')) return;
+    const { error } = await db.from('rs_stage_categories').delete().eq('id', el.dataset.delcat);
+    if(error){ toast('Delete failed'); return; }
+    toast('Category deleted'); await refreshProjectView();
+  }));
+  main.querySelectorAll('[data-addlink]').forEach(el=>el.addEventListener('click', ()=> openStageLinkModal(el.dataset.addlink, null)));
+  main.querySelectorAll('[data-editlink]').forEach(el=>{
+    const link = state.stageLinks.find(l=>l.id===el.dataset.editlink);
+    el.addEventListener('click', ()=> openStageLinkModal(link.category_id, link.id));
+  });
+  main.querySelectorAll('[data-dellink]').forEach(el=>el.addEventListener('click', async ()=>{
+    if(!confirm('Delete this link?')) return;
+    const { error } = await db.from('rs_stage_links').delete().eq('id', el.dataset.dellink);
+    if(error){ toast('Delete failed'); return; }
+    toast('Link deleted'); await refreshProjectView();
+  }));
   wireTaskRows(main);
   main.querySelectorAll('[data-stagedate]').forEach(el=>el.addEventListener('click', ()=>{
     const s = stages.find(s=>s.id===el.dataset.stagedate);
@@ -2804,7 +2984,8 @@ function renderSettings(){
     const color = $('#c_color').value;
     const miro_link_external = $('#c_miro_ext').value.trim() || null;
     const miro_link_internal = $('#c_miro_int').value.trim() || null;
-    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link_external, miro_link_internal }).select().single();
+    const slug = uniqueSlug(name);
+    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link_external, miro_link_internal, slug }).select().single();
     if(error){ toast('Could not add client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     await loadAll();
@@ -2945,7 +3126,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.6.3';
+const APP_VERSION = '0.7.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -3012,7 +3193,8 @@ async function runImport(){
     if(!key) continue;
     if(clientNameMap[key]){ append(`↷ Client "${c.name}" already exists — skipped`); continue; }
     const color = PALETTE[Object.keys(clientNameMap).length % PALETTE.length];
-    const { data: row, error } = await db.from('rs_clients').insert({ name:c.name.trim(), is_retainer: !!c.is_retainer, color }).select().single();
+    const slug = uniqueSlug(c.name.trim());
+    const { data: row, error } = await db.from('rs_clients').insert({ name:c.name.trim(), is_retainer: !!c.is_retainer, color, slug }).select().single();
     if(error){ append(`❌ Client "${c.name}": ${error.message}`); continue; }
     clientNameMap[key] = row.id;
     append(`✓ Created client "${c.name}"${c.is_retainer?' (retainer)':''}`);
@@ -3090,11 +3272,138 @@ function initColumnResize(){
 }
 initColumnResize();
 
+/* ================= Public client dashboard (?client=slug) ================= */
+async function bootPublicDashboard(slug){
+  const { data: client, error } = await db.from('rs_clients').select('*').eq('slug', slug).eq('active', true).maybeSingle();
+  if(error || !client){
+    document.body.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Rubik',sans-serif;background:var(--paper);text-align:center">
+      <div><div style="font-size:16px;color:var(--ink);margin-bottom:8px;font-weight:600">Dashboard not found</div>
+      <div style="font-size:13px;color:var(--muted)">This link may have changed or been removed.</div></div>
+    </div>`;
+    return;
+  }
+  const { data: projects } = await db.from('rs_projects').select('*').eq('client_id', client.id).eq('active', true).order('name');
+  const projectIds = (projects||[]).map(p=>p.id);
+  const stagesRes = projectIds.length ? await db.from('rs_project_stages').select('*').in('project_id', projectIds).order('position') : { data: [] };
+  const stages = stagesRes.data||[];
+  const stageIds = stages.map(s=>s.id);
+  const catsRes = stageIds.length ? await db.from('rs_stage_categories').select('*').in('stage_id', stageIds).order('position') : { data: [] };
+  const categories = catsRes.data||[];
+  const catIds = categories.map(c=>c.id);
+  const linksRes = catIds.length ? await db.from('rs_stage_links').select('*').in('category_id', catIds).order('position') : { data: [] };
+  const links = linksRes.data||[];
+  // stageStatus()/isCompleteStatus() (shared with the internal app) read from
+  // state — populate just enough of it here since the public path skips loadAll().
+  const [tasksRes, statusesRes] = await Promise.all([
+    stageIds.length ? db.from('rs_proj_tasks').select('*').in('stage_id', stageIds) : { data: [] },
+    db.from('rs_task_statuses').select('*').order('position')
+  ]);
+  state.projTasks = tasksRes.data||[];
+  state.taskStatuses = (statusesRes.data && statusesRes.data.length) ? statusesRes.data : DEFAULT_TASK_STATUSES;
+  renderPublicDashboard(client, projects||[], stages, categories, links);
+}
+
+function renderPublicDashboard(client, projects, allStages, allCategories, allLinks){
+  const pub = { projectId: projects[0]?.id || null, viewedStageId: null };
+  const accent = client.dash_accent_color || '#040e6b';
+  const initials = (client.name||'?').charAt(0).toUpperCase();
+
+  function stagesFor(projectId){ return allStages.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
+  function catsFor(stageId){ return allCategories.filter(c=>c.stage_id===stageId).sort((a,b)=>a.position-b.position); }
+  function linksFor(categoryId){ return allLinks.filter(l=>l.category_id===categoryId).sort((a,b)=>a.position-b.position); }
+
+  function paint(){
+    const proj = projects.find(p=>p.id===pub.projectId) || projects[0] || null;
+    const stages = proj ? stagesFor(proj.id) : [];
+    if(!pub.viewedStageId || !stages.some(s=>s.id===pub.viewedStageId)){
+      const firstIncomplete = stages.find(s=>stageStatus(s.id)!=='Complete');
+      pub.viewedStageId = (firstIncomplete||stages[stages.length-1]||{}).id || null;
+    }
+    const viewedStage = stages.find(s=>s.id===pub.viewedStageId) || null;
+    const doneCount = stages.filter(s=>stageStatus(s.id)==='Complete').length;
+    const pct = stages.length ? Math.round(doneCount/stages.length*100) : 0;
+
+    const tabsHtml = projects.length>1 ? `<div class="pd-tabs">${projects.map(p=>`
+      <button type="button" class="pd-tab ${p.id===pub.projectId?'active':''}" data-pdtab="${p.id}" style="${p.id===pub.projectId?`color:${accent};border-color:${accent}`:''}">${esc(p.project_type)}</button>
+    `).join('')}</div>` : '';
+
+    const stagesHtml = stages.length ? stages.map((s,i)=>{
+      const done = stageStatus(s.id)==='Complete';
+      const viewed = s.id===pub.viewedStageId;
+      return `<div class="pd-stage-row ${viewed?'viewed':''}" data-pdstage="${s.id}" style="${viewed?`background:${accent}14`:''}">
+        <div class="pd-stage-dot" style="${done||viewed?`background:${accent};color:#fff`:''}">${done?'✓':i+1}</div>
+        <div class="pd-stage-label" style="${viewed?`color:${accent};font-weight:600`:''}">${esc(s.name)}</div>
+        ${s.due_date? `<div class="pd-stage-date">${fmtDate(new Date(s.due_date+'T00:00'))}</div>`:''}
+      </div>`;
+    }).join('') : `<div class="empty" style="padding:20px 0">No stages yet.</div>`;
+
+    const assetsHtml = viewedStage ? (catsFor(viewedStage.id).map(cat=>{
+      const catLinks = linksFor(cat.id);
+      if(!catLinks.length) return '';
+      return `<div style="margin-bottom:18px">
+        <div class="pd-cat-label">${esc(cat.name)}</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${catLinks.map(l=>`<a class="pd-link-card" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span>
+              ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}
+            </span>
+          </a>`).join('')}
+        </div>
+      </div>`;
+    }).join('') || `<div class="empty" style="padding:20px 0">Nothing shared for this stage yet.</div>`) : '';
+
+    document.body.innerHTML = `
+      <div style="min-height:100vh;background:var(--paper);font-family:'Rubik',sans-serif;color:var(--ink)">
+        <div style="max-width:1000px;margin:0 auto;padding:40px 24px 20px">
+          <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px">
+            <div style="width:60px;height:60px;border-radius:14px;flex-shrink:0;background:${client.dash_logo_url?'var(--track)':accent};display:flex;align-items:center;justify-content:center;overflow:hidden">
+              ${client.dash_logo_url? `<img src="${esc(client.dash_logo_url)}" style="width:100%;height:100%;object-fit:contain">` : `<span style="color:#fff;font-size:24px;font-weight:700">${initials}</span>`}
+            </div>
+            <div style="flex:1;min-width:0">
+              <h1 style="font-size:32px;font-weight:700;letter-spacing:-.01em;margin-bottom:2px">${esc(client.name)}</h1>
+              ${client.dash_logo_text? `<div style="font-size:14px;color:var(--muted)">${esc(client.dash_logo_text)}</div>`:''}
+            </div>
+            <div style="display:flex;gap:8px">
+              ${client.dash_contact_email? `<a class="btn small ghost" href="mailto:${esc(client.dash_contact_email)}">Contact us</a>`:''}
+              <a class="btn small ghost" href="${esc(client.dash_website_url||'https://reciprocal.space')}" target="_blank" rel="noopener">Reciprocal Space</a>
+            </div>
+          </div>
+          ${client.dash_greeting? `<p style="font-size:14px;color:var(--muted);line-height:1.6;max-width:640px;margin-bottom:8px">${esc(client.dash_greeting)}</p>`:''}
+        </div>
+        ${tabsHtml}
+        <div style="max-width:1000px;margin:0 auto;padding:24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdGrid">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Stage progress</div>
+              <div style="font-size:13px;font-weight:700;color:${accent}">${pct}%</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px">${stagesHtml}</div>
+          </div>
+          <div class="card">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">${viewedStage? esc(viewedStage.name) : 'Files & links'}</div>
+            ${assetsHtml}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;padding:20px;opacity:.5;font-size:12px;color:var(--muted)">Reciprocal Space</div>
+      </div>`;
+
+    document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; paint(); }));
+    document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; paint(); }));
+  }
+  paint();
+}
+
 async function boot(){
   const url = SUPABASE_URL || store.get('rs_rt_url');
   const key = SUPABASE_ANON_KEY || store.get('rs_rt_key');
   if(!url || !key){ showSetup(); return; }
   db = supabase.createClient(url, key);
+
+  const clientSlug = new URLSearchParams(window.location.search).get('client');
+  if(clientSlug){ await bootPublicDashboard(clientSlug); return; }
+
   $('#nav').style.display = 'flex';
   $('#brandBtn').addEventListener('click', ()=>{ state.view='home'; render(); });
   document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{
