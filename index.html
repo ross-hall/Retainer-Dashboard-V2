@@ -185,6 +185,7 @@
   .type-badge{display:inline-block;background:var(--track);color:var(--navy-soft);font-size:12px;font-weight:500;padding:3px 10px;border-radius:99px}
   .label-chip{display:inline-block;background:var(--amber-bg);color:var(--amber);font-size:12px;font-weight:500;padding:3px 10px;border-radius:99px;margin-left:7px}
   .retainer-badge{display:inline-block;background:#e8f2ec;color:var(--green);font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:99px;margin-left:7px}
+  .project-badge{display:inline-block;background:#e7ecfb;color:#2a5adf;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:99px;margin-left:7px}
   .proj-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
   .home-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}
   @media(max-width:800px){.home-cols{grid-template-columns:1fr}}
@@ -353,7 +354,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.7.4</div>
+<div id="versionBadge" class="version-badge">v0.7.5</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -424,7 +425,7 @@ function cycleFor(renewalDay, ref){
 const PALETTE = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200'];
 const COLOR_PRESETS = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200','#c9372c','#0369a1'];
 function clientColor(id){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return PALETTE[h%PALETTE.length]; }
-function colorFor(client){ return (client && client.color) ? client.color : clientColor(client.id); }
+function colorFor(client){ return (client && (client.dash_accent_color || client.color)) ? (client.dash_accent_color || client.color) : clientColor(client.id); }
 
 const MIRO_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="vertical-align:-2px;margin-right:5px"><rect x="1" y="1" width="14" height="14" rx="2.5" stroke="currentColor" stroke-width="1.4"/><rect x="3.3" y="3.3" width="4" height="4" rx="0.6" fill="currentColor"/><rect x="8.7" y="6.7" width="4" height="4" rx="0.6" fill="currentColor" opacity="0.55"/></svg>`;
 
@@ -844,7 +845,7 @@ function openNewClientModal(){
     const miro_link_external = $('#nc_miro_ext').value.trim() || null;
     const miro_link_internal = $('#nc_miro_int').value.trim() || null;
     const slug = uniqueSlug(name);
-    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link_external, miro_link_internal, slug }).select().single();
+    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, dash_accent_color:color, is_retainer, miro_link_external, miro_link_internal, slug }).select().single();
     if(error){ toast('Could not create client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     closeModal(); toast('Client created');
@@ -893,7 +894,7 @@ function openClientEditModal(clientId){
           <button type="button" class="btn small ghost" id="ec_copylink" style="white-space:nowrap">Copy admin link</button>
         </div>
       </div>
-      <div><label>Accent colour</label>${colorCircleHtml('ec_dashcolor', c.dash_accent_color||'#040e6b')}</div>
+      <div class="full sub" style="margin:0 0 4px;color:var(--muted)">Accent colour matches the dot colour above — change that to update both.</div>
       <div class="full"><label>Tagline <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="ec_tagline" value="${esc(c.dash_logo_text||'')}" placeholder="e.g. Series A biotech"></div>
       <div class="full"><label>Welcome message <span style="color:var(--muted);font-weight:400">(optional)</span></label><textarea id="ec_greeting" style="min-height:60px">${esc(c.dash_greeting||'')}</textarea></div>
       <div><label>Logo image URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_logourl" value="${esc(c.dash_logo_url||'')}" placeholder="https://..."></div>
@@ -909,7 +910,6 @@ function openClientEditModal(clientId){
   `);
   $('#ec_isretainer').addEventListener('change', e=>{ $('#ec_retainer_fields').style.display = e.target.checked?'contents':'none'; });
   wireColorCircle('ec_color');
-  wireColorCircle('ec_dashcolor');
   $('#ec_copylink').onclick = ()=>{
     const slug = $('#ec_slug').value.trim() || c.slug;
     if(!slug){ toast('Add a dashboard link first, then save'); return; }
@@ -929,7 +929,7 @@ function openClientEditModal(clientId){
     const changed = is_retainer && !turningOn && (retainer_hours !== c.retainer_hours || renewal_day !== c.renewal_day);
     const newSlug = slugify($('#ec_slug').value) || c.slug || uniqueSlug(c.name);
     if(newSlug !== c.slug && state.clients.some(x=>x.id!==c.id && x.slug===newSlug)){ toast('That dashboard link is already taken by another client'); return; }
-    const dash_accent_color = $('#ec_dashcolor').value;
+    const dash_accent_color = color;
     const dash_logo_text = $('#ec_tagline').value.trim() || null;
     const dash_greeting = $('#ec_greeting').value.trim() || null;
     const dash_logo_url = $('#ec_logourl').value.trim() || null;
@@ -1902,58 +1902,98 @@ function renderMilestones(){
   attachMilestoneInteractions();
 }
 
-/* Days between a project's first and last stage due dates, only once the
-   last stage is actually marked complete — treated as "not finished yet"
-   otherwise rather than guessing from an unfinished plan. */
-function projectDuration(p){
-  const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
-  if(stages.length<2) return null;
-  const first = stages[0], last = stages[stages.length-1];
-  if(!first.due_date || !last.due_date) return null;
-  if(stageStatus(last.id)!=='Complete') return null;
-  const days = Math.round((new Date(last.due_date+'T00:00') - new Date(first.due_date+'T00:00'))/86400000);
-  return days>=0 ? days : null;
-}
-function clientAvgDuration(c){
-  const durations = state.projects.filter(p=>p.client_id===c.id).map(projectDuration).filter(d=>d!=null);
-  if(!durations.length) return null;
-  return Math.round(durations.reduce((a,b)=>a+b,0)/durations.length);
-}
-function clientScopeTypes(c){
-  return [...new Set(state.projects.filter(p=>p.client_id===c.id).map(p=>p.project_type))];
+/* One "row" per project (with a scope summary via projectDetailsSummary),
+   plus one synthetic row per retainer client (they don't have discrete
+   typed projects under the flat retainer model). */
+function clientListRows(){
+  const rows = [];
+  state.clients.filter(c=>c.active).forEach(c=>{
+    if(c.is_retainer){
+      rows.push({ client:c, project:null, badgeType:'retainer', scope:null, startDate:c.created_at||null });
+    }
+    state.projects.filter(p=>p.client_id===c.id && p.active).forEach(p=>{
+      const kickoff = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position)[0];
+      rows.push({ client:c, project:p, badgeType:'project', scope:projectDetailsSummary(p), startDate:(kickoff&&kickoff.due_date)||p.created_at||null });
+    });
+  });
+  return rows;
 }
 
 function renderClientListTable(){
-  const clients = state.clients.filter(c=>c.active).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!state.clientListGroup) state.clientListGroup = 'client';
+  if(!state.clientListSort) state.clientListSort = 'alpha';
+  const rows = clientListRows();
+  const sortRows = (arr)=> arr.sort((a,b)=>{
+    if(state.clientListSort==='started'){
+      const da = a.startDate||'', db = b.startDate||'';
+      return da.localeCompare(db);
+    }
+    return a.client.name.localeCompare(b.client.name) || (a.project? a.project.name.localeCompare(b.project?.name||''):0);
+  });
+
+  const rowHtml = (r)=> `<tr class="task-row" data-clientrow="${r.client.id}">
+    <td><span class="dot" style="background:${colorFor(r.client)};display:inline-block;margin-right:8px;vertical-align:middle"></span>${esc(r.client.name)}</td>
+    <td>${r.badgeType==='retainer'? '<span class="retainer-badge" style="margin-left:0">Retainer</span>' : '<span class="project-badge" style="margin-left:0">Project</span>'}</td>
+    <td>${r.project? esc(r.project.project_type) : '<span style="color:var(--muted)">—</span>'}</td>
+    <td>${r.scope? esc(r.scope) : (r.badgeType==='retainer'? `${fmtH(r.client.retainer_hours)} · renews ${ordinal(r.client.renewal_day)}` : '<span style="color:var(--muted)">—</span>')}</td>
+    <td style="color:var(--muted)">${r.startDate? fmtDate(new Date(r.startDate.slice(0,10)+'T00:00')) : '—'}</td>
+    <td>${r.client.miro_link_internal? `<a class="btn small ghost" href="${esc(r.client.miro_link_internal)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Miro ↗</a>` : ''}</td>
+    <td>${r.client.slug? `<a class="btn small ghost" href="${window.location.origin}${window.location.pathname}?client=${r.client.slug}&admin=1" target="_blank" rel="noopener" onclick="event.stopPropagation()">Dashboard ↗</a>` : ''}</td>
+  </tr>`;
+
+  let bodyHtml = '';
+  if(state.clientListGroup==='type'){
+    const groups = {};
+    rows.forEach(r=>{ const key = r.badgeType==='retainer' ? 'Retainer' : r.project.project_type; (groups[key]=groups[key]||[]).push(r); });
+    const groupNames = Object.keys(groups).sort((a,b)=> a==='Retainer'?-1: b==='Retainer'?1: a.localeCompare(b));
+    bodyHtml = groupNames.map(name=>`
+      <tr><td colspan="7" style="background:var(--track);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">${esc(name)} <span style="font-weight:400;text-transform:none;letter-spacing:0">(${groups[name].length})</span></td></tr>
+      ${sortRows(groups[name]).map(rowHtml).join('')}
+    `).join('');
+  } else {
+    const byClient = {};
+    rows.forEach(r=>{ (byClient[r.client.id]=byClient[r.client.id]||{client:r.client, items:[]}).items.push(r); });
+    const clientGroups = Object.values(byClient).sort((a,b)=>{
+      if(state.clientListSort==='started'){
+        const da = a.items.map(r=>r.startDate||'9999').sort()[0], db = b.items.map(r=>r.startDate||'9999').sort()[0];
+        return da.localeCompare(db);
+      }
+      return a.client.name.localeCompare(b.client.name);
+    });
+    bodyHtml = clientGroups.map(g=>`
+      <tr><td colspan="7" style="background:var(--track);font-weight:600;font-size:12px;color:var(--ink)"><span class="dot" style="background:${colorFor(g.client)};display:inline-block;margin-right:8px;vertical-align:middle"></span>${esc(g.client.name)} <span style="font-weight:400;color:var(--muted)">(${g.items.length})</span></td></tr>
+      ${sortRows(g.items).map(rowHtml).join('')}
+    `).join('');
+  }
+
   let html = `<div class="breadcrumb"><button data-bc="clients">All Projects</button><span class="sep">/</span><span class="current">Client list</span></div>
     <h2>Client list</h2>
-    <div class="sub">Every active client at a glance — scope, retainer terms, and how long finished projects typically take.</div>
+    <div class="sub">Every client and project at a glance — grouped and sorted however's useful.</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--muted)">Group by</span>
+        <div class="view-toggle" style="margin-bottom:0">
+          <button class="btn small ${state.clientListGroup==='client'?'':'ghost'}" data-clgroup="client">Client</button>
+          <button class="btn small ${state.clientListGroup==='type'?'':'ghost'}" data-clgroup="type">Project type</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--muted)">Sort by</span>
+        <div class="view-toggle" style="margin-bottom:0">
+          <button class="btn small ${state.clientListSort==='alpha'?'':'ghost'}" data-clsort="alpha">Alphabetical</button>
+          <button class="btn small ${state.clientListSort==='started'?'':'ghost'}" data-clsort="started">Time started</button>
+        </div>
+      </div>
+    </div>
     <div class="card" style="padding:0;overflow-x:auto">
     <table style="min-width:920px"><thead><tr>
-      <th>Client</th><th>Type</th><th>Scope</th><th>Retainer</th><th style="text-align:center">Active projects</th>
-      <th>Avg. project length</th><th>Client since</th><th></th><th></th>
-    </tr></thead><tbody>
-      ${clients.map(c=>{
-        const scope = clientScopeTypes(c);
-        const activeProjects = state.projects.filter(p=>p.client_id===c.id && p.active).length;
-        const avgDur = clientAvgDuration(c);
-        const since = c.created_at ? fmtDate(new Date(c.created_at)) : '—';
-        return `<tr class="task-row" data-clientrow="${c.id}">
-          <td><span class="dot" style="background:${colorFor(c)};display:inline-block;margin-right:8px;vertical-align:middle"></span>${esc(c.name)}</td>
-          <td>${c.is_retainer? '<span class="retainer-badge" style="margin-left:0">Retainer</span>' : '<span style="color:var(--muted)">Project</span>'}</td>
-          <td>${scope.length? esc(scope.join(', ')) : '<span style="color:var(--muted)">—</span>'}</td>
-          <td>${c.is_retainer? `${fmtH(c.retainer_hours)} · renews ${ordinal(c.renewal_day)}` : '<span style="color:var(--muted)">—</span>'}</td>
-          <td style="text-align:center">${activeProjects || '<span style="color:var(--muted)">—</span>'}</td>
-          <td>${avgDur!=null? `${avgDur} day${avgDur===1?'':'s'}` : '<span style="color:var(--muted)">—</span>'}</td>
-          <td style="color:var(--muted)">${since}</td>
-          <td>${c.miro_link_internal? `<a class="btn small ghost" href="${esc(c.miro_link_internal)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Miro ↗</a>` : ''}</td>
-          <td>${c.slug? `<a class="btn small ghost" href="${window.location.origin}${window.location.pathname}?client=${c.slug}&admin=1" target="_blank" rel="noopener" onclick="event.stopPropagation()">Dashboard ↗</a>` : ''}</td>
-        </tr>`;
-      }).join('')}
-    </tbody></table>
+      <th>Client</th><th>Type</th><th>Project</th><th>Scope</th><th>Started</th><th></th><th></th>
+    </tr></thead><tbody>${bodyHtml || `<tr><td colspan="7" class="empty">No clients yet.</td></tr>`}</tbody></table>
     </div>`;
   main.innerHTML = html;
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
+  main.querySelectorAll('[data-clgroup]').forEach(el=>el.addEventListener('click', ()=>{ state.clientListGroup=el.dataset.clgroup; render(); }));
+  main.querySelectorAll('[data-clsort]').forEach(el=>el.addEventListener('click', ()=>{ state.clientListSort=el.dataset.clsort; render(); }));
   main.querySelectorAll('[data-clientrow]').forEach(el=>el.addEventListener('click', ()=>{
     const cl = state.clients.find(c=>c.id===el.dataset.clientrow);
     state.projClientId = cl.id;
@@ -3014,7 +3054,7 @@ function renderSettings(){
     const miro_link_external = $('#c_miro_ext').value.trim() || null;
     const miro_link_internal = $('#c_miro_int').value.trim() || null;
     const slug = uniqueSlug(name);
-    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, is_retainer, miro_link_external, miro_link_internal, slug }).select().single();
+    const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, dash_accent_color:color, is_retainer, miro_link_external, miro_link_internal, slug }).select().single();
     if(error){ toast('Could not add client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     await loadAll();
@@ -3155,7 +3195,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.7.4';
+const APP_VERSION = '0.7.5';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -3223,7 +3263,7 @@ async function runImport(){
     if(clientNameMap[key]){ append(`↷ Client "${c.name}" already exists — skipped`); continue; }
     const color = PALETTE[Object.keys(clientNameMap).length % PALETTE.length];
     const slug = uniqueSlug(c.name.trim());
-    const { data: row, error } = await db.from('rs_clients').insert({ name:c.name.trim(), is_retainer: !!c.is_retainer, color, slug }).select().single();
+    const { data: row, error } = await db.from('rs_clients').insert({ name:c.name.trim(), is_retainer: !!c.is_retainer, color, dash_accent_color:color, slug }).select().single();
     if(error){ append(`❌ Client "${c.name}": ${error.message}`); continue; }
     clientNameMap[key] = row.id;
     append(`✓ Created client "${c.name}"${c.is_retainer?' (retainer)':''}`);
