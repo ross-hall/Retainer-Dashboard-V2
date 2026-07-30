@@ -316,6 +316,15 @@
   .gantt-bar{position:absolute;top:2px;height:20px;border-radius:5px;color:#fff;font-size:10.5px;font-weight:500;padding:2px 7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;line-height:1.6}
   .gantt-kickoff{position:absolute;top:-4px;width:3px;height:32px;border-radius:2px;cursor:pointer}
 
+  .anim-grid th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:relative}
+  .anim-grid td{border-bottom:1px solid var(--line)}
+  .anim-cell{width:100%;min-height:38px;border:none;border-radius:7px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:5px 4px;font-family:inherit;line-height:1.1}
+  .anim-cell:hover{filter:brightness(.93)}
+  .anim-cell-v{font-size:9px;opacity:.85;font-weight:600}
+  .anim-cell-rt{font-size:9px;opacity:.9;font-weight:700}
+  .anim-cell-who{font-size:8.5px;opacity:.9;font-weight:700;letter-spacing:.3px}
+  .anim-step-del{position:absolute;top:2px;right:3px;background:none;border:none;color:var(--muted);font-size:13px;line-height:1;opacity:0;cursor:pointer}
+  .anim-grid th:hover .anim-step-del{opacity:1}
   .pd-tabs{max-width:1000px;margin:0 auto;padding:0 24px;display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
   .pd-tab{padding:10px 16px;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;font-family:'Rubik',sans-serif;font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
   .pd-stage-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer}
@@ -340,6 +349,7 @@
       <button data-view="projects">All Projects</button>
       <button data-view="dashboard">Retainers</button>
       <button data-view="tasksahead">Week Tasks</button>
+      <button data-view="animation">Animation (Beta)</button>
       <button data-view="milestones">Milestones</button>
       <button data-view="settings" class="nav-icon-btn" title="Settings">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -354,7 +364,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.7.5</div>
+<div id="versionBadge" class="version-badge">v0.8.0</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -368,7 +378,7 @@ let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clie
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[] };
+  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, clientListGroup:'client', clientListSort:'alpha' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -517,18 +527,23 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
     db.from('rs_project_types').select('*').order('position'),
     db.from('rs_task_statuses').select('*').order('position'),
     db.from('rs_stage_categories').select('*').order('position'),
-    db.from('rs_stage_links').select('*').order('position')
+    db.from('rs_stage_links').select('*').order('position'),
+    db.from('rs_anim_shots').select('*').order('position'),
+    db.from('rs_anim_steps').select('*').order('position'),
+    db.from('rs_anim_cells').select('*')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
   state.stageCategories = sc.data||[]; state.stageLinks = sl.data||[];
+  state.animShots = ash.data||[]; state.animSteps = ast.data||[]; state.animCells = acl.data||[];
+  if(ash.error) console.warn('Animation tables not found — run retainer-tracker-migration-v16.sql', ash.error);
   if(ts.error) console.warn('Task statuses table not found — run retainer-tracker-migration-v13.sql', ts.error);
   if(sc.error) console.warn('Client dashboard tables not found — run retainer-tracker-migration-v14.sql', sc.error);
   if(pr.error) console.warn('Project Overview tables not found — run retainer-tracker-migration-v4.sql', pr.error);
@@ -1120,7 +1135,7 @@ function render(){
     b.classList.toggle('active', b.dataset.view===effectiveNavView);
     if(b.dataset.view==='dashboard') b.innerHTML = 'Retainers' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
   });
-  ({home:renderHome, tasksahead:renderTasksAhead, dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived}[state.view])();
+  ({home:renderHome, tasksahead:renderTasksAhead, dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation}[state.view])();
 }
 
 function renderRetainer(){
@@ -3195,7 +3210,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.7.5';
+const APP_VERSION = '0.8.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -3340,6 +3355,333 @@ function initColumnResize(){
   });
 }
 initColumnResize();
+
+/* ================= Animation (Beta) — shot pipeline grid ================= */
+/* Animation is tracked per-SHOT, not per-stage. Every shot walks the same
+   pipeline steps independently, so the grid below (shots down, steps across)
+   makes a single stalled shot immediately visible instead of hiding it
+   inside a stage-level "in progress". */
+
+const ANIM_DEFAULT_STEPS = ['Storyboard','Animatic','Blocking','Animation','Render','Comp','Approved'];
+const ANIM_CELL_STATUSES = {
+  'Not started':      { color:'#e7e7ee', text:'#7b7d92', short:'–'  },
+  'In progress':      { color:'#4C6EF5', text:'#fff',    short:'WIP'},
+  'Internal review':  { color:'#F0B429', text:'#3a2c00', short:'IR' },
+  'Client review':    { color:'#15AABF', text:'#fff',    short:'CR' },
+  'Retakes':          { color:'#E8623D', text:'#fff',    short:'RT' },
+  'Approved':         { color:'#2FB380', text:'#fff',    short:'✓'  },
+  'Omitted':          { color:'#cfcfd8', text:'#7b7d92', short:'om' }
+};
+
+function animProjects(){
+  const cfgNames = state.projectTypes.filter(t=>/anim/i.test(t.name)).map(t=>t.name);
+  return state.projects.filter(p=>p.active && (cfgNames.includes(p.project_type) || /anim/i.test(p.project_type)));
+}
+function animShotsFor(projectId){ return state.animShots.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
+function animStepsFor(projectId){ return state.animSteps.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
+function animCell(shotId, stepId){ return state.animCells.find(c=>c.shot_id===shotId && c.step_id===stepId) || null; }
+function animCellStatus(shotId, stepId){ const c = animCell(shotId, stepId); return c ? c.status : 'Not started'; }
+
+/* A shot's overall position = the last step it has fully approved. */
+function animShotProgress(shot, steps){
+  let done = 0;
+  for(const st of steps){ if(animCellStatus(shot.id, st.id)==='Approved') done++; else break; }
+  return { done, total: steps.length, pct: steps.length? Math.round(done/steps.length*100):0 };
+}
+
+function renderAnimation(){
+  if(!state.animProjectId || !animProjects().some(p=>p.id===state.animProjectId)){
+    state.animProjectId = animProjects()[0]?.id || null;
+  }
+  const projects = animProjects();
+  const p = projects.find(x=>x.id===state.animProjectId) || null;
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
+    </div><div style="margin-bottom:18px"></div>`;
+
+  if(!projects.length){
+    html += `<div class="empty">No active animation projects. Create a project with an animation type under All Projects and it'll appear here.</div>`;
+    main.innerHTML = html;
+    return;
+  }
+
+  html += `<div class="pd-tabs" style="padding:0;margin-bottom:20px">${projects.map(pr=>{
+    const c = state.clients.find(cl=>cl.id===pr.client_id);
+    return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}" style="${pr.id===state.animProjectId?`color:var(--navy);border-color:var(--navy)`:''}">${esc(c?c.name:'?')}${pr.label?` · ${esc(pr.label)}`:''}</button>`;
+  }).join('')}</div>`;
+
+  const shots = animShotsFor(p.id);
+  const steps = animStepsFor(p.id);
+
+  if(!steps.length){
+    html += `<div class="banner"><div>🎬</div><div>This project has no pipeline steps yet.
+      <button class="btn small" id="animSeed" style="margin-left:8px">Set up default pipeline</button>
+      <div style="margin-top:6px;font-size:12px;color:var(--muted)">Creates: ${ANIM_DEFAULT_STEPS.join(' → ')}</div>
+    </div></div>`;
+    main.innerHTML = html;
+    wireAnimTabs();
+    $('#animSeed').onclick = async ()=>{
+      await Promise.all(ANIM_DEFAULT_STEPS.map((n,i)=> db.from('rs_anim_steps').insert({ project_id:p.id, name:n, position:i })));
+      toast('Pipeline created'); await loadAll();
+    };
+    return;
+  }
+
+  /* ---- Health summary: the bit that stops things getting dropped ---- */
+  const todayIso = iso(new Date());
+  const budget = p.anim_total_seconds!=null ? +p.anim_total_seconds : null;
+  const allocated = shots.reduce((n,s)=> n + (s.duration_seconds? +s.duration_seconds : 0), 0);
+  const approvedSecs = shots.reduce((n,s)=>{
+    const pr = animShotProgress(s, steps);
+    return n + (pr.done===steps.length && steps.length ? (s.duration_seconds? +s.duration_seconds:0) : 0);
+  }, 0);
+
+  const flags = { retakes:[], overdue:[], clientWait:[], unassigned:[], stalled:[] };
+  shots.forEach(s=>{
+    steps.forEach(st=>{
+      const c = animCell(s.id, st.id);
+      if(!c) return;
+      if(c.status==='Retakes') flags.retakes.push({s,st,c});
+      if(c.status==='Client review') flags.clientWait.push({s,st,c});
+      if(c.due_date && c.due_date < todayIso && c.status!=='Approved' && c.status!=='Omitted') flags.overdue.push({s,st,c});
+      if(c.status==='In progress' && !c.assignee_id) flags.unassigned.push({s,st,c});
+    });
+    const pr = animShotProgress(s, steps);
+    const anyTouched = steps.some(st=>animCell(s.id,st.id));
+    if(!anyTouched && shots.length) flags.stalled.push({s});
+  });
+
+  const chip = (label, n, color)=> n? `<span class="status" style="background:${color}22;color:${color};font-weight:600">${n} ${label}</span>` : '';
+  html += `<div class="card" style="margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:center">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        ${chip('need retakes', flags.retakes.length, '#E8623D')}
+        ${chip('overdue', flags.overdue.length, '#c9372c')}
+        ${chip('awaiting client', flags.clientWait.length, '#15AABF')}
+        ${chip('unassigned', flags.unassigned.length, '#e08c00')}
+        ${chip('not started', flags.stalled.length, '#7b7d92')}
+        ${(!flags.retakes.length && !flags.overdue.length && !flags.clientWait.length && !flags.unassigned.length && !flags.stalled.length)? '<span style="font-size:13px;color:var(--green);font-weight:600">✓ Nothing needs attention</span>':''}
+      </div>
+      <div style="font-size:12.5px;color:var(--muted);text-align:right">
+        <div><b style="color:var(--ink)">${allocated}s</b> across ${shots.length} shot${shots.length===1?'':'s'}${budget!=null? ` of ${budget}s contracted`:''}</div>
+        <div>${approvedSecs}s fully approved${budget? ` · ${Math.round(approvedSecs/budget*100)}% delivered`:''}</div>
+        ${budget!=null && allocated!==budget? `<div style="color:var(--amber);font-weight:600">⚠ shot durations ${allocated>budget?'exceed':'fall short of'} the contracted ${budget}s</div>`:''}
+      </div>
+    </div>
+  </div>`;
+
+  /* ---- The grid ---- */
+  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn small" id="animAddShot">+ Shot</button>
+    <button class="btn small ghost" id="animAddStep">+ Pipeline step</button>
+    <button class="btn small ghost" id="animSetBudget">${budget!=null?'Edit':'Set'} total seconds</button>
+  </div>`;
+
+  if(!shots.length){
+    html += `<div class="empty">No shots yet — add your first shot to start building the pipeline grid.</div>`;
+  } else {
+    html += `<div class="card" style="padding:0;overflow-x:auto">
+      <table class="anim-grid" style="min-width:${260 + steps.length*104}px">
+        <thead><tr>
+          <th style="min-width:210px">Shot</th>
+          ${steps.map(st=>`<th style="text-align:center;min-width:96px">${esc(st.name)}<button class="anim-step-del" data-animstepdel="${st.id}" title="Remove step">×</button></th>`).join('')}
+          <th style="min-width:64px;text-align:right">Progress</th>
+        </tr></thead>
+        <tbody>
+          ${shots.map(s=>{
+            const pr = animShotProgress(s, steps);
+            return `<tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <b style="font-size:13px">${esc(s.code)}</b>
+                  ${s.duration_seconds!=null? `<span style="font-size:11.5px;color:var(--muted)">${s.duration_seconds}s</span>`:''}
+                  <button class="btn small ghost" data-animshotedit="${s.id}" style="margin-left:auto">Edit</button>
+                </div>
+                ${s.description? `<div style="font-size:11.5px;color:var(--muted);margin-top:2px">${esc(s.description)}</div>`:''}
+              </td>
+              ${steps.map(st=>{
+                const c = animCell(s.id, st.id);
+                const status = c? c.status : 'Not started';
+                const cfg = ANIM_CELL_STATUSES[status] || ANIM_CELL_STATUSES['Not started'];
+                const m = c && c.assignee_id ? state.members.find(mm=>mm.id===c.assignee_id) : null;
+                const overdue = c && c.due_date && c.due_date < todayIso && status!=='Approved' && status!=='Omitted';
+                return `<td style="text-align:center;padding:5px">
+                  <button class="anim-cell" data-animcell="${s.id}:${st.id}" title="${esc(status)}${m?' · '+esc(m.name):''}${c&&c.due_date?' · due '+c.due_date:''}"
+                    style="background:${cfg.color};color:${cfg.text};${overdue?'box-shadow:inset 0 0 0 2px var(--red)':''}">
+                    <span style="font-size:11px;font-weight:700">${cfg.short}</span>
+                    ${c && c.version? `<span class="anim-cell-v">v${String(c.version).padStart(3,'0')}</span>`:''}
+                    ${c && c.retakes? `<span class="anim-cell-rt">${c.retakes}↻</span>`:''}
+                    ${m? `<span class="anim-cell-who">${esc(initials(m.name))}</span>`:''}
+                  </button>
+                </td>`;
+              }).join('')}
+              <td style="text-align:right;font-size:12px;color:${pr.pct===100?'var(--green)':'var(--muted)'};font-weight:600">${pr.pct}%</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--muted)">
+      ${Object.entries(ANIM_CELL_STATUSES).map(([k,v])=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:${v.color};display:inline-block"></span>${esc(k)}</span>`).join('')}
+    </div>`;
+  }
+
+  main.innerHTML = html;
+  wireAnimTabs();
+  $('#animAddShot').onclick = ()=> openAnimShotModal(p.id, null);
+  $('#animAddStep').onclick = ()=> openAnimStepModal(p.id);
+  $('#animSetBudget').onclick = ()=> openAnimBudgetModal(p);
+  main.querySelectorAll('[data-animshotedit]').forEach(el=>el.addEventListener('click', ()=> openAnimShotModal(p.id, el.dataset.animshotedit)));
+  main.querySelectorAll('[data-animcell]').forEach(el=>el.addEventListener('click', ()=>{
+    const [shotId, stepId] = el.dataset.animcell.split(':');
+    openAnimCellModal(shotId, stepId);
+  }));
+  main.querySelectorAll('[data-animstepdel]').forEach(el=>el.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    const st = state.animSteps.find(x=>x.id===el.dataset.animstepdel);
+    if(!confirm(`Remove the "${st.name}" step from this project? Any statuses recorded against it will be deleted.`)) return;
+    const { error } = await db.from('rs_anim_steps').delete().eq('id', st.id);
+    if(error){ toast('Could not remove step'); return; }
+    toast('Step removed'); await loadAll();
+  }));
+}
+
+function wireAnimTabs(){
+  main.querySelectorAll('[data-animproj]').forEach(el=>el.addEventListener('click', ()=>{ state.animProjectId = el.dataset.animproj; render(); }));
+}
+
+function openAnimShotModal(projectId, shotId){
+  const s = shotId ? state.animShots.find(x=>x.id===shotId) : { code:'', description:'', duration_seconds:null };
+  const isNew = !shotId;
+  const existing = animShotsFor(projectId);
+  const suggested = `SH${String((existing.length+1)*10).padStart(3,'0')}`;
+  showModal(`
+    <h3>${isNew?'New shot':'Edit shot'}</h3>
+    <form class="log" style="max-width:none">
+      <div><label>Shot code</label><input type="text" id="as_code" value="${esc(s.code)}" placeholder="${suggested}"></div>
+      <div><label>Duration (seconds)</label><input type="number" step="0.5" min="0" id="as_dur" value="${s.duration_seconds!=null?s.duration_seconds:''}" placeholder="e.g. 4.5"></div>
+      <div class="full"><label>Description <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="as_desc" value="${esc(s.description||'')}" placeholder="e.g. Hero cell divides, camera pushes in"></div>
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn danger" id="as_delete">Delete shot</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="as_cancel">Cancel</button>
+        <button class="btn" id="as_save">${isNew?'Add shot':'Save changes'}</button>
+      </div>
+    </div>
+  `);
+  $('#as_cancel').onclick = closeModal;
+  if(!isNew) $('#as_delete').onclick = async ()=>{
+    if(!confirm(`Delete shot ${s.code}? All its pipeline statuses go too. This cannot be undone.`)) return;
+    const { error } = await db.from('rs_anim_shots').delete().eq('id', shotId);
+    if(error){ toast('Delete failed'); return; }
+    closeModal(); toast('Shot deleted'); await loadAll();
+  };
+  $('#as_save').onclick = async ()=>{
+    const code = $('#as_code').value.trim() || suggested;
+    const duration_seconds = $('#as_dur').value!=='' ? +$('#as_dur').value : null;
+    const description = $('#as_desc').value.trim() || null;
+    if(isNew){
+      const { error } = await db.from('rs_anim_shots').insert({ project_id:projectId, code, description, duration_seconds, position:existing.length });
+      if(error){ toast('Could not add shot'); console.error(error); return; }
+      closeModal(); toast('Shot added'); await loadAll();
+    } else {
+      const { error } = await db.from('rs_anim_shots').update({ code, description, duration_seconds }).eq('id', shotId);
+      if(error){ toast('Could not save'); return; }
+      closeModal(); toast('Shot updated'); await loadAll();
+    }
+  };
+}
+
+function openAnimStepModal(projectId){
+  const existing = animStepsFor(projectId);
+  showModal(`
+    <h3>New pipeline step</h3>
+    <div class="sub">Added to the end of the pipeline for this project only.</div>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Step name</label><input type="text" id="ast_name" placeholder="e.g. Sound design"></div>
+    </form>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="ast_cancel">Cancel</button>
+        <button class="btn" id="ast_save">Add step</button>
+      </div>
+    </div>
+  `);
+  $('#ast_cancel').onclick = closeModal;
+  $('#ast_save').onclick = async ()=>{
+    const name = $('#ast_name').value.trim();
+    if(!name){ toast('Give the step a name'); return; }
+    const { error } = await db.from('rs_anim_steps').insert({ project_id:projectId, name, position:existing.length });
+    if(error){ toast('Could not add step'); console.error(error); return; }
+    closeModal(); toast('Step added'); await loadAll();
+  };
+}
+
+function openAnimBudgetModal(p){
+  showModal(`
+    <h3>Total contracted seconds</h3>
+    <div class="sub">Used to check whether your shot durations actually add up to what was sold.</div>
+    <form class="log" style="max-width:none">
+      <div><label>Total seconds</label><input type="number" step="0.5" min="0" id="ab_total" value="${p.anim_total_seconds!=null?p.anim_total_seconds:''}" placeholder="e.g. 60"></div>
+    </form>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="ab_cancel">Cancel</button>
+        <button class="btn" id="ab_save">Save</button>
+      </div>
+    </div>
+  `);
+  $('#ab_cancel').onclick = closeModal;
+  $('#ab_save').onclick = async ()=>{
+    const anim_total_seconds = $('#ab_total').value!=='' ? +$('#ab_total').value : null;
+    const { error } = await db.from('rs_projects').update({ anim_total_seconds }).eq('id', p.id);
+    if(error){ toast('Could not save'); return; }
+    closeModal(); toast('Saved'); await loadAll();
+  };
+}
+
+function openAnimCellModal(shotId, stepId){
+  const shot = state.animShots.find(s=>s.id===shotId);
+  const step = state.animSteps.find(s=>s.id===stepId);
+  const c = animCell(shotId, stepId) || { status:'Not started', assignee_id:null, version:0, retakes:0, due_date:null, notes:'' };
+  const designers = state.members.filter(m=>m.active!==false);
+  showModal(`
+    <h3>${esc(shot.code)} · ${esc(step.name)}</h3>
+    <form class="log" style="max-width:none">
+      <div><label>Status</label><select id="ac_status">${Object.keys(ANIM_CELL_STATUSES).map(k=>`<option value="${k}" ${c.status===k?'selected':''}>${k}</option>`).join('')}</select></div>
+      <div><label>Assigned to</label><select id="ac_who"><option value="">— nobody —</option>${designers.map(m=>`<option value="${m.id}" ${c.assignee_id===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
+      <div><label>Version</label><input type="number" min="0" id="ac_version" value="${c.version||0}"></div>
+      <div><label>Retake rounds</label><input type="number" min="0" id="ac_retakes" value="${c.retakes||0}"></div>
+      <div><label>Due date</label>${dateFieldHtml('ac_due', c.due_date, 'Set due date')}</div>
+      <div class="full"><label>Notes <span style="color:var(--muted);font-weight:400">(optional)</span></label><textarea id="ac_notes" style="min-height:60px">${esc(c.notes||'')}</textarea></div>
+    </form>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="ac_cancel">Cancel</button>
+        <button class="btn" id="ac_save">Save</button>
+      </div>
+    </div>
+  `);
+  wireDateField('ac_due', 'Set due date');
+  $('#ac_cancel').onclick = closeModal;
+  $('#ac_save').onclick = async ()=>{
+    const fields = {
+      shot_id: shotId, step_id: stepId,
+      status: $('#ac_status').value,
+      assignee_id: $('#ac_who').value || null,
+      version: +$('#ac_version').value || 0,
+      retakes: +$('#ac_retakes').value || 0,
+      due_date: $('#ac_due').value || null,
+      notes: $('#ac_notes').value.trim() || null,
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await db.from('rs_anim_cells').upsert(fields, { onConflict:'shot_id,step_id' });
+    if(error){ toast('Could not save'); console.error(error); return; }
+    closeModal(); toast('Updated'); await loadAll();
+  };
+}
 
 /* ================= Public client dashboard (?client=slug) ================= */
 async function bootPublicDashboard(slug, isAdmin){
