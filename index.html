@@ -323,6 +323,7 @@
   .anim-cell-v{font-size:9px;opacity:.85;font-weight:600}
   .anim-cell-rt{font-size:9px;opacity:.9;font-weight:700}
   .anim-cell-who{font-size:8.5px;opacity:.9;font-weight:700;letter-spacing:.3px}
+  .anim-cell-fb{font-size:8.5px;opacity:.9}
   .anim-step-del{position:absolute;top:2px;right:3px;background:none;border:none;color:var(--muted);font-size:13px;line-height:1;opacity:0;cursor:pointer}
   .anim-grid th:hover .anim-step-del{opacity:1}
   .pd-tabs{max-width:1000px;margin:0 auto;padding:0 24px;display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
@@ -364,7 +365,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.8.0</div>
+<div id="versionBadge" class="version-badge">v0.8.1</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -378,7 +379,7 @@ let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clie
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, clientListGroup:'client', clientListSort:'alpha' };
+  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], clientListGroup:'client', clientListSort:'alpha' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -527,7 +528,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,adp] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -537,12 +538,15 @@ async function loadAll(){
     db.from('rs_stage_links').select('*').order('position'),
     db.from('rs_anim_shots').select('*').order('position'),
     db.from('rs_anim_steps').select('*').order('position'),
-    db.from('rs_anim_cells').select('*')
+    db.from('rs_anim_cells').select('*'),
+    db.from('rs_anim_feedback').select('*').order('created_at'),
+    db.from('rs_anim_deps').select('*')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
   state.stageCategories = sc.data||[]; state.stageLinks = sl.data||[];
   state.animShots = ash.data||[]; state.animSteps = ast.data||[]; state.animCells = acl.data||[];
+  state.animFeedback = afb.data||[]; state.animDeps = adp.data||[];
   if(ash.error) console.warn('Animation tables not found — run retainer-tracker-migration-v16.sql', ash.error);
   if(ts.error) console.warn('Task statuses table not found — run retainer-tracker-migration-v13.sql', ts.error);
   if(sc.error) console.warn('Client dashboard tables not found — run retainer-tracker-migration-v14.sql', sc.error);
@@ -3210,7 +3214,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.8.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -3892,6 +3896,485 @@ async function boot(){
   await loadAll();
 }
 boot();
+/* ── 1. Feedback log helpers ──────────────────────────────────────────── */
+function animFeedbackFor(shotId, stepId){
+  return (state.animFeedback||[])
+    .filter(f=>f.shot_id===shotId && f.step_id===stepId)
+    .sort((a,b)=>a.created_at.localeCompare(b.created_at));
+}
+function animFeedbackCount(shotId, stepId){ return animFeedbackFor(shotId, stepId).length; }
+function animAllFeedback(projectId){
+  const shotIds = new Set(state.animShots.filter(s=>s.project_id===projectId).map(s=>s.id));
+  return (state.animFeedback||[]).filter(f=>shotIds.has(f.shot_id))
+    .sort((a,b)=>b.created_at.localeCompare(a.created_at));
+}
+
+/* ── 2. Dependency helpers ────────────────────────────────────────────── */
+function animDepsFor(projectId){ return (state.animDeps||[]).filter(d=>d.project_id===projectId); }
+function animIsBlocked(shotId, projectId){
+  const deps = animDepsFor(projectId);
+  return deps.filter(d=>d.blocked_shot_id===shotId).some(d=>{
+    const blocker = state.animShots.find(s=>s.id===d.blocking_shot_id);
+    if(!blocker) return false;
+    const steps = animStepsFor(projectId);
+    return steps.length && steps.some(st=>animCellStatus(blocker.id, st.id)!=='Approved');
+  });
+}
+function animBlockedBy(shotId, projectId){
+  return animDepsFor(projectId)
+    .filter(d=>d.blocked_shot_id===shotId)
+    .map(d=>state.animShots.find(s=>s.id===d.blocking_shot_id))
+    .filter(Boolean);
+}
+function animBlocks(shotId, projectId){
+  return animDepsFor(projectId)
+    .filter(d=>d.blocking_shot_id===shotId)
+    .map(d=>state.animShots.find(s=>s.id===d.blocked_shot_id))
+    .filter(Boolean);
+}
+
+/* ── 3. Daily snapshot helpers ───────────────────────────────────────── */
+function animChangedSince(projectId, hoursAgo){
+  const since = new Date(Date.now() - hoursAgo*3600000).toISOString();
+  const shotIds = new Set(state.animShots.filter(s=>s.project_id===projectId).map(s=>s.id));
+  return (state.animCells||[]).filter(c=> shotIds.has(c.shot_id) && c.updated_at >= since);
+}
+
+/* ── Patched renderAnimation: inject feedback count, dependency badge,
+      snapshot tab, and dependency tab into the existing page ─────────── */
+const _origRenderAnimation = renderAnimation;
+function renderAnimation(){
+  if(state.animTab === 'snapshot') { renderAnimSnapshot(); return; }
+  if(state.animTab === 'deps')     { renderAnimDeps();     return; }
+  renderAnimGrid();
+}
+
+function renderAnimGrid(){
+  if(!state.animProjectId || !animProjects().some(p=>p.id===state.animProjectId)){
+    state.animProjectId = animProjects()[0]?.id || null;
+  }
+  const projects = animProjects();
+  const p = projects.find(x=>x.id===state.animProjectId) || null;
+
+  const tabBar = (projectId)=>`
+    <div class="pd-tabs" style="padding:0;margin-bottom:20px">
+      ${projects.map(pr=>{
+        const c = state.clients.find(cl=>cl.id===pr.client_id);
+        return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
+          style="${pr.id===state.animProjectId?`color:var(--navy);border-color:var(--navy)`:''}">${esc(c?c.name:'?')}${pr.label?` · ${esc(pr.label)}`:''}</button>`;
+      }).join('')}
+    </div>
+    <div class="view-toggle" style="margin-bottom:20px">
+      <button class="btn small ${!state.animTab||state.animTab==='grid'?'':'ghost'}" data-animtab="grid">Grid</button>
+      <button class="btn small ${state.animTab==='snapshot'?'':'ghost'}" data-animtab="snapshot">Today's snapshot</button>
+      <button class="btn small ${state.animTab==='deps'?'':'ghost'}" data-animtab="deps">Dependencies</button>
+    </div>`;
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
+    </div><div style="margin-bottom:18px"></div>`;
+
+  if(!projects.length){
+    html += `<div class="empty">No active animation projects. Create a project with an animation type under All Projects and it'll appear here.</div>`;
+    main.innerHTML = html; wireAnimTabsAll(); return;
+  }
+
+  html += tabBar(p?.id);
+  if(!p){ main.innerHTML = html; wireAnimTabsAll(); return; }
+
+  const shots = animShotsFor(p.id);
+  const steps = animStepsFor(p.id);
+
+  if(!steps.length){
+    html += `<div class="banner"><div>🎬</div><div>This project has no pipeline steps yet.
+      <button class="btn small" id="animSeed" style="margin-left:8px">Set up default pipeline</button>
+      <div style="margin-top:6px;font-size:12px;color:var(--muted)">Creates: ${ANIM_DEFAULT_STEPS.join(' → ')}</div>
+    </div></div>`;
+    main.innerHTML = html; wireAnimTabsAll();
+    $('#animSeed').onclick = async ()=>{
+      await Promise.all(ANIM_DEFAULT_STEPS.map((n,i)=> db.from('rs_anim_steps').insert({ project_id:p.id, name:n, position:i })));
+      toast('Pipeline created'); await loadAll();
+    };
+    return;
+  }
+
+  const todayIso = iso(new Date());
+  const budget = p.anim_total_seconds!=null ? +p.anim_total_seconds : null;
+  const allocated = shots.reduce((n,s)=> n + (s.duration_seconds ? +s.duration_seconds : 0), 0);
+  const approvedSecs = shots.reduce((n,s)=>{
+    const pr = animShotProgress(s, steps);
+    return n + (pr.done===steps.length && steps.length ? (s.duration_seconds ? +s.duration_seconds : 0) : 0);
+  }, 0);
+
+  const flags = { retakes:[], overdue:[], clientWait:[], unassigned:[], stalled:[], blocked:[] };
+  shots.forEach(s=>{
+    if(animIsBlocked(s.id, p.id)){
+      const blockers = animBlockedBy(s.id, p.id);
+      if(blockers.some(b=>{ const pr=animShotProgress(b,steps); return pr.done<steps.length; }))
+        flags.blocked.push({s});
+    }
+    steps.forEach(st=>{
+      const c = animCell(s.id, st.id);
+      if(!c) return;
+      if(c.status==='Retakes')       flags.retakes.push({s,st,c});
+      if(c.status==='Client review') flags.clientWait.push({s,st,c});
+      if(c.due_date && c.due_date < todayIso && c.status!=='Approved' && c.status!=='Omitted') flags.overdue.push({s,st,c});
+      if(c.status==='In progress' && !c.assignee_id) flags.unassigned.push({s,st,c});
+    });
+    const anyTouched = steps.some(st=>animCell(s.id,st.id));
+    if(!anyTouched) flags.stalled.push({s});
+  });
+
+  const chip = (label, n, color)=> n ? `<span class="status" style="background:${color}22;color:${color};font-weight:600">${n} ${label}</span>` : '';
+  html += `<div class="card" style="margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:center">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        ${chip('need retakes', flags.retakes.length, '#E8623D')}
+        ${chip('overdue', flags.overdue.length, '#c9372c')}
+        ${chip('awaiting client', flags.clientWait.length, '#15AABF')}
+        ${chip('blocked', flags.blocked.length, '#8B5CF6')}
+        ${chip('unassigned', flags.unassigned.length, '#e08c00')}
+        ${chip('not started', flags.stalled.length, '#7b7d92')}
+        ${!Object.values(flags).some(a=>a.length) ? '<span style="font-size:13px;color:var(--green);font-weight:600">✓ Nothing needs attention</span>' : ''}
+      </div>
+      <div style="font-size:12.5px;color:var(--muted);text-align:right">
+        <div><b style="color:var(--ink)">${allocated}s</b> across ${shots.length} shot${shots.length===1?'':'s'}${budget!=null?` of ${budget}s contracted`:''}</div>
+        <div>${approvedSecs}s fully approved${budget?` · ${Math.round(approvedSecs/budget*100)}% delivered`:''}</div>
+        ${budget!=null && allocated!==budget ? `<div style="color:var(--amber);font-weight:600">⚠ shot durations ${allocated>budget?'exceed':'fall short of'} the contracted ${budget}s</div>` : ''}
+      </div>
+    </div>
+  </div>`;
+
+  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn small" id="animAddShot">+ Shot</button>
+    <button class="btn small ghost" id="animAddStep">+ Pipeline step</button>
+    <button class="btn small ghost" id="animSetBudget">${budget!=null?'Edit':'Set'} total seconds</button>
+  </div>`;
+
+  if(!shots.length){
+    html += `<div class="empty">No shots yet — add your first shot to start building the pipeline grid.</div>`;
+  } else {
+    html += `<div class="card" style="padding:0;overflow-x:auto">
+      <table class="anim-grid" style="min-width:${260 + steps.length*104}px">
+        <thead><tr>
+          <th style="min-width:210px">Shot</th>
+          ${steps.map(st=>`<th style="text-align:center;min-width:96px">${esc(st.name)}<button class="anim-step-del" data-animstepdel="${st.id}" title="Remove step">×</button></th>`).join('')}
+          <th style="min-width:64px;text-align:right">Progress</th>
+        </tr></thead>
+        <tbody>
+          ${shots.map(s=>{
+            const pr = animShotProgress(s, steps);
+            const blocked = animIsBlocked(s.id, p.id);
+            const blockedBy = blocked ? animBlockedBy(s.id, p.id).map(b=>b.code).join(', ') : '';
+            const feedbackTotal = steps.reduce((n,st)=>n+animFeedbackCount(s.id,st.id),0);
+            return `<tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <b style="font-size:13px">${esc(s.code)}</b>
+                  ${s.duration_seconds!=null?`<span style="font-size:11.5px;color:var(--muted)">${s.duration_seconds}s</span>`:''}
+                  ${blocked?`<span style="font-size:10.5px;background:#8B5CF622;color:#8B5CF6;padding:2px 6px;border-radius:99px;font-weight:600" title="Waiting on ${blockedBy}">⊠ blocked</span>`:''}
+                  ${feedbackTotal?`<span style="font-size:10.5px;color:var(--muted)">💬 ${feedbackTotal}</span>`:''}
+                  <button class="btn small ghost" data-animshotedit="${s.id}" style="margin-left:auto">Edit</button>
+                </div>
+                ${s.description?`<div style="font-size:11.5px;color:var(--muted);margin-top:2px">${esc(s.description)}</div>`:''}
+              </td>
+              ${steps.map(st=>{
+                const c = animCell(s.id, st.id);
+                const status = c ? c.status : 'Not started';
+                const cfg = ANIM_CELL_STATUSES[status] || ANIM_CELL_STATUSES['Not started'];
+                const m = c && c.assignee_id ? state.members.find(mm=>mm.id===c.assignee_id) : null;
+                const overdue = c && c.due_date && c.due_date < todayIso && status!=='Approved' && status!=='Omitted';
+                const fb = animFeedbackCount(s.id, st.id);
+                return `<td style="text-align:center;padding:5px">
+                  <button class="anim-cell" data-animcell="${s.id}:${st.id}"
+                    title="${esc(status)}${m?' · '+esc(m.name):''}${c&&c.due_date?' · due '+c.due_date:''}"
+                    style="background:${cfg.color};color:${cfg.text};${overdue?'box-shadow:inset 0 0 0 2px var(--red)':''}">
+                    <span style="font-size:11px;font-weight:700">${cfg.short}</span>
+                    ${c&&c.version?`<span class="anim-cell-v">v${String(c.version).padStart(3,'0')}</span>`:''}
+                    ${c&&c.retakes?`<span class="anim-cell-rt">${c.retakes}↻</span>`:''}
+                    ${m?`<span class="anim-cell-who">${esc(initials(m.name))}</span>`:''}
+                    ${fb?`<span class="anim-cell-fb">💬${fb}</span>`:''}
+                  </button>
+                </td>`;
+              }).join('')}
+              <td style="text-align:right;font-size:12px;color:${pr.pct===100?'var(--green)':'var(--muted)'};font-weight:600">${pr.pct}%</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--muted)">
+      ${Object.entries(ANIM_CELL_STATUSES).map(([k,v])=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:${v.color};display:inline-block"></span>${esc(k)}</span>`).join('')}
+    </div>`;
+  }
+
+  main.innerHTML = html;
+  wireAnimTabsAll();
+  $('#animAddShot').onclick = ()=> openAnimShotModal(p.id, null);
+  $('#animAddStep').onclick = ()=> openAnimStepModal(p.id);
+  $('#animSetBudget').onclick = ()=> openAnimBudgetModal(p);
+  main.querySelectorAll('[data-animshotedit]').forEach(el=>el.addEventListener('click', ()=> openAnimShotModal(p.id, el.dataset.animshotedit)));
+  main.querySelectorAll('[data-animcell]').forEach(el=>el.addEventListener('click', ()=>{
+    const [shotId, stepId] = el.dataset.animcell.split(':');
+    openAnimCellModal(shotId, stepId);
+  }));
+  main.querySelectorAll('[data-animstepdel]').forEach(el=>el.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    const st = state.animSteps.find(x=>x.id===el.dataset.animstepdel);
+    if(!confirm(`Remove "${st.name}" step from this project?`)) return;
+    await db.from('rs_anim_steps').delete().eq('id', st.id);
+    toast('Step removed'); await loadAll();
+  }));
+}
+
+/* ── Snapshot view ─────────────────────────────────────────────────────── */
+function renderAnimSnapshot(){
+  const p = animProjects().find(x=>x.id===state.animProjectId);
+  if(!p){ state.animTab='grid'; renderAnimation(); return; }
+  const steps = animStepsFor(p.id);
+  const shots = animShotsFor(p.id);
+  const todayIso = iso(new Date());
+
+  // Group changed cells by "since when" bucket
+  const buckets = [
+    { label:'Since yesterday',   hours:24 },
+    { label:'Past 3 days',       hours:72 },
+    { label:'Past week',         hours:168 }
+  ];
+
+  const renderBucket = (hours)=>{
+    const cells = animChangedSince(p.id, hours);
+    if(!cells.length) return `<div class="empty" style="padding:16px 0">No changes in this period.</div>`;
+    return cells.map(c=>{
+      const shot = shots.find(s=>s.id===c.shot_id);
+      const step = steps.find(s=>s.id===c.step_id);
+      const m = c.assignee_id ? state.members.find(mm=>mm.id===c.assignee_id) : null;
+      const cfg = ANIM_CELL_STATUSES[c.status] || ANIM_CELL_STATUSES['Not started'];
+      const fb = animFeedbackFor(c.shot_id, c.step_id);
+      const latest = fb[fb.length-1];
+      return `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
+        <span style="background:${cfg.color};color:${cfg.text};font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap;flex-shrink:0">${esc(cfg.short)}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13.5px">${shot?esc(shot.code):'?'} · ${step?esc(step.name):'?'}</div>
+          <div style="font-size:12px;color:var(--muted)">${esc(c.status)}${m?` · ${esc(m.name)}`:''}${c.retakes?` · ${c.retakes} retake${c.retakes===1?'':'s'}`:''}</div>
+          ${latest?`<div style="font-size:12px;color:var(--muted);margin-top:4px;font-style:italic">"${esc(latest.body.slice(0,120))}${latest.body.length>120?'…':''}"</div>`:''}
+        </div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap">${fmtDate(new Date(c.updated_at))}</div>
+      </div>`;
+    }).join('');
+  };
+
+  // Overdue and needing attention today
+  const attn = [];
+  shots.forEach(s=> steps.forEach(st=>{
+    const c = animCell(s.id, st.id);
+    if(!c) return;
+    if(c.due_date && c.due_date < todayIso && c.status!=='Approved' && c.status!=='Omitted')
+      attn.push({ shot:s, step:st, c, type:'overdue' });
+    if(c.status==='Retakes') attn.push({ shot:s, step:st, c, type:'retakes' });
+    if(c.status==='Client review') attn.push({ shot:s, step:st, c, type:'waiting' });
+  }));
+
+  const attnHtml = attn.length ? attn.map(a=>{
+    const cfg = ANIM_CELL_STATUSES[a.c.status]||ANIM_CELL_STATUSES['Not started'];
+    const label = a.type==='overdue'?'⚠ Overdue': a.type==='retakes'?'↻ Retakes':'⏳ Client';
+    const color = a.type==='overdue'?'#c9372c': a.type==='retakes'?'#E8623D':'#15AABF';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
+      <span style="color:${color};font-weight:600;font-size:12px;width:76px;flex-shrink:0">${label}</span>
+      <b>${esc(a.shot.code)}</b>
+      <span style="color:var(--muted)">${esc(a.step.name)}</span>
+      ${a.c.due_date?`<span style="font-size:12px;color:var(--muted);margin-left:auto">${fmtDateNatural(a.c.due_date)}</span>`:''}
+    </div>`;
+  }).join('') : `<div style="padding:10px 0;color:var(--green);font-weight:600">✓ Nothing needs attention today</div>`;
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
+  </div><div style="margin-bottom:18px"></div>`;
+  html += `<div class="pd-tabs" style="padding:0;margin-bottom:20px">${animProjects().map(pr=>{
+    const cl = state.clients.find(cl=>cl.id===pr.client_id);
+    return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
+      style="${pr.id===state.animProjectId?`color:var(--navy);border-color:var(--navy)`:''}">${esc(cl?cl.name:'?')}</button>`;
+  }).join('')}</div>
+  <div class="view-toggle" style="margin-bottom:20px">
+    <button class="btn small ghost" data-animtab="grid">Grid</button>
+    <button class="btn small" data-animtab="snapshot">Today's snapshot</button>
+    <button class="btn small ghost" data-animtab="deps">Dependencies</button>
+  </div>`;
+
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Needs attention today</div>
+      ${attnHtml}
+    </div>
+    <div class="card">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Changed ${buckets[0].label.toLowerCase()}</div>
+      ${renderBucket(buckets[0].hours)}
+    </div>
+  </div>
+  <div class="card" style="margin-top:20px">
+    <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Changed ${buckets[1].label.toLowerCase()}</div>
+    ${renderBucket(buckets[1].hours)}
+  </div>`;
+
+  main.innerHTML = html;
+  wireAnimTabsAll();
+}
+
+/* ── Dependency management view ────────────────────────────────────────── */
+function renderAnimDeps(){
+  const p = animProjects().find(x=>x.id===state.animProjectId);
+  if(!p){ state.animTab='grid'; renderAnimation(); return; }
+  const shots = animShotsFor(p.id);
+  const steps = animStepsFor(p.id);
+  const deps = animDepsFor(p.id);
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
+  </div><div style="margin-bottom:18px"></div>`;
+  html += `<div class="pd-tabs" style="padding:0;margin-bottom:20px">${animProjects().map(pr=>{
+    const cl = state.clients.find(c=>c.id===pr.client_id);
+    return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
+      style="${pr.id===state.animProjectId?`color:var(--navy);border-color:var(--navy)`:''}">${esc(cl?cl.name:'?')}</button>`;
+  }).join('')}</div>
+  <div class="view-toggle" style="margin-bottom:20px">
+    <button class="btn small ghost" data-animtab="grid">Grid</button>
+    <button class="btn small ghost" data-animtab="snapshot">Today's snapshot</button>
+    <button class="btn small" data-animtab="deps">Dependencies</button>
+  </div>`;
+
+  html += `<div class="sub" style="margin-bottom:18px">A dependency means one shot must be fully Approved before another can start. Blocked shots are flagged in the grid.</div>`;
+
+  const depRows = deps.map(d=>{
+    const blocker = shots.find(s=>s.id===d.blocking_shot_id);
+    const blocked  = shots.find(s=>s.id===d.blocked_shot_id);
+    if(!blocker||!blocked) return '';
+    const pr = animShotProgress(blocker, steps);
+    const resolved = pr.done===steps.length && steps.length>0;
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
+      <b>${esc(blocker.code)}</b>
+      <span style="color:var(--muted)">blocks</span>
+      <b>${esc(blocked.code)}</b>
+      <span class="status ${resolved?'ok':'warn'}" style="margin-left:auto">${resolved?'✓ Resolved – blocker approved':'⊠ Active'}</span>
+      <button class="btn small ghost" data-animdeldep="${d.id}">Remove</button>
+    </div>`;
+  }).join('') || `<div class="empty" style="padding:16px 0">No dependencies set. Add one below.</div>`;
+
+  html += `<div class="card" style="margin-bottom:20px">${depRows}</div>`;
+  html += `<div class="card">
+    <div style="font-size:13.5px;font-weight:600;margin-bottom:12px">Add dependency</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <select id="dep_blocker" style="flex:1;min-width:120px"><option value="">Blocking shot…</option>
+        ${shots.map(s=>`<option value="${s.id}">${esc(s.code)}${s.description?` — ${esc(s.description.slice(0,40))}`:''}</option>`).join('')}
+      </select>
+      <span style="color:var(--muted)">must complete before</span>
+      <select id="dep_blocked" style="flex:1;min-width:120px"><option value="">Blocked shot…</option>
+        ${shots.map(s=>`<option value="${s.id}">${esc(s.code)}${s.description?` — ${esc(s.description.slice(0,40))}`:''}</option>`).join('')}
+      </select>
+      <button class="btn small" id="dep_add">Add</button>
+    </div>
+  </div>`;
+
+  main.innerHTML = html;
+  wireAnimTabsAll();
+  main.querySelectorAll('[data-animdeldep]').forEach(el=>el.addEventListener('click', async ()=>{
+    await db.from('rs_anim_deps').delete().eq('id', el.dataset.animdeldep);
+    toast('Dependency removed'); await loadAll();
+  }));
+  $('#dep_add').onclick = async ()=>{
+    const blockingId = $('#dep_blocker').value;
+    const blockedId  = $('#dep_blocked').value;
+    if(!blockingId||!blockedId){ toast('Select both shots'); return; }
+    if(blockingId===blockedId){ toast('A shot can\'t depend on itself'); return; }
+    if(deps.some(d=>d.blocking_shot_id===blockingId && d.blocked_shot_id===blockedId)){ toast('Already exists'); return; }
+    const { error } = await db.from('rs_anim_deps').insert({ project_id:p.id, blocking_shot_id:blockingId, blocked_shot_id:blockedId });
+    if(error){ toast('Could not add dependency'); console.error(error); return; }
+    toast('Dependency added'); await loadAll();
+  };
+}
+
+/* ── Shared tab wiring ─────────────────────────────────────────────────── */
+function wireAnimTabsAll(){
+  main.querySelectorAll('[data-animproj]').forEach(el=>el.addEventListener('click', ()=>{ state.animProjectId = el.dataset.animproj; render(); }));
+  main.querySelectorAll('[data-animtab]').forEach(el=>el.addEventListener('click', ()=>{ state.animTab = el.dataset.animtab; render(); }));
+}
+
+/* ── Patched cell modal — adds feedback log below status controls ──────── */
+const _origOpenAnimCellModal = openAnimCellModal;
+function openAnimCellModal(shotId, stepId){
+  const shot = state.animShots.find(s=>s.id===shotId);
+  const step = state.animSteps.find(s=>s.id===stepId);
+  const c = animCell(shotId, stepId) || { status:'Not started', assignee_id:null, version:0, retakes:0, due_date:null };
+  const feedback = animFeedbackFor(shotId, stepId);
+  const designers = state.members.filter(m=>m.active!==false);
+  const me = currentUser();
+
+  const fbHtml = feedback.length ? feedback.map(f=>{
+    const author = f.author_id ? state.members.find(m=>m.id===f.author_id) : null;
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px">
+        <span style="font-weight:600;font-size:12.5px">${author?esc(author.name):'Team'}</span>
+        <span style="font-size:11px;color:var(--muted)">${fmtDate(new Date(f.created_at))}${f.version_at?` · v${String(f.version_at).padStart(3,'0')}`:''}</span>
+      </div>
+      <div style="font-size:13px;color:var(--ink);white-space:pre-wrap">${esc(f.body)}</div>
+    </div>`;
+  }).join('') : `<div style="color:var(--muted);font-size:12.5px;padding:8px 0">No feedback yet.</div>`;
+
+  showModal(`
+    <h3>${esc(shot.code)} · ${esc(step.name)}</h3>
+    <form class="log" style="max-width:none">
+      <div><label>Status</label><select id="ac_status">${Object.keys(ANIM_CELL_STATUSES).map(k=>`<option value="${k}" ${c.status===k?'selected':''}>${k}</option>`).join('')}</select></div>
+      <div><label>Assigned to</label><select id="ac_who"><option value="">— nobody —</option>${designers.map(m=>`<option value="${m.id}" ${c.assignee_id===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
+      <div><label>Version</label><input type="number" min="0" id="ac_version" value="${c.version||0}"></div>
+      <div><label>Retake rounds</label><input type="number" min="0" id="ac_retakes" value="${c.retakes||0}"></div>
+      <div><label>Due date</label>${dateFieldHtml('ac_due', c.due_date, 'Set due date')}</div>
+    </form>
+    <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Feedback log</div>
+      <div style="max-height:200px;overflow-y:auto;margin-bottom:12px">${fbHtml}</div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <textarea id="ac_fbtext" placeholder="Add a note (what was sent, what came back, decisions made)…" style="flex:1;min-height:52px;resize:vertical"></textarea>
+        <button class="btn small" type="button" id="ac_fbpost">Add note</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="ac_cancel">Cancel</button>
+        <button class="btn" id="ac_save">Save status</button>
+      </div>
+    </div>
+  `);
+  wireDateField('ac_due', 'Set due date');
+  $('#ac_cancel').onclick = closeModal;
+
+  $('#ac_fbpost').onclick = async ()=>{
+    const body = $('#ac_fbtext').value.trim();
+    if(!body){ toast('Write something first'); return; }
+    const { error } = await db.from('rs_anim_feedback').insert({
+      shot_id:shotId, step_id:stepId, body,
+      author_id: me?.id || null,
+      version_at: c.version || null
+    });
+    if(error){ toast('Could not save note'); return; }
+    toast('Note added'); await loadAll();
+    openAnimCellModal(shotId, stepId);
+  };
+
+  $('#ac_save').onclick = async ()=>{
+    const fields = {
+      shot_id:shotId, step_id:stepId,
+      status:$('#ac_status').value,
+      assignee_id:$('#ac_who').value||null,
+      version:+$('#ac_version').value||0,
+      retakes:+$('#ac_retakes').value||0,
+      due_date:$('#ac_due').value||null,
+      updated_at:new Date().toISOString()
+    };
+    const { error } = await db.from('rs_anim_cells').upsert(fields, { onConflict:'shot_id,step_id' });
+    if(error){ toast('Could not save'); console.error(error); return; }
+    closeModal(); toast('Updated'); await loadAll();
+  };
+}
+
 </script>
 </body>
 </html>
