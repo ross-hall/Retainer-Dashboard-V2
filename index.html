@@ -365,7 +365,7 @@
 <main id="main"></main>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.8.1</div>
+<div id="versionBadge" class="version-badge">v0.8.2</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -2202,14 +2202,100 @@ function taskEntriesHtml(taskId){
   }).join('')}</div>`;
 }
 
+function openRetainerTaskTimeModal(taskId, onDone){
+  const task = state.projTasks.find(t=>t.id===taskId);
+  if(!task) return;
+  const existingEntries = taskEntriesFor(taskId);
+  const assignedIds = task.assigned_designer_ids||[];
+  // Build rows: one per already-assigned designer, plus any existing entries for non-assigned members
+  const extraMemberIds = [...new Set(existingEntries.map(e=>e.member_id).filter(id=>!assignedIds.includes(id)))];
+  const rowMemberIds = [...assignedIds, ...extraMemberIds];
+  const allMembers = state.members.filter(m=>m.active!==false);
+
+  function entryRowsHtml(){
+    const rows = rowMemberIds.map(mid=>{
+      const m = allMembers.find(mm=>mm.id===mid);
+      if(!m) return '';
+      const existing = existingEntries.find(e=>e.member_id===mid);
+      return `<div class="entry-row" data-entryrow="${mid}" style="display:grid;grid-template-columns:1fr 80px auto;gap:8px;align-items:center;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="avatar" style="background:${colorFor({color:PALETTE[allMembers.indexOf(m)%PALETTE.length]})};width:28px;height:28px;font-size:10px;flex:none">${esc(initials(m.name))}</div>
+          <div>
+            <div style="font-size:13.5px;font-weight:500">${esc(m.name)}</div>
+            <div style="font-size:11px;color:var(--muted)">×${m.weight||1} weight</div>
+          </div>
+        </div>
+        <input type="number" min="0" step="0.25" class="entry-hours" data-memberid="${mid}" value="${existing?existing.hours:''}" placeholder="0" style="text-align:right;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit">
+        <span style="font-size:12px;color:var(--muted);white-space:nowrap" id="weight_${mid}">${existing? `= ${fmtH(existing.hours*(m.weight||1))}` : ''}</span>
+      </div>`;
+    }).join('');
+    return rows + `<div style="margin-top:12px">
+      <label style="font-size:12px;color:var(--muted)">Work date</label>
+      ${dateFieldHtml('ttm_date', iso(new Date()), 'Set date')}
+    </div>`;
+  }
+
+  showModal(`
+    <h3>${esc(task.title)}</h3>
+    <div class="sub" style="margin-bottom:16px">Log hours for each team member who worked on this task</div>
+    <div id="ttm_rows">${entryRowsHtml()}</div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="ttm_edittask">Edit task</button>
+      <div class="right">
+        <button class="btn ghost" id="ttm_cancel">Cancel</button>
+        <button class="btn" id="ttm_save">Save hours</button>
+      </div>
+    </div>
+  `);
+  wireDateField('ttm_date', 'Set date');
+  document.querySelectorAll('.entry-hours').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      const mid = inp.dataset.memberid;
+      const m = allMembers.find(mm=>mm.id===mid);
+      const w = m ? (m.weight||1) : 1;
+      const h = parseFloat(inp.value)||0;
+      const lbl = document.getElementById('weight_'+mid);
+      if(lbl) lbl.textContent = h>0 ? `= ${fmtH(h*w)}` : '';
+    });
+  });
+  $('#ttm_cancel').onclick = closeModal;
+  $('#ttm_edittask').onclick = ()=>{ closeModal(); openProjTaskModal(taskId, {}); };
+  $('#ttm_save').onclick = async ()=>{
+    const work_date = $('#ttm_date').value || iso(new Date());
+    const updates = [];
+    document.querySelectorAll('.entry-hours').forEach(inp=>{
+      const h = parseFloat(inp.value);
+      if(h>0) updates.push({ member_id: inp.dataset.memberid, hours: h });
+    });
+    if(!updates.length){ toast('Enter at least one person\'s hours'); return; }
+    for(const u of updates){
+      const existing = existingEntries.find(e=>e.member_id===u.member_id);
+      if(existing){
+        const { error } = await db.from('rs_proj_task_entries').update({ hours:u.hours, work_date }).eq('id', existing.id);
+        if(!error){ const rec = state.projTaskEntries.find(x=>x.id===existing.id); if(rec){ rec.hours=u.hours; rec.work_date=work_date; } }
+      } else {
+        const { data, error } = await db.from('rs_proj_task_entries').insert({ proj_task_id:taskId, member_id:u.member_id, hours:u.hours, work_date }).select().single();
+        if(!error && data) state.projTaskEntries.push(data);
+      }
+    }
+    closeModal(); toast('Hours saved');
+    if(onDone) onDone(); else await refreshProjectView();
+  };
+}
+
 function openTaskEntryModal(taskId, entryId, onDone){
   const isNew = !entryId;
   const e = entryId ? (state.projTaskEntries||[]).find(x=>x.id===entryId) : null;
-  const designers = state.members.filter(m=>m.active!==false);
+  const task = state.projTasks.find(t=>t.id===taskId);
+  const allMembers = state.members.filter(m=>m.active!==false);
+  // Pre-select the first assigned designer who doesn't have an entry yet
+  const assigned = task ? (task.assigned_designer_ids||[]) : [];
+  const taken = taskEntriesFor(taskId).map(x=>x.member_id);
+  const suggestedId = isNew ? (assigned.find(id=>!taken.includes(id)) || '') : '';
   showModal(`
     <h3>${isNew?'Log time for a person':'Edit time entry'}</h3>
     <form class="log" style="max-width:none">
-      <div><label>Team member</label><select id="te_member"><option value="">— select —</option>${designers.map(m=>`<option value="${m.id}" ${e&&e.member_id===m.id?'selected':''}>${esc(m.name)} (×${m.weight||1})</option>`).join('')}</select></div>
+      <div><label>Team member</label><select id="te_member"><option value="">— select —</option>${allMembers.map(m=>`<option value="${m.id}" ${(e?e.member_id===m.id:m.id===suggestedId)?'selected':''}>${esc(m.name)} (×${m.weight||1})</option>`).join('')}</select></div>
       <div><label>Hours</label><input type="number" min="0" step="0.25" id="te_hours" value="${e?e.hours:''}" placeholder="e.g. 2.5"></div>
       <div><label>Work date</label>${dateFieldHtml('te_date', e?e.work_date:iso(new Date()), 'Set date')}</div>
       <div class="full"><label>Notes <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="te_notes" value="${esc(e?e.notes||'':'')}" placeholder="e.g. Initial concept"></div>
@@ -2363,7 +2449,15 @@ async function deleteProjTaskQuick(taskId){
 function wireTaskRows(root){
   root.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', (e)=>{
     if(e.target.closest('[data-statusinline]') || e.target.closest('[data-taskmenu]')) return;
-    openProjTaskModal(el.dataset.projtask, {});
+    const taskId = el.dataset.projtask;
+    const task = state.projTasks.find(t=>t.id===taskId);
+    const client = task?.client_id ? state.clients.find(c=>c.id===task.client_id)
+      : (task?.project_id ? (()=>{ const p=state.projects.find(p=>p.id===task.project_id); return p?state.clients.find(c=>c.id===p.client_id):null; })() : null);
+    if(task && !task.project_id && client?.is_retainer){
+      openRetainerTaskTimeModal(taskId);
+    } else {
+      openProjTaskModal(taskId, {});
+    }
   }));
   root.querySelectorAll('[data-statusinline]').forEach(el=>{
     el.addEventListener('click', e=> e.stopPropagation());
@@ -2377,10 +2471,15 @@ function wireTaskRows(root){
   root.querySelectorAll('[data-taskmenu]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     const taskId = el.dataset.taskmenu;
-    openMenuPopover(e.currentTarget, [
-      { label:'Duplicate task', onClick:()=> duplicateProjTask(taskId) },
-      { label:'Delete task', danger:true, onClick:()=> deleteProjTaskQuick(taskId) }
-    ]);
+    const task = state.projTasks.find(t=>t.id===taskId);
+    const client = task?.client_id ? state.clients.find(c=>c.id===task.client_id)
+      : (task?.project_id ? (()=>{ const p=state.projects.find(p=>p.id===task.project_id); return p?state.clients.find(c=>c.id===p.client_id):null; })() : null);
+    const isRetainerTask = task && !task.project_id && client?.is_retainer;
+    const items = [];
+    if(isRetainerTask) items.push({ label:'Edit task', onClick:()=> openProjTaskModal(taskId, {}) });
+    items.push({ label:'Duplicate task', onClick:()=> duplicateProjTask(taskId) });
+    items.push({ label:'Delete task', danger:true, onClick:()=> deleteProjTaskQuick(taskId) });
+    openMenuPopover(e.currentTarget, items);
   }));
 }
 
@@ -2479,7 +2578,7 @@ function openProjTaskModal(taskId, ctx){
       ${stages.length? `<div><label>Stage</label><select id="pt_stage">${stages.map(s=>`<option value="${s.id}" ${s.id===t.stage_id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>` : ''}
       <div><label>Status</label><select id="pt_status">${taskStatusNames().map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${statusIcon(s)} ${s}</option>`).join('')}</select></div>
       <div><label>Priority</label><select id="pt_priority">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
-      <div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t.recorded_hours!=null?t.recorded_hours:''}"></div>
+      ${!client?.is_retainer ? `<div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t.recorded_hours!=null?t.recorded_hours:''}"></div>` : ''}
       <div class="full"><label>Designers</label><div id="pt_designers">${pillSelectorHtml(designerPool, t.assigned_designer_ids||[])}</div></div>
       <div class="full"><label>Reviewers</label><div id="pt_reviewers">${pillSelectorHtml(reviewerPool, t.assigned_reviewer_ids||[])}</div></div>
       <div><label>Due date</label>${dateFieldHtml('pt_due', t.due_date, 'Set due date')}</div>
@@ -2549,7 +2648,7 @@ function openProjTaskModal(taskId, ctx){
       priority: $('#pt_priority').value,
       assigned_designer_ids: Array.from(document.querySelectorAll('#pt_designers .member-pill.selected')).map(b=>b.dataset.pillmember),
       assigned_reviewer_ids: Array.from(document.querySelectorAll('#pt_reviewers .member-pill.selected')).map(b=>b.dataset.pillmember),
-      recorded_hours: $('#pt_hours').value ? +$('#pt_hours').value : null,
+      recorded_hours: $('#pt_hours') ? ($('#pt_hours').value ? +$('#pt_hours').value : null) : null,
       due_date: $('#pt_due').value || null,
       work_date: document.getElementById('pt_work') ? ($('#pt_work').value || null) : (t.work_date||null),
       counts_toward_retainer: document.getElementById('pt_retainer') ? $('#pt_retainer').checked : false
@@ -3323,7 +3422,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.8.1';
+const APP_VERSION = '0.8.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
