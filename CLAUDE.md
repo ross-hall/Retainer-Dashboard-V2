@@ -46,9 +46,9 @@ Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · 
 
 ```
 HTML structure:
-  <style>        CSS (~350 lines) — design tokens, all component styles
-  <body>         .app-shell (left #sidebar nav + #main) + #modalRoot + #toast
-  <script>       All app logic (~4,270 lines)
+  <style>        CSS (~390 lines) — design tokens, all component styles
+  <body>         .app-shell (collapsible #sidebar + #main) + #quickAddFab + #modalRoot + #toast
+  <script>       All app logic (~4,320 lines)
 
 Nav views (state.view):
   'home'         → renderHome()
@@ -94,12 +94,12 @@ Public dashboard (no internal nav):
 ## Key constants and state
 
 ```js
-CURRENT_USER_NAME = 'Ross Hall'   // ~line 1188 — links Home to team member
-APP_VERSION = '0.9.0'             // ~line 3458
-PALETTE = [8 hex colours]         // ~line 466 — dot/avatar colours
-DEFAULT_TASK_STATUSES = [...]      // ~line 492 — fallback if v13 migration not run
-ANIM_DEFAULT_STEPS = [...]         // ~line 3610 — seeded on first animation use
-ANIM_CELL_STATUSES = {...}         // ~line 3611 — status → {color, text, short}
+CURRENT_USER_NAME = 'Ross Hall'   // ~line 1277 — links Home to team member
+APP_VERSION = '0.10.0'            // ~line 3547
+PALETTE = [8 hex colours]         // ~line 513 — dot/avatar colours
+DEFAULT_TASK_STATUSES = [...]      // ~line 539 — fallback if v13 migration not run
+ANIM_DEFAULT_STEPS = [...]         // ~line 3699 — seeded on first animation use
+ANIM_CELL_STATUSES = {...}         // ~line 3700 — status → {color, text, short}
 
 state = {
   view, projView, projClientId, projProjectId,
@@ -121,33 +121,45 @@ state = {
 
 ---
 
-## Design tokens (current, as of v0.9.0 — Notion-style redesign, phase 1 done)
+## Design tokens (current, as of v0.10.0 — Notion + Linear + Arc direction)
 
 ```css
---navy: #040e6b        /* kept as sole accent — retainer meter fill, active nav state, focus rings */
---navy-soft: #2a37a8
---ink: #37352f          /* was #16183a */
---paper: #f7f7f5        /* was #f6f6f3 — Notion canvas */
+--accent: #2383e2        /* primary interactive color — was navy/navy-soft pre-v0.10.0 */
+--accent-hover: #1a6fc4
+--accent-soft: #eaf3fd    /* tint bg for hover/selected states, muted-chip backgrounds */
+--ink: #37352f
+--ink-light: #9a988f      /* new — lighter secondary text (table headers) */
+--paper: #fbfaf8          /* was #f7f7f5 — warmer off-white */
 --card: #ffffff
---line: #e3e3e0          /* was #e4e4de */
---muted: #7b7a77         /* was #7b7d92 */
---amber: #c98a2b         /* was #e08c00 — desaturated */
---red: #c4554d           /* was #c9372c — desaturated */
---green: #448361         /* was #1d7a4d — desaturated */
---track: #f1f1ef         /* was #ecedf5 — neutral instead of blue-tinted */
---radius: 3px            /* was 14px — Notion-sharp corners */
-Font: Inter (400/500/600/700), replacing Rubik in the Google Fonts link, body, .pd-tab, and both inline public-dashboard style strings
+--line: #eae7e1           /* was #e3e3e0 */
+--line-soft: #f0eee9      /* new — lighter table-row dividers */
+--muted: #8a877e          /* was #7b7a77 */
+--amber: #c98a2b / --red: #c4554d / --green: #448361   /* unchanged from v0.9.0 */
+--track: #f1f0ec
+--radius: 12px            /* was 3px in v0.9.0, 14px before that — Notion/Linear card radius, not sharp corners */
+--radius-sm: 8px          /* new — inputs, small controls */
+--shadow-card / --shadow-pop / --shadow-sm   /* new — neutral warm-grey shadows (no color tint), replacing the old navy-tinted rgba(4,14,107,…) shadows */
+--fast: 150ms / --dur: 200ms / --ease        /* new — animation timing tokens */
+--navy / --navy-soft      /* still declared in :root but no longer referenced anywhere — legacy, safe to leave or remove */
+Font: Inter (unchanged from v0.9.0)
 ```
 
-Left sidebar nav (`#sidebar` inside `.app-shell`) replaced the top `<header>`/`<nav>` bar — icon + label buttons, collapses to icon-only horizontal bar under 760px. See `rs-function-index.md`'s "Redesign status" section for exactly what changed and what's still pending.
+`mutedBg(hex)` JS helper (next to `contrastText`, ~line 563) converts a status's stored hex into a `rgba(r,g,b,.14)` tint — this is what makes `.status-pill`/`.status-select` render as muted chips instead of solid vivid fills, since those two call sites set `background` via inline style (which overrides the CSS class).
 
-**Not yet done (deliberately left for a follow-up session):**
-- Buttons (`.btn`) are still solid navy pills, not neutral/grey with hover-revealed actions
-- Status pills (`.status-pill`, `.status-todo` etc.) are still vivid hardcoded solid fills, not muted dot+label chips
-- Tables still use the existing styled-grid look, not a plain spreadsheet feel
-- These components use hardcoded radius/color values rather than the token vars, so the token-block swap didn't reach them automatically
+**What shipped in v0.10.0** (on top of v0.9.0's tokens + sidebar):
+- Soft blue accent replacing navy/navy-soft everywhere (buttons, links, focus rings, selected states, meter fill, badges)
+- 12px radius across cards/modals/popovers/inputs (reversing v0.9.0's 3px "sharp corners" experiment — this direction won)
+- Pill-shaped buttons with proper hover/active/focus states
+- Muted status/priority/type badges (tint bg + saturated text, not solid fills)
+- Sticky table headers, lighter row dividers, more row padding
+- Popover/modal open animations (fade + slight scale/translate, 150–200ms)
+- Lucide-style icon swap for kebab "more options" menus (was `⋮` text)
+- **Collapsible sidebar** — toggle button, state persisted to `localStorage` (`rs_sidebar_collapsed`)
+- **Global Quick Add** — `#quickAddFab` bottom-right button → New client/project/task, with a searchable client-picker for project/task since those modals need a client context
 
-Prior version (v0.8.2 — top nav header, Rubik, 14px radius) is recoverable via git history, commit `5664307` or earlier.
+**Explicitly deferred** (per user's chosen phasing — "visual polish + core nav" only, not the full wishlist): command palette (Cmd/Ctrl+K), global search, reorderable dashboard widgets, dark mode, tablet-specific responsive pass, inline editing, illustrated empty states, project-page restructuring. Full list and rationale in `rs-function-index.md`'s "Redesign status" section.
+
+Prior versions recoverable via git history: v0.9.0 (sharp 3px corners, top-header-nav already replaced by sidebar) is the commit right before this session; v0.8.2 (original top nav, Rubik, 14px radius) is commit `5664307` or earlier.
 
 ---
 
@@ -157,7 +169,7 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 ---
 
 ## Known issues
-- `renderAnimation` is defined twice (lines ~3637 and ~4187). Second definition wins — first is a stub leftover. Safe but should be cleaned up. (`openAnimCellModal` has the same duplicate pattern at ~3890 and ~4544.)
+- `renderAnimation` is defined twice (lines ~3726 and ~4285). Second definition wins — first is a stub leftover. Safe but should be cleaned up. (`openAnimCellModal` has the same duplicate pattern at ~3979 and ~4642.)
 - Column widths (taskColWidths) reset on page refresh — session-only, no persistence yet.
 - RLS is fully open — flagged as risk now that client-facing dashboard URLs are live.
 
