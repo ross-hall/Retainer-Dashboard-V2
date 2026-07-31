@@ -379,7 +379,7 @@ let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clie
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], clientListGroup:'client', clientListSort:'alpha' };
+  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -528,7 +528,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,adp] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,adp,pte] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -540,13 +540,16 @@ async function loadAll(){
     db.from('rs_anim_steps').select('*').order('position'),
     db.from('rs_anim_cells').select('*'),
     db.from('rs_anim_feedback').select('*').order('created_at'),
-    db.from('rs_anim_deps').select('*')
+    db.from('rs_anim_deps').select('*'),
+    db.from('rs_proj_task_entries').select('*').order('work_date',{ascending:false})
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
   state.stageCategories = sc.data||[]; state.stageLinks = sl.data||[];
   state.animShots = ash.data||[]; state.animSteps = ast.data||[]; state.animCells = acl.data||[];
   state.animFeedback = afb.data||[]; state.animDeps = adp.data||[];
+  state.projTaskEntries = pte.data||[];
+  if(pte.error) console.warn('Task time entries table not found — run retainer-tracker-migration-v18.sql', pte.error);
   if(ash.error) console.warn('Animation tables not found — run retainer-tracker-migration-v16.sql', ash.error);
   if(ts.error) console.warn('Task statuses table not found — run retainer-tracker-migration-v13.sql', ts.error);
   if(sc.error) console.warn('Client dashboard tables not found — run retainer-tracker-migration-v14.sql', sc.error);
@@ -1498,15 +1501,21 @@ async function renderClientAllowanceView(c){
           </span>
         </div>
         <div class="card" style="padding:8px 12px">
-          ${items.length? `<table><thead><tr><th>Date</th><th>Task</th><th>Assigned</th><th style="text-align:right">Hours</th><th style="text-align:center">Tracked</th></tr></thead>
+          ${items.length? `<table><thead><tr><th>Task</th><th>Date</th><th>Assigned</th><th style="text-align:right">Hours (entries)</th><th style="text-align:center">Tracked</th></tr></thead>
           <tbody>${items.map(pt=>{
             const tracked = pt.counts_toward_retainer && pt.retainer_task_ids && pt.retainer_task_ids.length;
             const dateStr = pt.work_date || pt.due_date;
+            const entries = taskEntriesFor(pt.id);
+            const entriesTotal = entries.reduce((n,e)=> n + e.hours * (state.members.find(m=>m.id===e.member_id)?.weight||1), 0);
+            const hoursDisplay = entries.length
+              ? `<div style="font-weight:600">${fmtH(entriesTotal)} <span style="color:var(--muted);font-weight:400;font-size:11.5px">(${entries.length} entr${entries.length===1?'y':'ies'})</span></div>
+                 <div style="font-size:11px;color:var(--muted)">${entries.map(e=>{ const m=state.members.find(mm=>mm.id===e.member_id); return `${esc(m?initials(m.name):'?')} ${fmtH(e.hours)}`; }).join(', ')}</div>`
+              : (pt.recorded_hours!=null? fmtH(pt.recorded_hours) : '—');
             return `<tr class="task-row" data-projtask="${pt.id}">
-              <td>${dateStr? fmtDate(new Date(dateStr+'T00:00')) : '—'}</td>
               <td><span class="status-dot" style="background:${statusColor(pt.status)}"></span>${esc(pt.title)}</td>
+              <td>${dateStr? fmtDate(new Date(dateStr+'T00:00')) : '—'}</td>
               <td>${avatarGroupHtml(pt.assigned_designer_ids)}</td>
-              <td style="text-align:right">${tracked? fmtH(pt.recorded_hours) : (pt.recorded_hours!=null? fmtH(pt.recorded_hours):'—')}</td>
+              <td style="text-align:right">${hoursDisplay}</td>
               <td style="text-align:center">${tracked? '<span class="retainer-tick" title="Counted toward this cycle">✓ Tracked</span>' : '<span style="color:var(--amber);font-weight:600" title="Not counting toward retainer hours yet">⚠ Not tracked</span>'}</td>
             </tr>`;
           }).join('')}</tbody></table>` : `<div class="empty">No to-do list tasks fall in this period — hours below came from manually logged time.</div>`}
@@ -2172,6 +2181,80 @@ function pillSelectorHtml(members, selectedIds){
   return `<div class="pill-select">${members.map(m=>`<button type="button" class="member-pill ${selectedIds.includes(m.id)?'selected':''}" data-pillmember="${m.id}"><span class="avatar" style="background:${clientColor(m.id)}">${initials(m.name)}</span>${esc(m.name)}</button>`).join('')}</div>`;
 }
 
+function taskEntriesFor(taskId){ return (state.projTaskEntries||[]).filter(e=>e.proj_task_id===taskId).sort((a,b)=>a.work_date.localeCompare(b.work_date)); }
+
+function taskEntriesHtml(taskId){
+  const entries = taskEntriesFor(taskId);
+  if(!entries.length) return `<div class="empty" style="padding:8px 0;font-size:12.5px">No time entries yet — add one below.</div>`;
+  return `<div style="display:flex;flex-direction:column;gap:6px">${entries.map(e=>{
+    const m = state.members.find(mm=>mm.id===e.member_id);
+    const weight = m ? (m.weight||1) : 1;
+    return `<div style="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:8px;padding:8px 10px;background:var(--track);border-radius:8px;font-size:13px">
+      <div style="min-width:0">
+        <span style="font-weight:600">${esc(m?m.name:'?')}</span>
+        <span style="color:var(--muted);margin-left:6px">${fmtDate(new Date(e.work_date+'T00:00'))}</span>
+        ${e.notes? `<span style="color:var(--muted);margin-left:6px">· ${esc(e.notes)}</span>`:''}
+      </div>
+      <span style="font-weight:600;color:var(--navy-soft)">${fmtH(e.hours)}</span>
+      <span style="color:var(--muted);font-size:11.5px">×${weight} = ${fmtH(e.hours*weight)}</span>
+      <button type="button" class="btn small ghost" data-editentry="${e.id}">Edit</button>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function openTaskEntryModal(taskId, entryId, onDone){
+  const isNew = !entryId;
+  const e = entryId ? (state.projTaskEntries||[]).find(x=>x.id===entryId) : null;
+  const designers = state.members.filter(m=>m.active!==false);
+  showModal(`
+    <h3>${isNew?'Log time for a person':'Edit time entry'}</h3>
+    <form class="log" style="max-width:none">
+      <div><label>Team member</label><select id="te_member"><option value="">— select —</option>${designers.map(m=>`<option value="${m.id}" ${e&&e.member_id===m.id?'selected':''}>${esc(m.name)} (×${m.weight||1})</option>`).join('')}</select></div>
+      <div><label>Hours</label><input type="number" min="0" step="0.25" id="te_hours" value="${e?e.hours:''}" placeholder="e.g. 2.5"></div>
+      <div><label>Work date</label>${dateFieldHtml('te_date', e?e.work_date:iso(new Date()), 'Set date')}</div>
+      <div class="full"><label>Notes <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="te_notes" value="${esc(e?e.notes||'':'')}" placeholder="e.g. Initial concept"></div>
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn danger" id="te_delete">Delete</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="te_cancel">Cancel</button>
+        <button class="btn" id="te_save">${isNew?'Log hours':'Save'}</button>
+      </div>
+    </div>
+  `);
+  wireDateField('te_date', 'Set date');
+  $('#te_cancel').onclick = closeModal;
+  if(!isNew) $('#te_delete').onclick = async ()=>{
+    const { error } = await db.from('rs_proj_task_entries').delete().eq('id', entryId);
+    if(error){ toast('Delete failed'); return; }
+    closeModal(); toast('Entry removed');
+    const idx = (state.projTaskEntries||[]).findIndex(x=>x.id===entryId);
+    if(idx>=0) state.projTaskEntries.splice(idx,1);
+    if(onDone) onDone();
+  };
+  $('#te_save').onclick = async ()=>{
+    const member_id = $('#te_member').value;
+    const hours = parseFloat($('#te_hours').value);
+    const work_date = $('#te_date').value || iso(new Date());
+    const notes = $('#te_notes').value.trim() || null;
+    if(!member_id){ toast('Select a team member'); return; }
+    if(!hours || hours<=0){ toast('Enter a valid number of hours'); return; }
+    if(isNew){
+      const { data, error } = await db.from('rs_proj_task_entries').insert({ proj_task_id:taskId, member_id, hours, work_date, notes }).select().single();
+      if(error){ toast('Could not save'); console.error(error); return; }
+      (state.projTaskEntries = state.projTaskEntries||[]).push(data);
+      closeModal(); toast('Hours logged');
+    } else {
+      const { error } = await db.from('rs_proj_task_entries').update({ member_id, hours, work_date, notes }).eq('id', entryId);
+      if(error){ toast('Could not save'); return; }
+      const entry = (state.projTaskEntries||[]).find(x=>x.id===entryId);
+      if(entry){ entry.member_id=member_id; entry.hours=hours; entry.work_date=work_date; entry.notes=notes; }
+      closeModal(); toast('Entry updated');
+    }
+    if(onDone) onDone();
+  };
+}
+
 function blankProjTask(ctx){
   ctx = ctx || {};
   let clientId = ctx.clientId || null;
@@ -2405,7 +2488,13 @@ function openProjTaskModal(taskId, ctx){
       <div class="full weighted-note" style="display:flex;align-items:center;gap:8px">
         <input type="checkbox" id="pt_retainer" ${t.counts_toward_retainer?'checked':''} style="width:auto">
         <label style="margin:0" for="pt_retainer">Counts toward ${esc(client.name)}'s retainer dashboard</label>
-      </div>` : ''}
+      </div>
+      ${!isNew ? `<div class="full" style="margin-top:4px;border-top:1px solid var(--line);padding-top:14px">
+        <label style="margin-bottom:8px;display:block">Time entries <span style="color:var(--muted);font-weight:400">— one per team member</span></label>
+        <div id="pt_entries_list">${taskEntriesHtml(t.id)}</div>
+        <button type="button" class="btn small ghost" id="pt_add_entry" style="margin-top:8px">+ Add person's hours</button>
+      </div>` : `<div class="full weighted-note" style="color:var(--muted)">Save the task first, then add individual time entries per person.</div>`}
+      ` : ''}
     </form>
     <div class="modal-actions">
       ${!isNew? `<button class="btn danger" id="pt_delete">Delete task</button>`:'<span></span>'}
@@ -2419,7 +2508,27 @@ function openProjTaskModal(taskId, ctx){
     b.addEventListener('click', ()=> b.classList.toggle('selected'));
   });
   wireDateField('pt_due', 'Set due date');
+  // Delegate edit-entry clicks inside the entries list (dynamic content)
+  const modalRoot = document.getElementById('modalRoot');
+  if(modalRoot) modalRoot.addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('[data-editentry]');
+    if(!btn) return;
+    ev.stopPropagation();
+    const entryId = btn.dataset.editentry;
+    openTaskEntryModal(t.id, entryId, ()=>{
+      const list = document.getElementById('pt_entries_list');
+      if(list) list.innerHTML = taskEntriesHtml(t.id);
+    });
+  }, { once: true });
   wireDateField('pt_work', 'Set work date');
+  if($('#pt_add_entry')) $('#pt_add_entry').onclick = ()=> openTaskEntryModal(t.id, null, ()=>{
+    const list = document.getElementById('pt_entries_list');
+    if(list) list.innerHTML = taskEntriesHtml(t.id);
+    if($('#pt_add_entry')) $('#pt_add_entry').onclick = ()=> openTaskEntryModal(t.id, null, ()=>{
+      const l2 = document.getElementById('pt_entries_list');
+      if(l2) l2.innerHTML = taskEntriesHtml(t.id);
+    });
+  });
   $('#pt_cancel').onclick = closeModal;
   if(!isNew) $('#pt_delete').onclick = async ()=>{
     if(!confirm('Delete this task? This cannot be undone.')) return;
