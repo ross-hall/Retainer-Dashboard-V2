@@ -1538,7 +1538,7 @@ function renderClientTasksView(c){
   if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
-  wireTaskRows(main);
+  wireTaskRows(main, { simpleRetainerPopup:true });
 }
 
 async function renderClientAllowanceView(c){
@@ -2568,14 +2568,15 @@ async function deleteProjTaskQuick(taskId){
   toast('Task deleted'); await refreshProjectView();
 }
 
-function wireTaskRows(root){
+function wireTaskRows(root, opts){
+  opts = opts || {};
   root.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', (e)=>{
     if(e.target.closest('[data-statusinline]') || e.target.closest('[data-taskmenu]')) return;
     const taskId = el.dataset.projtask;
     const task = state.projTasks.find(t=>t.id===taskId);
     const client = task?.client_id ? state.clients.find(c=>c.id===task.client_id)
       : (task?.project_id ? (()=>{ const p=state.projects.find(p=>p.id===task.project_id); return p?state.clients.find(c=>c.id===p.client_id):null; })() : null);
-    if(task && !task.project_id && client?.is_retainer){
+    if(opts.simpleRetainerPopup && task && !task.project_id && client?.is_retainer){
       openRetainerTaskTimeModal(taskId);
     } else {
       openProjTaskModal(taskId, {});
@@ -2596,9 +2597,9 @@ function wireTaskRows(root){
     const task = state.projTasks.find(t=>t.id===taskId);
     const client = task?.client_id ? state.clients.find(c=>c.id===task.client_id)
       : (task?.project_id ? (()=>{ const p=state.projects.find(p=>p.id===task.project_id); return p?state.clients.find(c=>c.id===p.client_id):null; })() : null);
-    const isRetainerTask = task && !task.project_id && client?.is_retainer;
+    const isSimplePopupTask = opts.simpleRetainerPopup && task && !task.project_id && client?.is_retainer;
     const items = [];
-    if(isRetainerTask) items.push({ label:'Edit task', onClick:()=> openProjTaskModal(taskId, {}) });
+    if(isSimplePopupTask) items.push({ label:'Edit task', onClick:()=> openProjTaskModal(taskId, {}) });
     items.push({ label:'Duplicate task', onClick:()=> duplicateProjTask(taskId) });
     items.push({ label:'Delete task', danger:true, onClick:()=> deleteProjTaskQuick(taskId) });
     openMenuPopover(e.currentTarget, items);
