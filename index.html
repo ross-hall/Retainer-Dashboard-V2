@@ -188,7 +188,9 @@
   textarea{resize:vertical;min-height:70px}
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   .weighted-note{grid-column:1/-1;font-size:13px;color:var(--muted);background:var(--track);border-radius:var(--radius-sm);padding:10px 12px}
-  .modal-section-label{grid-column:1/-1;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-light);border-top:1px solid var(--line);padding-top:16px;margin-top:2px}
+  .modal-frame{grid-column:1/-1;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--paper);padding:14px 16px 16px;display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
+  .modal-frame-label{grid-column:1/-1;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-light)}
+  .modal-frame .full{grid-column:1/-1}
   .weighted-note b{color:var(--accent);font-weight:600}
   .btn{background:var(--accent);color:#fff;border:none;border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:500;transition:background var(--fast) var(--ease),transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
   .btn:hover{background:var(--accent-hover)}
@@ -308,8 +310,7 @@
   .retainer-badge{display:inline-block;background:var(--green-bg);color:var(--green);font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:99px;margin-left:7px}
   .project-badge{display:inline-block;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:99px;margin-left:7px}
   .proj-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
-  .home-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-  @media(max-width:1300px){.home-cols{grid-template-columns:1fr}}
+  .home-cols{display:grid;grid-template-columns:1fr;gap:24px}
   .home-col h3{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
   .home-count{font-size:12px;font-weight:500;color:var(--muted);background:var(--track);padding:2px 9px;border-radius:99px}
   .proj-pill{background:var(--track);border:1px solid var(--line);color:var(--ink);font-size:12px;font-weight:500;padding:4px 12px;border-radius:99px;cursor:pointer;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
@@ -395,7 +396,8 @@
   .fab svg{width:22px;height:22px}
   .fab:hover{background:var(--accent-hover);transform:scale(1.05)}
   .fab:active{transform:scale(.96)}
-  .version-badge{position:fixed;bottom:14px;left:18px;font-size:11px;color:var(--muted);cursor:default;user-select:none;z-index:50;opacity:.55;padding:4px}
+  .version-badge{font-size:10.5px;color:var(--muted);cursor:default;user-select:none;opacity:.55;padding:4px 8px;flex:none}
+  #sidebar.collapsed .version-badge{display:none}
   .version-badge:hover{opacity:1}
 
   .color-circle{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
@@ -520,8 +522,9 @@
       </button>
       <button data-view="settings" class="nav-icon-btn" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/>
-          <path d="M19.4 13.5a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V19.5a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H4.5a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H10a1.65 1.65 0 0 0 1-1.51V4.5a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V10a1.65 1.65 0 0 0 1.51 1H19.5a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+          <circle cx="12" cy="12" r="3.3"/>
+          <circle cx="12" cy="12" r="7"/>
+          <path d="M12 5V3M12 21v-2M19 12h2M3 12h2M16.95 7.05l1.41-1.41M5.64 18.36l1.41-1.41M16.95 16.95l1.41 1.41M5.64 5.64l1.41 1.41"/>
         </svg>
         <span class="nav-label">Settings</span>
       </button>
@@ -530,6 +533,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
+    <div id="versionBadge" class="version-badge">v0.12.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -538,7 +542,6 @@
 </button>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.12.0</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -1132,45 +1135,51 @@ function openClientEditModal(clientId){
     <h3>Edit ${esc(c.name)}</h3>
     <div class="sub">Retainer and renewal changes only apply from the effective date onward — tasks logged before it keep counting against the old numbers, so past cycles won't shift.</div>
     <form class="log" style="max-width:none">
-      <div class="full modal-section-label" style="border-top:none;padding-top:0">Basics</div>
-      <div><label>Dot colour</label>${colorCircleHtml('ec_color', colorFor(c))}</div>
-      <div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="ec_isretainer" ${c.is_retainer?'checked':''} style="width:auto"> On retainer</label></div>
-      <div id="ec_retainer_fields" style="display:${c.is_retainer?'contents':'none'}">
-        <div><label>Retainer</label><select id="ec_days">
-          <option value="${c.retainer_hours||8}" selected>Current${c.is_retainer?' — '+fmtH(c.retainer_hours):''}</option>
-          <optgroup label="Per month">
-            <option value="8">1 day/mo (8h)</option>
-            <option value="16">2 days/mo (16h)</option>
-            <option value="24">3 days/mo (24h)</option>
-            <option value="32">4 days/mo (32h)</option>
-          </optgroup>
-          <optgroup label="Per week">
-            <option value="34.7">1 day/week (~34.7h/mo)</option>
-            <option value="69.3">2 days/week (~69.3h/mo)</option>
-            <option value="104">3 days/week (~104h/mo)</option>
-          </optgroup>
-        </select></div>
-        <div><label>Renews on</label><select id="ec_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===c.renewal_day?'selected':''}>${i+1}</option>`).join('')}</select></div>
-        <div><label>Effective from</label><input type="date" id="ec_effective" value="${today}"></div>
-      </div>
-      <div class="full weighted-note">The retainer fields only matter if you tick "On retainer" — the colour updates immediately either way.</div>
-
-      <div class="full modal-section-label">Links</div>
-      ${miroFieldsHtml('ec', c.miro_link_external, c.miro_link_internal)}
-
-      <div class="full modal-section-label">Client dashboard <span style="text-transform:none;font-weight:400;letter-spacing:0;color:var(--muted)">— what this client sees at their public link</span></div>
-      <div><label>Dashboard link</label>
-        <div style="display:flex;gap:6px">
-          <input type="text" id="ec_slug" value="${esc(c.slug||'')}" placeholder="client-slug">
-          <button type="button" class="btn small ghost" id="ec_copylink" style="white-space:nowrap">Copy admin link</button>
+      <div class="full modal-frame">
+        <div class="modal-frame-label">Basics</div>
+        <div><label>Dot colour</label>${colorCircleHtml('ec_color', colorFor(c))}</div>
+        <div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="ec_isretainer" ${c.is_retainer?'checked':''} style="width:auto"> On retainer</label></div>
+        <div id="ec_retainer_fields" style="display:${c.is_retainer?'contents':'none'}">
+          <div><label>Retainer</label><select id="ec_days">
+            <option value="${c.retainer_hours||8}" selected>Current${c.is_retainer?' — '+fmtH(c.retainer_hours):''}</option>
+            <optgroup label="Per month">
+              <option value="8">1 day/mo (8h)</option>
+              <option value="16">2 days/mo (16h)</option>
+              <option value="24">3 days/mo (24h)</option>
+              <option value="32">4 days/mo (32h)</option>
+            </optgroup>
+            <optgroup label="Per week">
+              <option value="34.7">1 day/week (~34.7h/mo)</option>
+              <option value="69.3">2 days/week (~69.3h/mo)</option>
+              <option value="104">3 days/week (~104h/mo)</option>
+            </optgroup>
+          </select></div>
+          <div><label>Renews on</label><select id="ec_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===c.renewal_day?'selected':''}>${i+1}</option>`).join('')}</select></div>
+          <div><label>Effective from</label><input type="date" id="ec_effective" value="${today}"></div>
         </div>
+        <div class="full weighted-note">The retainer fields only matter if you tick "On retainer" — the colour updates immediately either way.</div>
       </div>
-      <div class="full sub" style="margin:0 0 4px;color:var(--muted)">Accent colour matches the dot colour above — change that to update both.</div>
-      <div class="full"><label>Tagline <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="ec_tagline" value="${esc(c.dash_logo_text||'')}" placeholder="e.g. Series A biotech"></div>
-      <div class="full"><label>Welcome message <span style="color:var(--muted);font-weight:400">(optional)</span></label><textarea id="ec_greeting" style="min-height:60px">${esc(c.dash_greeting||'')}</textarea></div>
-      <div><label>Logo image URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_logourl" value="${esc(c.dash_logo_url||'')}" placeholder="https://..."></div>
-      <div><label>Contact email <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="email" id="ec_contactemail" value="${esc(c.dash_contact_email||'')}" placeholder="team@reciprocal.space"></div>
-      <div class="full"><label>Website URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_websiteurl" value="${esc(c.dash_website_url||'')}" placeholder="https://reciprocal.space"></div>
+
+      <div class="full modal-frame">
+        <div class="modal-frame-label">Links</div>
+        ${miroFieldsHtml('ec', c.miro_link_external, c.miro_link_internal)}
+      </div>
+
+      <div class="full modal-frame">
+        <div class="modal-frame-label">Client dashboard <span style="text-transform:none;font-weight:400;letter-spacing:0;color:var(--muted)">— what this client sees at their public link</span></div>
+        <div class="full"><label>Dashboard link</label>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="ec_slug" value="${esc(c.slug||'')}" placeholder="client-slug">
+            <button type="button" class="btn small ghost" id="ec_copylink" style="white-space:nowrap">Copy admin link</button>
+          </div>
+        </div>
+        <div class="full sub" style="margin:0 0 4px;color:var(--muted)">Accent colour matches the dot colour above — change that to update both.</div>
+        <div class="full"><label>Tagline <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="ec_tagline" value="${esc(c.dash_logo_text||'')}" placeholder="e.g. Series A biotech"></div>
+        <div class="full"><label>Welcome message <span style="color:var(--muted);font-weight:400">(optional)</span></label><textarea id="ec_greeting" style="min-height:60px">${esc(c.dash_greeting||'')}</textarea></div>
+        <div><label>Logo image URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_logourl" value="${esc(c.dash_logo_url||'')}" placeholder="https://..."></div>
+        <div><label>Contact email <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="email" id="ec_contactemail" value="${esc(c.dash_contact_email||'')}" placeholder="team@reciprocal.space"></div>
+        <div class="full"><label>Website URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_websiteurl" value="${esc(c.dash_website_url||'')}" placeholder="https://reciprocal.space"></div>
+      </div>
     </form>
     <div class="modal-actions">
       <div class="right">
@@ -2477,6 +2486,10 @@ function renderProjClients(){
     if(cl.miro_link_external) items.push({ label:'Open Miro (external) ↗', onClick:()=> window.open(cl.miro_link_external,'_blank') });
     if(cl.miro_link_internal) items.push({ label:'Open Miro (internal) ↗', onClick:()=> window.open(cl.miro_link_internal,'_blank') });
     if(cl.slug) items.push({ label:'View dashboard ↗', onClick:()=> window.open(`${window.location.origin}${window.location.pathname}?client=${cl.slug}&admin=1`,'_blank') });
+    if(cl.slug) items.push({ label:'Copy client dashboard link', onClick:()=>{
+      const url = `${window.location.origin}${window.location.pathname}?client=${cl.slug}`;
+      navigator.clipboard?.writeText(url).then(()=> toast('Client dashboard link copied')).catch(()=> toast(url));
+    }});
     items.push({ label:'Archive client', danger:true, onClick: async ()=>{
       if(!confirm(`Archive ${cl.name}? Their projects and history stay intact — you can restore them from Settings.`)) return;
       const { error } = await db.from('rs_clients').update({active:false}).eq('id', cl.id);
@@ -3036,26 +3049,33 @@ function openProjTaskModal(taskId, ctx){
       <div><label>Status</label><select id="pt_status">${taskStatusNames().map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${statusIcon(s)} ${s}</option>`).join('')}</select></div>
       <div><label>Priority</label><select id="pt_priority">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
 
-      <div class="full modal-section-label">Team</div>
-      <div class="full"><label>Designers</label><div id="pt_designers">${pillSelectorHtml(designerPool, t.assigned_designer_ids||[])}</div></div>
-      <div class="full"><label>Reviewers</label><div id="pt_reviewers">${pillSelectorHtml(reviewerPool, t.assigned_reviewer_ids||[])}</div></div>
-      ${showAnimators? `<div class="full"><label>Animators</label><div id="pt_animators">${pillSelectorHtml(animatorPool, t.assigned_animator_ids||[])}</div></div>` : ''}
-
-      <div class="full modal-section-label">Dates & hours</div>
-      <div><label>Due date</label>${dateFieldHtml('pt_due', t.due_date, 'Set due date')}</div>
-      ${!client?.is_retainer ? `<div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t.recorded_hours!=null?t.recorded_hours:''}"></div>` : ''}
-      ${client.is_retainer? `
-      <div><label>Work date <span style="color:var(--muted);font-weight:400">(for retainer sync)</span></label>${dateFieldHtml('pt_work', t.work_date||iso(new Date()), 'Set work date')}</div>
-      <div class="full weighted-note" style="display:flex;align-items:center;gap:8px">
-        <input type="checkbox" id="pt_retainer" ${t.counts_toward_retainer?'checked':''} style="width:auto">
-        <label style="margin:0" for="pt_retainer">Counts toward ${esc(client.name)}'s retainer dashboard</label>
+      <div class="full modal-frame">
+        <div class="modal-frame-label">Team</div>
+        <div class="full"><label>Designers</label><div id="pt_designers">${pillSelectorHtml(designerPool, t.assigned_designer_ids||[])}</div></div>
+        <div class="full"><label>Reviewers</label><div id="pt_reviewers">${pillSelectorHtml(reviewerPool, t.assigned_reviewer_ids||[])}</div></div>
+        ${showAnimators? `<div class="full"><label>Animators</label><div id="pt_animators">${pillSelectorHtml(animatorPool, t.assigned_animator_ids||[])}</div></div>` : ''}
       </div>
-      ${!isNew ? `<div class="full modal-section-label" style="margin-top:4px">Time entries <span style="text-transform:none;font-weight:400;letter-spacing:0;color:var(--muted)">— one per team member</span></div>
-      <div class="full">
-        <div id="pt_entries_list">${taskEntriesHtml(t.id)}</div>
-        <button type="button" class="btn small ghost" id="pt_add_entry" style="margin-top:8px">+ Add person's hours</button>
-      </div>` : `<div class="full weighted-note" style="color:var(--muted)">Save the task first, then add individual time entries per person.</div>`}
-      ` : ''}
+
+      <div class="full modal-frame">
+        <div class="modal-frame-label">Dates & hours</div>
+        <div><label>Due date</label>${dateFieldHtml('pt_due', t.due_date, 'Set due date')}</div>
+        ${!client?.is_retainer ? `<div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t.recorded_hours!=null?t.recorded_hours:''}"></div>` : ''}
+        ${client.is_retainer? `
+        <div><label>Work date <span style="color:var(--muted);font-weight:400">(for retainer sync)</span></label>${dateFieldHtml('pt_work', t.work_date||iso(new Date()), 'Set work date')}</div>
+        <div class="full weighted-note" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="pt_retainer" ${t.counts_toward_retainer?'checked':''} style="width:auto">
+          <label style="margin:0" for="pt_retainer">Counts toward ${esc(client.name)}'s retainer dashboard</label>
+        </div>
+        ` : ''}
+      </div>
+
+      ${client.is_retainer? `<div class="full modal-frame">
+        <div class="modal-frame-label">Time entries <span style="text-transform:none;font-weight:400;letter-spacing:0;color:var(--muted)">— one per team member</span></div>
+        ${!isNew ? `<div class="full">
+          <div id="pt_entries_list">${taskEntriesHtml(t.id)}</div>
+          <button type="button" class="btn small ghost" id="pt_add_entry" style="margin-top:8px">+ Add person's hours</button>
+        </div>` : `<div class="full weighted-note" style="color:var(--muted)">Save the task first, then add individual time entries per person.</div>`}
+      </div>` : ''}
     </form>
     <div class="modal-actions">
       ${!isNew? `<button class="btn danger" id="pt_delete">Delete task</button>`:'<span></span>'}
