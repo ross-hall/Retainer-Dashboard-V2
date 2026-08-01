@@ -535,7 +535,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj";
 let db = null;
 let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name',
   projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null,
-  taskCols:new Set(['status','designer','reviewer','animator','hours','due','priority','retainer']),
+  taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
@@ -656,7 +656,7 @@ const DEFAULT_TASK_STATUSES = [
   {name:'Pause',color:'#94A3B8',position:6,is_complete:false},
   {name:'Complete',color:'#2FB380',position:7,is_complete:true}
 ];
-const TASK_COLUMNS = [['status','Status'],['designer','Designer'],['reviewer','Reviewer'],['animator','Animator'],['hours','Hours'],['due','Due date'],['priority','Priority'],['retainer','Retainer']];
+const TASK_COLUMNS = [['status','Status'],['designer','Designer'],['reviewer','Reviewer'],['hours','Hours'],['due','Due date'],['priority','Priority'],['retainer','Retainer']];
 function taskStatusList(){ return (state.taskStatuses.length?state.taskStatuses:DEFAULT_TASK_STATUSES).slice().sort((a,b)=>a.position-b.position); }
 function taskStatusNames(){ return taskStatusList().map(s=>s.name); }
 function statusRecord(s){ return (state.taskStatuses.length?state.taskStatuses:DEFAULT_TASK_STATUSES).find(x=>x.name===s) || DEFAULT_TASK_STATUSES[0]; }
@@ -2698,13 +2698,13 @@ function taskClient(t){
   return null;
 }
 
-function taskGridColumns(){
+function taskGridColumns(showAnimator){
   const cols = ['minmax(160px,1fr)'];
   if(state.taskCols.has('status')) cols.push(colWidth(state.taskColWidths,'status',TASK_COL_DEFAULTS));
   if(state.taskCols.has('priority')) cols.push(colWidth(state.taskColWidths,'priority',TASK_COL_DEFAULTS));
   if(state.taskCols.has('designer')) cols.push(colWidth(state.taskColWidths,'designer',TASK_COL_DEFAULTS));
   if(state.taskCols.has('reviewer')) cols.push(colWidth(state.taskColWidths,'reviewer',TASK_COL_DEFAULTS));
-  if(state.taskCols.has('animator')) cols.push(colWidth(state.taskColWidths,'animator',TASK_COL_DEFAULTS));
+  if(showAnimator) cols.push(colWidth(state.taskColWidths,'animator',TASK_COL_DEFAULTS));
   if(state.taskCols.has('hours')) cols.push(colWidth(state.taskColWidths,'hours',TASK_COL_DEFAULTS));
   if(state.taskCols.has('due')) cols.push(colWidth(state.taskColWidths,'due',TASK_COL_DEFAULTS));
   if(state.taskCols.has('retainer')) cols.push(colWidth(state.taskColWidths,'retainer',TASK_COL_DEFAULTS));
@@ -2712,7 +2712,7 @@ function taskGridColumns(){
   return cols.join(' ');
 }
 
-function taskRowHtml(t){
+function taskRowHtml(t, showAnimator){
   const client = taskClient(t);
   const retainerClickable = !!client?.is_retainer;
   let retainerCell = '—';
@@ -2721,13 +2721,13 @@ function taskRowHtml(t){
       ? '<span class="retainer-tick">✓</span>'
       : '<span style="color:var(--amber);font-weight:700" title="Ticked, but not syncing yet — check hours and designer">⚠</span>';
   }
-  return `<div class="task-grid-row task-row" draggable="true" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns()}">
+  return `<div class="task-grid-row task-row" draggable="true" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns(showAnimator)}">
     <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
     ${state.taskCols.has('status')?`<div><select class="status-select" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}" data-statusinline="${t.id}">${taskStatusNames().map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></div>`:''}
     ${state.taskCols.has('priority')?`<div><select class="priority-pill priority-select priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>`:''}
     ${state.taskCols.has('designer')?`<div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>`:''}
     ${state.taskCols.has('reviewer')?`<div class="inline-editable" data-assigninline="${t.id}:reviewer" title="Click to edit reviewers">${avatarGroupHtml(t.assigned_reviewer_ids)}</div>`:''}
-    ${state.taskCols.has('animator')?`<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`:''}
+    ${showAnimator?`<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`:''}
     ${state.taskCols.has('hours')?`<div style="text-align:right">${t.recorded_hours!=null?fmtH(t.recorded_hours):'—'}</div>`:''}
     ${state.taskCols.has('due')?`<div>${t.due_date? fmtDateNatural(t.due_date):'—'}</div>`:''}
     ${state.taskCols.has('retainer')?`<div style="text-align:center" class="${retainerClickable?'inline-editable':''}" ${retainerClickable?`data-retainerinline="${t.id}" title="Click to toggle retainer sync"`:''}>${retainerCell}</div>`:''}
@@ -2739,22 +2739,22 @@ function resizeHandle(key, storeName){
   return `<span class="col-resize-handle" data-resizecol="${key}" data-widthstore="${storeName}"></span>`;
 }
 
-function taskTableHtml(tasks, visibleCount, emptyText){
+function taskTableHtml(tasks, visibleCount, emptyText, showAnimator){
   if(!tasks.length) return `<div class="task-grid">${emptyStateHtml({ icon:'tray', title: emptyText||'Nothing here yet.' })}</div>`;
-  const gridCols = taskGridColumns();
+  const gridCols = taskGridColumns(showAnimator);
   const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${gridCols}">
       <div style="position:relative">Task</div>
       ${state.taskCols.has('status')?`<div style="position:relative">Status${resizeHandle('status','task')}</div>`:''}
       ${state.taskCols.has('priority')?`<div style="position:relative">Priority${resizeHandle('priority','task')}</div>`:''}
       ${state.taskCols.has('designer')?`<div style="position:relative">Designer${resizeHandle('designer','task')}</div>`:''}
       ${state.taskCols.has('reviewer')?`<div style="position:relative">Reviewer${resizeHandle('reviewer','task')}</div>`:''}
-      ${state.taskCols.has('animator')?`<div style="position:relative">Animator${resizeHandle('animator','task')}</div>`:''}
+      ${showAnimator?`<div style="position:relative">Animator${resizeHandle('animator','task')}</div>`:''}
       ${state.taskCols.has('hours')?`<div style="position:relative;text-align:right">Hours${resizeHandle('hours','task')}</div>`:''}
       ${state.taskCols.has('due')?`<div style="position:relative">Due${resizeHandle('due','task')}</div>`:''}
       ${state.taskCols.has('retainer')?`<div style="position:relative;text-align:center">Retainer${resizeHandle('retainer','task')}</div>`:''}
       <div></div>
     </div>`;
-  const rows = tasks.map(taskRowHtml).join('');
+  const rows = tasks.map(t=>taskRowHtml(t, showAnimator)).join('');
   return `<div class="task-grid">${header}${rows}</div>`;
 }
 
@@ -2769,7 +2769,11 @@ async function duplicateProjTask(taskId){
     recorded_hours: null, due_date: t.due_date, work_date: iso(new Date()),
     counts_toward_retainer: !!(client && client.is_retainer), retainer_task_ids: []
   };
-  const { error } = await db.from('rs_proj_tasks').insert(fields);
+  let { error } = await db.from('rs_proj_tasks').insert(fields);
+  if(error && error.code==='42703'){
+    const { assigned_animator_ids, ...rest } = fields;
+    ({ error } = await db.from('rs_proj_tasks').insert(rest));
+  }
   if(error){ toast('Could not duplicate task'); console.error(error); return; }
   toast('Task duplicated'); await refreshProjectView();
 }
@@ -2830,7 +2834,7 @@ function wireTaskRows(root, opts){
     openCheckboxDropdown(el, pool.map(m=>({key:m.id, label:m.name})), key=>current.has(key), async (key, checked)=>{
       checked ? current.add(key) : current.delete(key);
       const { error } = await db.from('rs_proj_tasks').update({ [field]: Array.from(current) }).eq('id', taskId);
-      if(error){ toast('Could not update'); return; }
+      if(error){ toast(error.code==='42703' ? 'Run migration v19 to enable animator assignments' : 'Could not update'); return; }
       await refreshProjectView();
     });
   }));
@@ -2968,6 +2972,7 @@ function openProjTaskModal(taskId, ctx){
   const designerPool = state.members.filter(m=>m.active && m.can_design!==false);
   const reviewerPool = state.members.filter(m=>m.active && m.can_review!==false);
   const animatorPool = state.members.filter(m=>m.active && m.can_animate!==false);
+  const showAnimators = project?.project_type === 'Animations';
   showModal(`
     <h3>${isNew?'New task':'Edit task'}</h3>
     <div class="sub">${esc(project? project.name : client.name)}</div>
@@ -2980,7 +2985,7 @@ function openProjTaskModal(taskId, ctx){
       <div class="full modal-section-label">Team</div>
       <div class="full"><label>Designers</label><div id="pt_designers">${pillSelectorHtml(designerPool, t.assigned_designer_ids||[])}</div></div>
       <div class="full"><label>Reviewers</label><div id="pt_reviewers">${pillSelectorHtml(reviewerPool, t.assigned_reviewer_ids||[])}</div></div>
-      <div class="full"><label>Animators</label><div id="pt_animators">${pillSelectorHtml(animatorPool, t.assigned_animator_ids||[])}</div></div>
+      ${showAnimators? `<div class="full"><label>Animators</label><div id="pt_animators">${pillSelectorHtml(animatorPool, t.assigned_animator_ids||[])}</div></div>` : ''}
 
       <div class="full modal-section-label">Dates & hours</div>
       <div><label>Due date</label>${dateFieldHtml('pt_due', t.due_date, 'Set due date')}</div>
@@ -3051,28 +3056,39 @@ function openProjTaskModal(taskId, ctx){
       priority: $('#pt_priority').value,
       assigned_designer_ids: Array.from(document.querySelectorAll('#pt_designers .member-pill.selected')).map(b=>b.dataset.pillmember),
       assigned_reviewer_ids: Array.from(document.querySelectorAll('#pt_reviewers .member-pill.selected')).map(b=>b.dataset.pillmember),
-      assigned_animator_ids: Array.from(document.querySelectorAll('#pt_animators .member-pill.selected')).map(b=>b.dataset.pillmember),
       recorded_hours: $('#pt_hours') ? ($('#pt_hours').value ? +$('#pt_hours').value : null) : null,
       due_date: $('#pt_due').value || null,
       work_date: document.getElementById('pt_work') ? ($('#pt_work').value || null) : (t.work_date||null),
       counts_toward_retainer: document.getElementById('pt_retainer') ? $('#pt_retainer').checked : false
     };
-    let saved;
+    if(showAnimators) fields.assigned_animator_ids = Array.from(document.querySelectorAll('#pt_animators .member-pill.selected')).map(b=>b.dataset.pillmember);
+    let saved, animatorColMissing = false;
     if(isNew){
       const siblingCount = stages.length
         ? state.projTasks.filter(x=>x.stage_id===fields.stage_id).length
         : state.projTasks.filter(x=>x.client_id===fields.client_id && !x.project_id).length;
-      const { data, error } = await db.from('rs_proj_tasks').insert({ ...fields, position: siblingCount }).select().single();
+      let { data, error } = await db.from('rs_proj_tasks').insert({ ...fields, position: siblingCount }).select().single();
+      if(error && error.code==='42703' && 'assigned_animator_ids' in fields){
+        const { assigned_animator_ids, ...rest } = fields;
+        ({ data, error } = await db.from('rs_proj_tasks').insert({ ...rest, position: siblingCount }).select().single());
+        animatorColMissing = !error;
+      }
       if(error){ toast('Could not save task'); console.error(error); return; }
       saved = data;
     } else {
-      const { error } = await db.from('rs_proj_tasks').update(fields).eq('id', t.id);
+      let { error } = await db.from('rs_proj_tasks').update(fields).eq('id', t.id);
+      if(error && error.code==='42703' && 'assigned_animator_ids' in fields){
+        const { assigned_animator_ids, ...rest } = fields;
+        ({ error } = await db.from('rs_proj_tasks').update(rest).eq('id', t.id));
+        animatorColMissing = !error;
+      }
       if(error){ toast('Could not save task'); console.error(error); return; }
       saved = { ...t, ...fields };
     }
     const retainerTaskIds = await syncProjTaskRetainer(saved, project, client);
     await db.from('rs_proj_tasks').update({ retainer_task_ids: retainerTaskIds }).eq('id', saved.id);
-    closeModal(); toast(isNew?'Task added':'Task updated');
+    closeModal();
+    toast(animatorColMissing ? 'Saved — run migration v19 to enable animator assignments' : (isNew?'Task added':'Task updated'));
     await refreshProjectView();
   };
 }
@@ -3127,7 +3143,7 @@ function renderProjDetail(){
             ${idx>0 && s.due_date ? `<span style="font-size:11px;color:var(--muted)">${reviewWindowLabel(s.due_date, p.review_days)}</span>` : ''}
           </div>
         </div>
-        <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.')}</div>
+        <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.', p.project_type==='Animations')}</div>
         <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
       </div>`;
     });

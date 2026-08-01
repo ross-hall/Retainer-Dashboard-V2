@@ -95,12 +95,12 @@ Public dashboard (no internal nav):
 ## Key constants and state
 
 ```js
-CURRENT_USER_NAME = 'Ross Hall'   // ~line 1277 — links Home to team member
-APP_VERSION = '0.10.0'            // ~line 3547
-PALETTE = [8 hex colours]         // ~line 513 — dot/avatar colours
-DEFAULT_TASK_STATUSES = [...]      // ~line 539 — fallback if v13 migration not run
-ANIM_DEFAULT_STEPS = [...]         // ~line 3699 — seeded on first animation use
-ANIM_CELL_STATUSES = {...}         // ~line 3700 — status → {color, text, short}
+CURRENT_USER_NAME = 'Ross Hall'   // ~line 1389 — links Home to team member
+APP_VERSION = '0.11.0'            // ~line 3830
+PALETTE = [8 hex colours]         // ~line 623 — dot/avatar colours
+DEFAULT_TASK_STATUSES = [...]      // ~line 649 — fallback if v13 migration not run
+ANIM_DEFAULT_STEPS = [...]         // ~line 3982 — seeded on first animation use
+ANIM_CELL_STATUSES = {...}         // ~line 3983 — status → {color, text, short}
 
 state = {
   view, projView, projClientId, projProjectId,
@@ -109,7 +109,7 @@ state = {
   animShots[], animSteps[], animCells[], animFeedback[], animDeps[],
   animProjectId, animTab,           // animation page state
   projTaskEntries[],                // per-person time entries (v18)
-  taskCols,                         // Set of visible column keys
+  taskCols,                         // Set of visible column keys — now defaults to include 'animator'
   taskColWidths:{}, tasksAheadColWidths:{},  // drag-resized widths (session-only)
   clientListGroup, clientListSort,  // 'client'|'type', 'alpha'|'started'
   retainerView,                     // 'dashboard'|'calendar'
@@ -119,6 +119,7 @@ state = {
   dashSearch, dashSort, calMonth, clientId, calHidden,
 }
 ```
+Theme (light/dark) is deliberately **not** in `state` — it's a `data-theme` attribute on `<html>` plus a `localStorage['rs_theme']` value, same pattern as sidebar-collapsed, since it doesn't affect any `render()` output.
 
 ---
 
@@ -145,7 +146,9 @@ state = {
 Font: Inter (unchanged from v0.9.0)
 ```
 
-`mutedBg(hex)` JS helper (next to `contrastText`, ~line 563) converts a status's stored hex into a `rgba(r,g,b,.14)` tint — this is what makes `.status-pill`/`.status-select` render as muted chips instead of solid vivid fills, since those two call sites set `background` via inline style (which overrides the CSS class).
+`mutedBg(hex)` JS helper (next to `contrastText`, ~line 673) converts a status's stored hex into a `rgba(r,g,b,.14)` tint — this is what makes `.status-pill`/`.status-select` render as muted chips instead of solid vivid fills, since those two call sites set `background` via inline style (which overrides the CSS class).
+
+**Dark mode (new in v0.11.0):** `:root[data-theme="dark"]{...}` immediately follows the light `:root` block with dark equivalents — warm charcoal canvas (`--paper:#1e1d1b`), `--card:#282725`, brighter `--accent:#4a9eeb`, higher-alpha black shadows (the light theme's warm-grey shadows vanish against a dark surface, so dark mode uses plain black at higher opacity instead). `resolveTheme()` / `applyTheme()` / `toggleTheme()` (~line 549) run `applyTheme(resolveTheme())` as one of the first statements in `<script>`, before `boot()`, to avoid a flash-of-light-theme. Resolution order: explicit `localStorage['rs_theme']` → OS `prefers-color-scheme` → light. Toggle is the sun/moon icon button in the sidebar (`#themeToggleBtn`); the icon swap itself is pure CSS keyed off `[data-theme]`, no JS needed. Every remaining hardcoded `background:#fff` in internal-app CSS got swapped to `var(--card)` so the token layer actually reaches modals/popovers/inputs/pills — the one intentional holdout is the public client-dashboard's "Copy client link" button, which has its own client-accent-driven scheme unrelated to this toggle.
 
 **What shipped in v0.10.0** (on top of v0.9.0's tokens + sidebar):
 - Soft blue accent replacing navy/navy-soft everywhere (buttons, links, focus rings, selected states, meter fill, badges)
@@ -158,9 +161,18 @@ Font: Inter (unchanged from v0.9.0)
 - **Collapsible sidebar** — toggle button, state persisted to `localStorage` (`rs_sidebar_collapsed`)
 - **Global Quick Add** — `#quickAddFab` bottom-right button → New client/project/task, with a searchable client-picker for project/task since those modals need a client context
 
-**Explicitly deferred** (per user's chosen phasing — "visual polish + core nav" only, not the full wishlist): command palette (Cmd/Ctrl+K), global search, reorderable dashboard widgets, dark mode, tablet-specific responsive pass, inline editing, illustrated empty states, project-page restructuring. Full list and rationale in `rs-function-index.md`'s "Redesign status" section.
+**What shipped in v0.11.0** (the rest of the deferred wishlist, plus new asks):
+- **Command palette / global search** — `Cmd/Ctrl+K` or the sidebar's "Search ⌘K" button; one component serves both needs since they're the same underlying feature. Fuzzy-substring search across clients/projects/tasks, grouped results, arrow-key nav.
+- **Dark mode** — see above.
+- **Responsive tablet layout** — new breakpoint at 761–1080px (narrower sidebar, tighter grids); dense task tables rely on horizontal scroll within the card rather than hiding columns.
+- **Inline editing** — status (already existed), priority, designer/reviewer/animator (popover multi-select), retainer toggle, and task-title rename, all directly in table rows — no modal required for quick edits.
+- **Better empty states** — small circular icon illustration + title + subtitle + optional CTA (`emptyStateHtml()`), applied to Home, Week Tasks, project/client task lists, and the "no clients yet" first-run state.
+- **Clearer modal layouts** — `showModal(html, {wide:true})` for a 660px variant, plus `.modal-section-label` dividers grouping the task and client-edit modals into named sections instead of one flat field dump.
+- **Animator role** — third assignment category alongside Designer/Reviewer, mirroring that pattern exactly (own DB column, Settings checkbox, pill selector, avatar column). Needs `outputs/v19_add_animator.sql` run before it persists — see the pending-step note at the top of this file.
 
-Prior versions recoverable via git history: v0.9.0 (sharp 3px corners, top-header-nav already replaced by sidebar) is the commit right before this session; v0.8.2 (original top nav, Rubik, 14px radius) is commit `5664307` or earlier.
+Full technical detail (exact line numbers, which functions touch what) is in `rs-function-index.md`'s "v0.11.0 — this session's additions" section.
+
+Prior versions recoverable via git history: v0.10.0 (no dark mode/command palette/inline editing) is the commit right before this session; v0.9.0 (sharp 3px corners) and v0.8.2 (original top nav, Rubik, 14px radius) are further back — `5664307` or earlier for the pre-redesign baseline.
 
 ---
 
@@ -170,9 +182,10 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 ---
 
 ## Known issues
-- `renderAnimation` is defined twice (lines ~3726 and ~4285). Second definition wins — first is a stub leftover. Safe but should be cleaned up. (`openAnimCellModal` has the same duplicate pattern at ~3979 and ~4642.)
+- `renderAnimation` is defined twice (lines ~4009 and ~4573). Second definition wins — first is a stub leftover. Safe but should be cleaned up. (`openAnimCellModal` has the same duplicate pattern at ~4262 and ~4930.)
 - Column widths (taskColWidths) reset on page refresh — session-only, no persistence yet.
 - RLS is fully open — flagged as risk now that client-facing dashboard URLs are live.
+- `outputs/v19_add_animator.sql` has not been run against the live Supabase DB yet — Animator picks in the UI don't persist until it is (app degrades gracefully in the meantime, treating every member as animator-eligible).
 
 ---
 
@@ -184,3 +197,4 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - v16: animation tables (rs_anim_shots, rs_anim_steps, rs_anim_cells)
 - v17: rs_anim_feedback + rs_anim_deps
 - v18: rs_proj_task_entries
+- v19: rs_members.can_animate + rs_proj_tasks.assigned_animator_ids — **not yet run**, do this in the Supabase SQL editor when convenient
