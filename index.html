@@ -86,13 +86,17 @@
   #themeToggleBtn .icon-moon{display:none}
   :root[data-theme="dark"] #themeToggleBtn .icon-sun{display:none}
   :root[data-theme="dark"] #themeToggleBtn .icon-moon{display:block}
-  #sidebar nav{display:flex;flex-direction:column;gap:1px}
-  #sidebar nav button{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:none;color:var(--muted);opacity:1;padding:7px 8px;font-size:13.5px;font-weight:500;border-radius:7px;border-bottom:none;text-align:left;transition:background var(--fast) var(--ease),color var(--fast) var(--ease)}
+  #sidebar nav{display:flex;flex-direction:column;gap:1px;flex:1;min-height:0}
+  #sidebar nav button{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:none;color:var(--muted);opacity:1;padding:7px 8px;font-size:13.5px;font-weight:500;border-radius:7px;border-bottom:none;text-align:left;transition:background var(--fast) var(--ease),color var(--fast) var(--ease);flex:none}
   #sidebar nav button svg{flex:none;width:17px;height:17px;opacity:.8}
   #sidebar nav button:hover{background:var(--track);color:var(--ink)}
   #sidebar nav button.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
   #sidebar nav button.active svg{opacity:1}
+  #sidebar nav button[data-view="settings"]{margin-top:auto}
   #sidebar nav .flag-count{background:var(--amber);color:#fff;border-radius:99px;font-size:10.5px;padding:1px 6px;margin-left:auto;font-weight:600}
+  #sidebar .sidebar-user{display:flex;align-items:center;gap:9px;padding:8px;border-top:1px solid var(--line);margin-top:8px;flex:none}
+  #sidebar .sidebar-user .nav-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;color:var(--ink)}
+  #sidebar.collapsed .sidebar-user{justify-content:center;padding:8px 0}
   #sidebar .sidebar-search-btn{display:flex;align-items:center;gap:9px;width:100%;background:var(--card);border:1px solid var(--line);color:var(--muted);padding:7px 8px;font-size:13px;border-radius:7px;cursor:pointer;margin-bottom:10px;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
   #sidebar .sidebar-search-btn:hover{background:var(--track)}
   #sidebar .sidebar-search-btn svg{width:16px;height:16px;flex:none;opacity:.8}
@@ -120,6 +124,8 @@
   #sidebar.collapsed .brand{justify-content:center}
   #sidebar.collapsed nav button{justify-content:center;padding:9px}
   #sidebar.collapsed .collapse-btn svg{transform:rotate(180deg)}
+  #sidebar.collapsed .side-top{justify-content:center}
+  #sidebar.collapsed .side-top .brand,#sidebar.collapsed .side-top #themeToggleBtn{display:none}
   @media(min-width:761px) and (max-width:1080px){
     #sidebar{width:192px}
     main{padding:26px 22px 90px}
@@ -416,10 +422,12 @@
   .view-toggle{display:flex;gap:6px;margin-bottom:14px}
   .cal.milestones .day{min-height:170px;padding:10px}
   .cal.milestones{gap:8px}
-  .milestone-chip{border-radius:8px;padding:9px 10px;color:#fff;margin-bottom:7px;font-size:11px;line-height:1.55;cursor:grab}
-  .milestone-chip .mc1{font-weight:700;font-size:12px;margin-bottom:2px}
+  .milestone-chip{border-radius:8px;padding:8px 9px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--line);color:var(--ink);margin-bottom:6px;font-size:11px;line-height:1.5;cursor:grab;box-shadow:var(--shadow-sm);transition:box-shadow var(--fast) var(--ease),transform var(--fast) var(--ease)}
+  .milestone-chip:hover{box-shadow:var(--shadow-card);transform:translateY(-1px)}
+  .milestone-chip .mc1{font-weight:600;font-size:12px;margin-bottom:2px;display:flex;align-items:center;gap:5px;color:var(--ink)}
+  .milestone-chip .mc1 .dot{width:7px;height:7px}
   .milestone-chip .mc2{margin-bottom:2px}
-  .milestone-chip .mc2,.milestone-chip .mc3{opacity:.92}
+  .milestone-chip .mc2,.milestone-chip .mc3{opacity:1;color:var(--muted)}
   .week-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0}
   .week-grid .day{min-height:340px;padding:12px;border:none;border-right:1px solid var(--line);border-radius:0;background:transparent}
   .week-grid .day:last-child{border-right:none}
@@ -511,13 +519,17 @@
         <span class="nav-label">Milestones</span>
       </button>
       <button data-view="settings" class="nav-icon-btn" title="Settings">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/>
-          <circle cx="12" cy="12" r="7.8" stroke="currentColor" stroke-width="1.7" stroke-dasharray="2.1 2.5"/>
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/>
+          <path d="M19.4 13.5a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V19.5a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H4.5a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H10a1.65 1.65 0 0 0 1-1.51V4.5a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V10a1.65 1.65 0 0 0 1.51 1H19.5a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
         </svg>
         <span class="nav-label">Settings</span>
       </button>
     </nav>
+    <div class="sidebar-user" id="sidebarUser" style="display:none">
+      <span class="avatar" id="sidebarUserAvatar"></span>
+      <span class="nav-label" id="sidebarUserName"></span>
+    </div>
   </aside>
   <main id="main"></main>
 </div>
@@ -1371,7 +1383,20 @@ async function exportTasksCsv(){
 }
 
 /* ---------- views ---------- */
+function updateSidebarUser(){
+  const el = document.getElementById('sidebarUser');
+  if(!el) return;
+  const me = currentUser();
+  if(!me){ el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const avatar = document.getElementById('sidebarUserAvatar');
+  avatar.textContent = initials(me.name);
+  avatar.style.background = clientColor(me.id);
+  document.getElementById('sidebarUserName').textContent = me.name;
+}
+
 function render(){
+  updateSidebarUser();
   const activeClients = state.clients.filter(c=>c.active && c.is_retainer);
   const flagged = activeClients.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
   const effectiveNavView = (state.view==='projects' && state.projView==='retainerAllowance') ? 'dashboard' : state.view;
@@ -1392,6 +1417,20 @@ function renderRetainer(){
 }
 
 function typeConfig(name){ return state.projectTypes.find(t=>t.name===name); }
+
+/* Notion-style line icons for project types, keyed by type name — falls back to a generic folder glyph for custom types */
+const PROJECT_TYPE_ICONS = {
+  'Website': `<circle cx="12" cy="12" r="8.2" stroke="currentColor" stroke-width="1.6"/><path d="M3.8 12h16.4M12 3.8c2.3 2.4 3.7 5.6 3.7 8.2s-1.4 5.8-3.7 8.2c-2.3-2.4-3.7-5.6-3.7-8.2S9.7 6.2 12 3.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
+  'Branding': `<path d="M12 3.3c3.2 4.2 6 7.9 6 11A6 6 0 0 1 6 14.3c0-3.1 2.8-6.8 6-11Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
+  'Animations': `<rect x="4" y="5" width="16" height="14" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M10 9.2 15 12l-5 2.8Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>`,
+  'Deck projects': `<rect x="3.5" y="4.5" width="17" height="12" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M8 20.5h8M12 16.5v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`
+};
+const PROJECT_TYPE_ICON_FALLBACK = `<path d="M4 7a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`;
+function projectTypeIconHtml(typeName, size){
+  const s = size || 14;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:-3px;flex:none">${PROJECT_TYPE_ICONS[typeName] || PROJECT_TYPE_ICON_FALLBACK}</svg>`;
+}
+const RETAINER_DELIVERY_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:-2px"><rect x="5" y="4" width="14" height="17" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 
 const CURRENT_USER_NAME = 'Ross Hall'; // no login system yet — hardcoded to one team member
 function currentUser(){ return state.members.find(m=>(m.name||'').trim().toLowerCase()===CURRENT_USER_NAME.toLowerCase()); }
@@ -1906,24 +1945,24 @@ function milestoneChipHtml(s, proj, cl, weekStyle){
   const idx = stages.findIndex(x=>x.id===s.id);
   const tc = typeConfig(proj.project_type);
   const cls = weekStyle ? 'milestone-chip week-chip' : 'milestone-chip';
-  const style = weekStyle ? `border-left-color:${cl?colorFor(cl):'#999'}` : `background:${cl?colorFor(cl):'#999'}`;
+  const accentColor = cl?colorFor(cl):'#999';
   const timeLine = weekStyle ? `<div class="mc-time">${s.due_time? formatTime12(s.due_time) : 'All day'}</div>` : '';
-  return `<div class="${cls}" draggable="true" data-msitem="stage:${s.id}" style="${style}" title="${esc(proj.name)} — ${esc(s.name)}">
+  return `<div class="${cls}" draggable="true" data-msitem="stage:${s.id}" style="border-left-color:${accentColor}" title="${esc(proj.name)} — ${esc(s.name)}">
     ${timeLine}
-    <div class="mc1">${esc(cl?cl.name:'Unknown client')}</div>
-    <div class="mc2">${tc?tc.icon+' ':''}${esc(proj.project_type)}</div>
+    <div class="mc1"><span class="dot" style="background:${accentColor}"></span>${esc(cl?cl.name:'Unknown client')}</div>
+    <div class="mc2">${tc?projectTypeIconHtml(proj.project_type,11)+' ':''}${esc(proj.project_type)}</div>
     <div class="mc3">Stage ${idx} · ${esc(s.name)}</div>
   </div>`;
 }
 
 function retainerMilestoneChipHtml(t, cl, weekStyle){
   const cls = weekStyle ? 'milestone-chip week-chip' : 'milestone-chip';
-  const style = weekStyle ? `border-left-color:${cl?colorFor(cl):'#999'}` : `background:${cl?colorFor(cl):'#999'}`;
+  const accentColor = cl?colorFor(cl):'#999';
   const timeLine = weekStyle ? `<div class="mc-time">All day</div>` : '';
-  return `<div class="${cls}" draggable="true" data-msitem="task:${t.id}" style="${style}" title="${esc(cl?cl.name:'')} — ${esc(t.title)}">
+  return `<div class="${cls}" draggable="true" data-msitem="task:${t.id}" style="border-left-color:${accentColor}" title="${esc(cl?cl.name:'')} — ${esc(t.title)}">
     ${timeLine}
-    <div class="mc1">${esc(cl?cl.name:'Unknown client')}</div>
-    <div class="mc2">📋 Retainer delivery</div>
+    <div class="mc1"><span class="dot" style="background:${accentColor}"></span>${esc(cl?cl.name:'Unknown client')}</div>
+    <div class="mc2">${RETAINER_DELIVERY_ICON} Retainer delivery</div>
     <div class="mc3">${esc(t.title)}</div>
   </div>`;
 }
@@ -2012,7 +2051,7 @@ function openStagePreviewModal(stageId){
   const sStatus = stageStatus(s.id);
   showModal(`
     <h3><span class="stage-num">Stage ${idx}</span> ${esc(s.name)}${sStatus==='Complete'?` <span class="status-pill status-complete">✓ Complete</span>`:''}</h3>
-    <div class="sub">${esc(cl?cl.name:'')} · ${esc(proj.name)} ${tc?'· '+tc.icon+' '+esc(proj.project_type):''}${s.due_date?' · due '+fmtDateY(new Date(s.due_date+'T00:00'))+(s.due_time?' at '+formatTime12(s.due_time):''):''}</div>
+    <div class="sub">${esc(cl?cl.name:'')} · ${esc(proj.name)} ${tc?'· '+projectTypeIconHtml(proj.project_type,12)+' '+esc(proj.project_type):''}${s.due_date?' · due '+fmtDateY(new Date(s.due_date+'T00:00'))+(s.due_time?' at '+formatTime12(s.due_time):''):''}</div>
     ${tasks.length? `<table><thead><tr><th>Task</th><th>Status</th><th>Assigned</th></tr></thead><tbody>
       ${tasks.map(t=>`<tr><td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td><td><span class="status-pill" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}">${statusIcon(t.status)} ${esc(t.status||'To do')}</span></td><td>${avatarGroupHtml(t.assigned_designer_ids)}</td></tr>`).join('')}
     </tbody></table>` : `<div class="empty">No tasks in this stage yet.</div>`}
@@ -2381,7 +2420,7 @@ function clientCardHtml(c){
   }
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
   const body = projects.length
-    ? `<div class="proj-pills">${projects.map(p=>{ const tc=typeConfig(p.project_type); return `<button type="button" class="proj-pill" data-projectgoto="${p.id}" data-projectclientid="${c.id}">${tc?tc.icon+' ':''}${esc(p.name)}</button>`; }).join('')}</div>`
+    ? `<div class="proj-pills">${projects.map(p=>{ const tc=typeConfig(p.project_type); return `<button type="button" class="proj-pill" data-projectgoto="${p.id}" data-projectclientid="${c.id}">${tc?projectTypeIconHtml(p.project_type,12)+' ':''}${esc(p.name)}</button>`; }).join('')}</div>`
     : `<div class="cycle">No projects yet</div>`;
   return `<div class="card client-card" data-projgoto="${c.id}">
     <h3 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}
@@ -2479,7 +2518,7 @@ function renderProjClientProjects(){
         <h3 style="display:flex;align-items:center;gap:8px">${esc(p.name)}${p.active?'':' (archived)'}
           <span class="card-actions"><button class="btn small ghost menu-dots" data-projmenu="${p.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
         </h3>
-        <div class="cycle"><span class="type-badge">${tc?tc.icon+' ':''}${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
+        <div class="cycle"><span class="type-badge">${tc?projectTypeIconHtml(p.project_type,12)+' ':''}${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
         <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
           <div><span>Stages</span><span>${stages.length}</span></div>
           <div><span>Tasks</span><span>${tasks.length}</span></div>
