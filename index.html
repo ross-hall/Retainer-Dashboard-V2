@@ -192,6 +192,8 @@
   .btn.ghost:hover{background:var(--track);border-color:var(--line)}
   .btn.small{padding:7px 14px;font-size:12.5px}
   .miro-btn:hover{background:#e6ba1f !important;border-color:#e6ba1f !important}
+  .miro-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius-sm);background:#FFD02F;color:#050038;flex:none;transition:filter var(--fast) var(--ease)}
+  .miro-icon-btn:hover{filter:brightness(.94)}
   .btn.danger{background:transparent;color:var(--red);border:1px solid var(--line)}
   .btn.danger:hover{background:var(--red-bg);border-color:#efc7c3}
   .btn[disabled]{opacity:.4;cursor:not-allowed}
@@ -301,7 +303,7 @@
   .project-badge{display:inline-block;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:99px;margin-left:7px}
   .proj-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
   .home-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-  @media(max-width:800px){.home-cols{grid-template-columns:1fr}}
+  @media(max-width:1300px){.home-cols{grid-template-columns:1fr}}
   .home-col h3{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
   .home-count{font-size:12px;font-weight:500;color:var(--muted);background:var(--track);padding:2px 9px;border-radius:99px}
   .proj-pill{background:var(--track);border:1px solid var(--line);color:var(--ink);font-size:12px;font-weight:500;padding:4px 12px;border-radius:99px;cursor:pointer;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
@@ -524,7 +526,7 @@
 </button>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.11.0</div>
+<div id="versionBadge" class="version-badge">v0.11.1</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -634,6 +636,11 @@ function miroButtonsHtml(client){
   const ext = miroExternal(client), intl = miroInternal(client);
   const style = "background:#FFD02F;color:#050038;border:1px solid #FFD02F;font-weight:600";
   return `${ext? `<a class="btn small miro-btn" style="${style}" href="${esc(ext)}" target="_blank" rel="noopener">${MIRO_ICON}Miro (external) ↗</a>`:''}${intl? `<a class="btn small miro-btn" style="${style}" href="${esc(intl)}" target="_blank" rel="noopener">${MIRO_ICON}Miro (internal) ↗</a>`:''}`;
+}
+function miroIconBtnHtml(client){
+  const link = miroExternal(client) || miroInternal(client);
+  if(!link) return '';
+  return `<a class="miro-icon-btn" href="${esc(link)}" target="_blank" rel="noopener" title="Open in Miro" onclick="event.stopPropagation()"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2.5" stroke="currentColor" stroke-width="1.4"/><rect x="3.3" y="3.3" width="4" height="4" rx="0.6" fill="currentColor"/><rect x="8.7" y="6.7" width="4" height="4" rx="0.6" fill="currentColor" opacity="0.55"/></svg></a>`;
 }
 function miroFieldsHtml(prefix, extVal, intVal){
   return `<div><label>Miro (external) <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="${prefix}_miro_ext" value="${esc(extVal||'')}" placeholder="https://miro.com/..."></div>
@@ -1401,15 +1408,18 @@ function homeTaskContextHtml(t){
 
 function homeTaskTableHtml(tasks, emptyLabel){
   if(!tasks.length) return emptyStateHtml({ icon:'check', title: emptyLabel || "You're all caught up", subtitle:'Nothing needs your attention right now.' });
-  const cols = [`<col style="width:170px">`, `<col style="width:auto">`];
-  if(state.homeCols.has('priority')) cols.push(`<col style="width:100px">`);
+  const cols = [`<col style="width:170px">`, `<col style="width:auto">`, `<col style="width:150px">`];
+  if(state.homeCols.has('priority')) cols.push(`<col style="width:110px">`);
   if(state.homeCols.has('due')) cols.push(`<col style="width:104px">`);
-  return `<table class="task-table"><colgroup>${cols.join('')}</colgroup><thead><tr><th>Client / Project</th><th>Task</th>${state.homeCols.has('priority')?'<th>Priority</th>':''}${state.homeCols.has('due')?'<th>Due</th>':''}</tr></thead><tbody>
-    ${tasks.map(t=>`<tr class="task-row" data-hometask="${t.id}">
+  cols.push(`<col style="width:40px">`);
+  return `<table class="task-table"><colgroup>${cols.join('')}</colgroup><thead><tr><th>Client / Project</th><th>Task</th><th>Status</th>${state.homeCols.has('priority')?'<th>Priority</th>':''}${state.homeCols.has('due')?'<th>Due</th>':''}<th></th></tr></thead><tbody>
+    ${tasks.map(t=>`<tr class="task-row" data-projtask="${t.id}">
       <td style="color:var(--muted);font-size:12.5px">${homeTaskContextHtml(t)}</td>
-      <td><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</td>
-      ${state.homeCols.has('priority')?`<td><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></td>`:''}
+      <td><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></td>
+      <td><select class="status-select" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}" data-statusinline="${t.id}">${taskStatusNames().map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></td>
+      ${state.homeCols.has('priority')?`<td><select class="priority-pill priority-select priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></td>`:''}
       ${state.homeCols.has('due')?`<td>${t.due_date? fmtDateNatural(t.due_date) : '—'}</td>`:''}
+      <td>${miroIconBtnHtml(taskClient(t))}</td>
     </tr>`).join('')}
   </tbody></table>`;
 }
@@ -1425,7 +1435,7 @@ function timeOfDayGreeting(){
 function renderHome(){
   const me = currentUser();
   let html = me
-    ? `<h2 style="font-size:34px;margin-bottom:22px">${timeOfDayGreeting()}, ${esc(me.name)}</h2>`
+    ? `<h2 style="font-size:34px;margin-bottom:22px">${timeOfDayGreeting()}, ${esc((me.name||'').trim().split(/\s+/)[0]||me.name)}</h2>`
     : `<h2>Home</h2><div class="sub">Add a team member named "${CURRENT_USER_NAME}" in Settings to personalize this page.</div>`;
   if(!me){ main.innerHTML = html; return; }
 
@@ -1437,16 +1447,16 @@ function renderHome(){
   html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="homeColDropdownBtn">Columns ▾</button></div>
   <div class="home-cols">
     <div class="home-col">
-      <h3>To review <span class="home-count">${toReview.length}</span></h3>
-      <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toReview, 'Nothing to review')}</div>
-    </div>
-    <div class="home-col">
       <h3>To do <span class="home-count">${toDo.length}</span></h3>
       <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toDo, 'Nothing to do')}</div>
     </div>
+    <div class="home-col">
+      <h3>To review <span class="home-count">${toReview.length}</span></h3>
+      <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toReview, 'Nothing to review')}</div>
+    </div>
   </div>`;
   main.innerHTML = html;
-  main.querySelectorAll('[data-hometask]').forEach(el=>el.addEventListener('click', ()=> jumpToProjTask(el.dataset.hometask)));
+  wireTaskRows(main, { onRowClick: navigateToTaskContext });
   $('#homeColDropdownBtn').onclick = (e)=>{
     e.stopPropagation();
     openCheckboxDropdown(e.currentTarget, [
@@ -1578,16 +1588,19 @@ function renderDashboard(){
   $('#toCalendarBtn').onclick = ()=>{ state.retainerView='calendar'; render(); };
 }
 
-function jumpToProjTask(taskId){
-  const t = state.projTasks.find(t=>t.id===taskId); if(!t) return;
+function navigateToTaskContext(taskId){
+  const t = state.projTasks.find(t=>t.id===taskId); if(!t) return false;
   if(t.project_id){
-    const proj = state.projects.find(p=>p.id===t.project_id); if(!proj) return;
+    const proj = state.projects.find(p=>p.id===t.project_id); if(!proj) return false;
     state.view='projects'; state.projView='project'; state.projClientId=proj.client_id; state.projProjectId=proj.id;
   } else if(t.client_id){
     state.view='projects'; state.projView='retainerTasks'; state.projClientId=t.client_id;
-  } else return;
+  } else return false;
   render();
-  openProjTaskModal(taskId, {});
+  return true;
+}
+function jumpToProjTask(taskId){
+  if(navigateToTaskContext(taskId)) openProjTaskModal(taskId, {});
 }
 
 /* ================= Command palette / global search (Cmd/Ctrl+K) ================= */
@@ -2801,6 +2814,8 @@ function wireTaskRows(root, opts){
     const client = taskClient(task);
     if(opts.simpleRetainerPopup && task && !task.project_id && client?.is_retainer){
       openRetainerTaskTimeModal(taskId);
+    } else if(opts.onRowClick){
+      opts.onRowClick(taskId);
     } else {
       openProjTaskModal(taskId, {});
     }
@@ -3843,7 +3858,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.11.0';
+const APP_VERSION = '0.11.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;

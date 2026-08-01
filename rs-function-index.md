@@ -1,8 +1,22 @@
 # RS Retainer Tracker — Function Index
-**Current version: v0.11.0** | **File: index.html** | **Lines: ~5,007**
+**Current version: v0.11.1** | **File: index.html** | **Lines: ~5,038**
 
 Use this as a starting point each session to avoid grepping the whole file.
 Update the version and any changed line numbers when making edits.
+
+⚠️ **Post-v0.11.0 patches (v0.11.1, not a full re-index yet):** line numbers below were captured before these landed; everything from `taskGridColumns()` onward has drifted (~+30 lines total now). Function names/order unchanged — `grep -n "^function name"` rather than trusting exact numbers past that point.
+
+**Patch 1** (animator scoping + save-bug fix):
+1. Animator column/section is now conditional on `project_type==='Animations'`, not a manual toggle — see `showAnimator` param threaded through `taskGridColumns`/`taskRowHtml`/`taskTableHtml`, and `showAnimators` local in `openProjTaskModal`.
+2. Fixed "Could not save task" — `assigned_animator_ids` was unconditionally sent to Supabase even though migration v19 hasn't been run yet. Now only sent for animation tasks, and those retry once on a Postgres `42703` (undefined_column) error.
+
+**Patch 2** (Home page pass, this session):
+1. Greeting shows first name only (`me.name.split(/\s+/)[0]`).
+2. "To do" card now renders before "To review" (was the reverse).
+3. `.home-cols` 2-column breakpoint raised from `max-width:800px` to `max-width:1300px` — stacks to one column much sooner.
+4. Home task rows now navigate to the project/retainer-task view only, no modal — new shared `navigateToTaskContext(taskId)` (extracted from `jumpToProjTask`, which still opens the modal after navigating, used by the command palette). Wired via a new `wireTaskRows(root, {onRowClick})` option.
+5. New `miroIconBtnHtml(client)` (next to `miroButtonsHtml`) — icon-only yellow Miro shortcut, shown per-row on Home when that task's client has a Miro link. `.miro-icon-btn` CSS class.
+6. `homeTaskTableHtml` rewritten to reuse the shared inline-edit system: rows now carry `data-projtask` (was `data-hometask`, now gone) plus `data-taskname`/`data-statusinline`/`data-priorityinline`, and `renderHome()` calls `wireTaskRows(main, {onRowClick: navigateToTaskContext})` instead of its own bespoke click wiring. Status is now always a visible inline-editable column (previously just a color dot).
 
 ---
 
