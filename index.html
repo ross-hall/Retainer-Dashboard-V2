@@ -37,6 +37,30 @@
     --ease:cubic-bezier(.4,0,.2,1);
     --fast:150ms;
     --dur:200ms;
+    --sidebar-bg:#fbfaf7;
+  }
+  :root[data-theme="dark"]{
+    --accent:#4a9eeb;
+    --accent-hover:#6cb2f0;
+    --accent-soft:#1c3452;
+    --ink:#e9e7e2;
+    --ink-light:#8f8d84;
+    --paper:#1e1d1b;
+    --card:#282725;
+    --line:#3b3a37;
+    --line-soft:#333230;
+    --muted:#96948b;
+    --amber:#e0ab5c;
+    --amber-bg:#3c3020;
+    --red:#e0918a;
+    --red-bg:#3d2624;
+    --green:#7cc79e;
+    --green-bg:#1f3329;
+    --track:#333230;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.3);
+    --shadow-card:0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.3);
+    --shadow-pop:0 10px 30px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
+    --sidebar-bg:#232220;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{overflow-y:scroll;scrollbar-gutter:stable}
@@ -50,7 +74,7 @@
   main.fade-in{animation:fadeIn var(--dur) var(--ease)}
 
   .app-shell{display:flex;align-items:stretch;min-height:100vh}
-  #sidebar{width:232px;flex:none;background:#fbfaf7;border-right:1px solid var(--line);padding:14px 10px;position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;overflow-x:hidden;display:none;flex-direction:column;gap:14px;transition:width var(--dur) var(--ease)}
+  #sidebar{width:232px;flex:none;background:var(--sidebar-bg);border-right:1px solid var(--line);padding:14px 10px;position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;overflow-x:hidden;display:none;flex-direction:column;gap:14px;transition:width var(--dur) var(--ease)}
   #sidebar .side-top{display:flex;align-items:center;gap:4px}
   #sidebar .brand{display:flex;align-items:center;gap:9px;padding:6px 6px 2px;font-weight:600;font-size:13.5px;letter-spacing:0;color:var(--ink);background:none;border:none;cursor:pointer;text-align:left;flex:1;min-width:0}
   #sidebar .brand-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -59,6 +83,9 @@
   #sidebar .collapse-btn{flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--ink-light);border-radius:6px;transition:background var(--fast) var(--ease),color var(--fast) var(--ease)}
   #sidebar .collapse-btn:hover{background:var(--track);color:var(--ink)}
   #sidebar .collapse-btn svg{width:15px;height:15px}
+  #themeToggleBtn .icon-moon{display:none}
+  :root[data-theme="dark"] #themeToggleBtn .icon-sun{display:none}
+  :root[data-theme="dark"] #themeToggleBtn .icon-moon{display:block}
   #sidebar nav{display:flex;flex-direction:column;gap:1px}
   #sidebar nav button{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:none;color:var(--muted);opacity:1;padding:7px 8px;font-size:13.5px;font-weight:500;border-radius:7px;border-bottom:none;text-align:left;transition:background var(--fast) var(--ease),color var(--fast) var(--ease)}
   #sidebar nav button svg{flex:none;width:17px;height:17px;opacity:.8}
@@ -66,15 +93,47 @@
   #sidebar nav button.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
   #sidebar nav button.active svg{opacity:1}
   #sidebar nav .flag-count{background:var(--amber);color:#fff;border-radius:99px;font-size:10.5px;padding:1px 6px;margin-left:auto;font-weight:600}
+  #sidebar .sidebar-search-btn{display:flex;align-items:center;gap:9px;width:100%;background:var(--card);border:1px solid var(--line);color:var(--muted);padding:7px 8px;font-size:13px;border-radius:7px;cursor:pointer;margin-bottom:10px;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
+  #sidebar .sidebar-search-btn:hover{background:var(--track)}
+  #sidebar .sidebar-search-btn svg{width:16px;height:16px;flex:none;opacity:.8}
+  #sidebar .sidebar-search-btn .cmd-hint{margin-left:auto}
+  #sidebar.collapsed .sidebar-search-btn{justify-content:center}
+  #sidebar.collapsed .sidebar-search-btn .nav-label,#sidebar.collapsed .sidebar-search-btn .cmd-hint{display:none}
+
+  .cmd-hint{font-size:10.5px;color:var(--muted);background:var(--track);padding:2px 6px;border-radius:5px;flex:none;font-weight:500}
+  .cmd-backdrop{position:fixed;inset:0;background:rgba(20,18,15,.32);z-index:400;display:flex;justify-content:center;padding:12vh 20px 20px;animation:backdropIn var(--fast) var(--ease)}
+  .cmd-box{background:var(--card);width:100%;max-width:560px;height:fit-content;max-height:64vh;border-radius:var(--radius);box-shadow:var(--shadow-pop);display:flex;flex-direction:column;overflow:hidden;animation:modalIn var(--dur) var(--ease)}
+  .cmd-input-wrap{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);flex:none}
+  .cmd-input-wrap svg{width:18px;height:18px;color:var(--muted);flex:none}
+  .cmd-input-wrap input{border:none;padding:0;font-size:14.5px;flex:1;background:transparent;width:auto}
+  .cmd-input-wrap input:focus{outline:none;box-shadow:none;border-color:transparent}
+  .cmd-results{overflow-y:auto;padding:8px}
+  .cmd-group-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-light);padding:8px 10px 4px}
+  .cmd-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;padding:9px 10px;border-radius:var(--radius-sm);font-size:13.5px;color:var(--ink);cursor:pointer}
+  .cmd-item.active,.cmd-item:hover{background:var(--track)}
+  .cmd-item .dot{flex:none}
+  .cmd-sub{color:var(--muted);font-size:12px;margin-left:auto;padding-left:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
+  .cmd-tag{font-size:10.5px;color:var(--green);background:var(--green-bg);padding:1px 6px;border-radius:99px;margin-left:6px;flex:none}
+  .cmd-empty{padding:34px 16px;text-align:center;color:var(--muted);font-size:13px}
   #sidebar.collapsed{width:60px}
   #sidebar.collapsed .brand-name,#sidebar.collapsed .nav-label{display:none}
   #sidebar.collapsed .brand{justify-content:center}
   #sidebar.collapsed nav button{justify-content:center;padding:9px}
   #sidebar.collapsed .collapse-btn svg{transform:rotate(180deg)}
+  @media(min-width:761px) and (max-width:1080px){
+    #sidebar{width:192px}
+    main{padding:26px 22px 90px}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+    .home-cols{grid-template-columns:1fr}
+    .cal .day{min-height:78px;padding:5px;font-size:11px}
+    .week-grid .day{min-height:260px;padding:10px}
+  }
   @media(max-width:760px){
     .app-shell{flex-direction:column}
     #sidebar{width:100% !important;height:auto;position:sticky;top:0;z-index:40;flex-direction:row;align-items:center;border-right:none;border-bottom:1px solid var(--line);padding:8px 10px;overflow-x:auto;gap:10px}
     #sidebar .side-top{display:none}
+    #sidebar .sidebar-search-btn{width:auto;margin-bottom:0;padding:7px}
+    #sidebar .sidebar-search-btn .nav-label,#sidebar .sidebar-search-btn .cmd-hint{display:none}
     #sidebar nav{flex-direction:row;gap:2px}
     #sidebar nav button span{display:none}
   }
@@ -119,10 +178,11 @@
   form.log{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:640px}
   form.log .full{grid-column:1/-1}
   label{display:block;font-size:12.5px;font-weight:500;margin-bottom:6px;color:var(--ink)}
-  input,select,textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;transition:border-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
+  input,select,textarea{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card);transition:border-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
   textarea{resize:vertical;min-height:70px}
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   .weighted-note{grid-column:1/-1;font-size:13px;color:var(--muted);background:var(--track);border-radius:var(--radius-sm);padding:10px 12px}
+  .modal-section-label{grid-column:1/-1;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-light);border-top:1px solid var(--line);padding-top:16px;margin-top:2px}
   .weighted-note b{color:var(--accent);font-weight:600}
   .btn{background:var(--accent);color:#fff;border:none;border-radius:999px;padding:8px 16px;font-size:12.5px;font-weight:500;transition:background var(--fast) var(--ease),transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
   .btn:hover{background:var(--accent-hover)}
@@ -145,7 +205,11 @@
   .task-grid-header{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);font-weight:600;padding:9px 10px;position:sticky;top:0;background:var(--card);z-index:3}
   .col-resize-handle{position:absolute;top:0;right:-6px;width:10px;height:100%;cursor:col-resize;z-index:2}
   .col-resize-handle:hover, .col-resize-handle.resizing{background:linear-gradient(to right, transparent 5px, var(--accent) 5px, var(--accent) 6px, transparent 6px)}
-  .tg-title{display:flex;align-items:center;overflow:hidden}
+  .tg-title{display:flex;align-items:center;gap:9px;overflow:hidden}
+  .inline-editable{border-radius:6px;padding:3px 6px;margin:-3px -6px;cursor:pointer;transition:background var(--fast) var(--ease)}
+  .inline-editable:hover{background:var(--track)}
+  .tg-title .inline-editable{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .inline-rename-input{font:inherit;color:inherit;padding:2px 6px;border:1px solid var(--accent);border-radius:6px;background:var(--card);flex:1;min-width:60px;box-shadow:0 0 0 3px var(--accent-soft)}
   .tg-actions{text-align:right}
   th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);font-weight:600;padding:10px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:1}
   td{padding:11px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle;font-variant-numeric:tabular-nums}
@@ -159,7 +223,7 @@
   .cal-head{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
   .cal-head h3{font-size:17px;font-weight:600;min-width:170px;text-align:center}
   .cal-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
-  .filter-pill{border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;opacity:1;transition:opacity var(--fast) var(--ease)}
+  .filter-pill{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:5px 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;opacity:1;transition:opacity var(--fast) var(--ease)}
   .filter-pill.off{opacity:.4}
   .filter-pill .dot{width:8px;height:8px}
   .cal{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
@@ -169,9 +233,9 @@
   .cal .day.blank{background:transparent;border:none;cursor:default}
   .cal .day .num{font-weight:600;color:var(--muted);margin-bottom:4px}
   .cal .day.today{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent)}
-  .cal .day.today .num{color:var(--accent);background:#fff;border-radius:6px;display:inline-block;padding:0 5px}
+  .cal .day.today .num{color:var(--accent);background:var(--card);border-radius:6px;display:inline-block;padding:0 5px}
   .task-chip{border-radius:6px;padding:4px 7px;color:#fff;margin-bottom:5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
-  .renew-chip{border:1px dashed var(--accent);color:var(--accent);background:#fff;border-radius:6px;padding:2px 6px;font-size:10.5px;margin-bottom:3px;cursor:pointer;font-weight:500}
+  .renew-chip{border:1px dashed var(--accent);color:var(--accent);background:var(--card);border-radius:6px;padding:2px 6px;font-size:10.5px;margin-bottom:3px;cursor:pointer;font-weight:500}
 
   .settings-cols{display:flex;flex-direction:column;gap:24px}
   @media(max-width:800px){form.log{grid-template-columns:1fr}}
@@ -187,12 +251,19 @@
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:var(--radius-sm);padding:11px 18px;font-size:13.5px;opacity:0;transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease);pointer-events:none;z-index:50;box-shadow:var(--shadow-pop)}
   .toast.show{opacity:1;transform:translate(-50%,-2px)}
   .empty{color:var(--muted);font-size:13.5px;padding:20px 0}
+  .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:36px 20px;gap:3px}
+  .empty-state-icon{width:48px;height:48px;border-radius:50%;background:var(--track);color:var(--ink-light);display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+  .empty-state-icon svg{width:22px;height:22px}
+  .empty-state-title{font-size:13.5px;font-weight:600;color:var(--ink)}
+  .empty-state-sub{font-size:12.5px;color:var(--muted);max-width:300px;margin-top:2px}
+  .empty-state .btn{margin-top:14px}
   .back-btn{margin-bottom:16px}
 
   @keyframes backdropIn{from{opacity:0}to{opacity:1}}
   @keyframes modalIn{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
   .modal-backdrop{position:fixed;inset:0;background:rgba(20,18,15,.32);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;animation:backdropIn var(--fast) var(--ease)}
-  .modal-card{background:#fff;border-radius:var(--radius);padding:26px;max-width:480px;width:100%;max-height:88vh;overflow:auto;box-shadow:var(--shadow-pop);animation:modalIn var(--dur) var(--ease)}
+  .modal-card{background:var(--card);border-radius:var(--radius);padding:26px;max-width:480px;width:100%;max-height:88vh;overflow:auto;box-shadow:var(--shadow-pop);animation:modalIn var(--dur) var(--ease)}
+  .modal-card.wide{max-width:660px}
   .modal-card h3{font-size:17px;margin-bottom:4px}
   .modal-card .sub{margin-bottom:18px}
   .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:20px;gap:10px}
@@ -246,14 +317,14 @@
   .stage-date-btn:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
   .stage-date-btn::after{content:'▾';font-size:9px;opacity:.6}
 
-  .col-dropdown{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;box-shadow:var(--shadow-pop);min-width:190px;animation:popIn var(--fast) var(--ease)}
+  .col-dropdown{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;box-shadow:var(--shadow-pop);min-width:190px;animation:popIn var(--fast) var(--ease)}
   .col-dropdown-item{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;cursor:pointer}
   .col-dropdown-item input{width:auto}
 
   .drop-target-row{background:var(--track)}
   .task-row{cursor:grab}
 
-  .week-chip{background:#fff !important;border:1px solid var(--line);border-left:4px solid var(--accent)}
+  .week-chip{background:var(--card) !important;border:1px solid var(--line);border-left:4px solid var(--accent)}
   .week-chip .mc-time{font-weight:700;font-size:12px;color:var(--accent);margin-bottom:3px}
   .week-chip .mc1{color:var(--ink)}
   .week-chip .mc2,.week-chip .mc3{color:var(--muted)}
@@ -262,8 +333,10 @@
   .priority-medium{background:var(--accent-soft);color:var(--accent)}
   .priority-high{background:var(--amber-bg);color:var(--amber)}
   .priority-urgent{background:var(--red-bg);color:var(--red)}
+  select.priority-select{border:none;-webkit-appearance:none;appearance:none;cursor:pointer;padding-right:24px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%237b7a77' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;transition:filter var(--fast) var(--ease)}
+  select.priority-select:hover{filter:brightness(.97)}
 
-  .mini-datepicker{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow-pop);width:230px;animation:popIn var(--fast) var(--ease)}
+  .mini-datepicker{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow-pop);width:230px;animation:popIn var(--fast) var(--ease)}
   .mdp-head{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:8px}
   .mdp-nav{background:none;border:none;cursor:pointer;font-size:15px;color:var(--accent);padding:2px 8px;border-radius:6px}
   .mdp-nav:hover{background:var(--track)}
@@ -288,7 +361,7 @@
   .avatar-group .avatar:first-child{margin-left:0}
 
   .pill-select{display:flex;flex-wrap:wrap;gap:7px}
-  .member-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:#fff;border-radius:99px;padding:3px 12px 3px 3px;font-size:12.5px;cursor:pointer}
+  .member-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--card);border-radius:99px;padding:3px 12px 3px 3px;font-size:12.5px;cursor:pointer}
   .member-pill .avatar{width:auto;height:20px;min-width:20px;font-size:9px;border:none}
   .member-pill.selected{border-color:var(--accent);background:var(--track);font-weight:600}
 
@@ -319,7 +392,7 @@
 
   .color-circle{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
   .color-circle:hover{border-color:var(--accent)}
-  .color-popover{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow-pop);width:224px;animation:popIn var(--fast) var(--ease)}
+  .color-popover{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow-pop);width:224px;animation:popIn var(--fast) var(--ease)}
   .color-swatch-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}
   .color-swatch{width:32px;height:32px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
   .color-swatch:hover{border-color:var(--muted)}
@@ -327,7 +400,7 @@
   .color-eyedropper-btn{width:100%;padding:9px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--track);font-size:12.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;font-weight:500;transition:background var(--fast) var(--ease)}
   .color-eyedropper-btn:hover{background:var(--accent-soft)}
 
-  .menu-popover{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:6px;box-shadow:var(--shadow-pop);min-width:190px;animation:popIn var(--fast) var(--ease)}
+  .menu-popover{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:6px;box-shadow:var(--shadow-pop);min-width:190px;animation:popIn var(--fast) var(--ease)}
   .menu-popover button{display:block;width:100%;text-align:left;padding:9px 10px;border:none;background:none;font-size:13px;border-radius:var(--radius-sm);cursor:pointer;color:var(--ink);transition:background var(--fast) var(--ease)}
   .menu-popover button:hover{background:var(--track)}
   .menu-popover button.danger-item{color:var(--red)}
@@ -397,10 +470,19 @@
         <span class="brand-mark">RS</span>
         <span class="brand-name">Reciprocal Space</span>
       </button>
+      <button class="collapse-btn" id="themeToggleBtn" title="Toggle dark mode">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.5v2.4M12 19.1v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      </button>
       <button class="collapse-btn" id="sidebarCollapseBtn" title="Collapse sidebar">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 4.5v15" stroke="currentColor" stroke-width="1.6"/><path d="M13.5 10l-2 2 2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
+    <button class="sidebar-search-btn" id="sidebarSearchBtn" title="Search (⌘K)">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span class="nav-label">Search</span>
+      <span class="cmd-hint">⌘K</span>
+    </button>
     <nav id="nav">
       <button data-view="home" class="active" title="Home">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 11.5 12 4l8 7.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -442,7 +524,7 @@
 </button>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
-<div id="versionBadge" class="version-badge">v0.10.0</div>
+<div id="versionBadge" class="version-badge">v0.11.0</div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -453,7 +535,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj";
 let db = null;
 let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name',
   projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null,
-  taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
+  taskCols:new Set(['status','designer','reviewer','animator','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
@@ -464,9 +546,37 @@ const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 };
+function resolveTheme(){
+  const stored = store.get('rs_theme');
+  if(stored==='light' || stored==='dark') return stored;
+  return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+}
+function applyTheme(theme){ document.documentElement.setAttribute('data-theme', theme); }
+function toggleTheme(){
+  const next = document.documentElement.getAttribute('data-theme')==='dark' ? 'light' : 'dark';
+  store.set('rs_theme', next);
+  applyTheme(next);
+}
+applyTheme(resolveTheme());
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
 function esc(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function slugify(name){ return (name||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+const EMPTY_ICONS = {
+  check: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  tray: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 13h4l2 3h4l2-3h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 13 5.5 6a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 13v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
+  calendar: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="5.5" width="16" height="14.5" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M4 9.5h16M8 3.5v3M16 3.5v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  flag: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3v18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M6 4.5h11l-2.5 3.5 2.5 3.5H6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
+  folder: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
+  film: `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="5" width="16" height="14" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M10 9.2 15 12l-5 2.8Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`
+};
+function emptyStateHtml({ icon, title, subtitle, actionLabel, actionAttr }){
+  return `<div class="empty-state">
+    <div class="empty-state-icon">${EMPTY_ICONS[icon]||EMPTY_ICONS.tray}</div>
+    <div class="empty-state-title">${esc(title)}</div>
+    ${subtitle?`<div class="empty-state-sub">${esc(subtitle)}</div>`:''}
+    ${actionLabel?`<button type="button" class="btn small" ${actionAttr||''}>${esc(actionLabel)}</button>`:''}
+  </div>`;
+}
 function uniqueSlug(name){
   const base = slugify(name) || 'client';
   let candidate = base, n = 1;
@@ -546,7 +656,7 @@ const DEFAULT_TASK_STATUSES = [
   {name:'Pause',color:'#94A3B8',position:6,is_complete:false},
   {name:'Complete',color:'#2FB380',position:7,is_complete:true}
 ];
-const TASK_COLUMNS = [['status','Status'],['designer','Designer'],['reviewer','Reviewer'],['hours','Hours'],['due','Due date'],['priority','Priority'],['retainer','Retainer']];
+const TASK_COLUMNS = [['status','Status'],['designer','Designer'],['reviewer','Reviewer'],['animator','Animator'],['hours','Hours'],['due','Due date'],['priority','Priority'],['retainer','Retainer']];
 function taskStatusList(){ return (state.taskStatuses.length?state.taskStatuses:DEFAULT_TASK_STATUSES).slice().sort((a,b)=>a.position-b.position); }
 function taskStatusNames(){ return taskStatusList().map(s=>s.name); }
 function statusRecord(s){ return (state.taskStatuses.length?state.taskStatuses:DEFAULT_TASK_STATUSES).find(x=>x.name===s) || DEFAULT_TASK_STATUSES[0]; }
@@ -642,8 +752,9 @@ async function loadAll(){
 
 /* ---------- modal ---------- */
 function closeModal(){ $('#modalRoot').innerHTML=''; }
-function showModal(html){
-  $('#modalRoot').innerHTML = `<div class="modal-backdrop" id="mbd"><div class="modal-card">${html}</div></div>`;
+function showModal(html, opts){
+  opts = opts || {};
+  $('#modalRoot').innerHTML = `<div class="modal-backdrop" id="mbd"><div class="modal-card${opts.wide?' wide':''}">${html}</div></div>`;
   $('#mbd').addEventListener('click', e=>{ if(e.target.id==='mbd') closeModal(); });
 }
 
@@ -1002,6 +1113,7 @@ function openClientEditModal(clientId){
     <h3>Edit ${esc(c.name)}</h3>
     <div class="sub">Retainer and renewal changes only apply from the effective date onward — tasks logged before it keep counting against the old numbers, so past cycles won't shift.</div>
     <form class="log" style="max-width:none">
+      <div class="full modal-section-label" style="border-top:none;padding-top:0">Basics</div>
       <div><label>Dot colour</label>${colorCircleHtml('ec_color', colorFor(c))}</div>
       <div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="ec_isretainer" ${c.is_retainer?'checked':''} style="width:auto"> On retainer</label></div>
       <div id="ec_retainer_fields" style="display:${c.is_retainer?'contents':'none'}">
@@ -1022,12 +1134,12 @@ function openClientEditModal(clientId){
         <div><label>Renews on</label><select id="ec_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}" ${i+1===c.renewal_day?'selected':''}>${i+1}</option>`).join('')}</select></div>
         <div><label>Effective from</label><input type="date" id="ec_effective" value="${today}"></div>
       </div>
-      ${miroFieldsHtml('ec', c.miro_link_external, c.miro_link_internal)}
       <div class="full weighted-note">The retainer fields only matter if you tick "On retainer" — the colour updates immediately either way.</div>
 
-      <div class="full" style="border-top:1px solid var(--line);margin-top:6px;padding-top:16px">
-        <label style="margin-bottom:8px;display:block">Client dashboard <span style="color:var(--muted);font-weight:400">— what this client sees at their public link</span></label>
-      </div>
+      <div class="full modal-section-label">Links</div>
+      ${miroFieldsHtml('ec', c.miro_link_external, c.miro_link_internal)}
+
+      <div class="full modal-section-label">Client dashboard <span style="text-transform:none;font-weight:400;letter-spacing:0;color:var(--muted)">— what this client sees at their public link</span></div>
       <div><label>Dashboard link</label>
         <div style="display:flex;gap:6px">
           <input type="text" id="ec_slug" value="${esc(c.slug||'')}" placeholder="client-slug">
@@ -1047,7 +1159,7 @@ function openClientEditModal(clientId){
         <button class="btn" id="ec_save">Save changes</button>
       </div>
     </div>
-  `);
+  `, { wide:true });
   $('#ec_isretainer').addEventListener('change', e=>{ $('#ec_retainer_fields').style.display = e.target.checked?'contents':'none'; });
   wireColorCircle('ec_color');
   $('#ec_copylink').onclick = ()=>{
@@ -1287,8 +1399,8 @@ function homeTaskContextHtml(t){
   return cl ? esc(cl.name) : '—';
 }
 
-function homeTaskTableHtml(tasks){
-  if(!tasks.length) return `<div class="empty">Nothing here — you're all caught up.</div>`;
+function homeTaskTableHtml(tasks, emptyLabel){
+  if(!tasks.length) return emptyStateHtml({ icon:'check', title: emptyLabel || "You're all caught up", subtitle:'Nothing needs your attention right now.' });
   const cols = [`<col style="width:170px">`, `<col style="width:auto">`];
   if(state.homeCols.has('priority')) cols.push(`<col style="width:100px">`);
   if(state.homeCols.has('due')) cols.push(`<col style="width:104px">`);
@@ -1326,11 +1438,11 @@ function renderHome(){
   <div class="home-cols">
     <div class="home-col">
       <h3>To review <span class="home-count">${toReview.length}</span></h3>
-      <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toReview)}</div>
+      <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toReview, 'Nothing to review')}</div>
     </div>
     <div class="home-col">
       <h3>To do <span class="home-count">${toDo.length}</span></h3>
-      <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toDo)}</div>
+      <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toDo, 'Nothing to do')}</div>
     </div>
   </div>`;
   main.innerHTML = html;
@@ -1476,6 +1588,98 @@ function jumpToProjTask(taskId){
   } else return;
   render();
   openProjTaskModal(taskId, {});
+}
+
+/* ================= Command palette / global search (Cmd/Ctrl+K) ================= */
+let _cmdPaletteActions = [], _cmdPaletteActiveIndex = -1, _cmdPaletteKeyHandler = null;
+function closeCommandPalette(){
+  const el = document.getElementById('cmdPalette');
+  if(el) el.remove();
+  if(_cmdPaletteKeyHandler){ document.removeEventListener('keydown', _cmdPaletteKeyHandler, true); _cmdPaletteKeyHandler = null; }
+}
+function cmdPaletteHighlight(){
+  const items = document.querySelectorAll('#cmdResults .cmd-item');
+  items.forEach((el,i)=> el.classList.toggle('active', i===_cmdPaletteActiveIndex));
+  const activeEl = items[_cmdPaletteActiveIndex];
+  if(activeEl) activeEl.scrollIntoView({ block:'nearest' });
+}
+function openCommandPalette(){
+  closeCommandPalette();
+  const wrap = document.createElement('div');
+  wrap.id = 'cmdPalette';
+  wrap.className = 'cmd-backdrop';
+  wrap.innerHTML = `<div class="cmd-box">
+    <div class="cmd-input-wrap">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <input type="text" id="cmdInput" placeholder="Search clients, projects, tasks…" autocomplete="off">
+      <span class="cmd-hint">Esc</span>
+    </div>
+    <div id="cmdResults" class="cmd-results"></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.addEventListener('mousedown', e=>{ if(e.target===wrap) closeCommandPalette(); });
+  const input = wrap.querySelector('#cmdInput');
+  const resultsEl = wrap.querySelector('#cmdResults');
+
+  const renderResults = ()=>{
+    const q = input.value.trim().toLowerCase();
+    _cmdPaletteActions = [];
+    if(!q){
+      resultsEl.innerHTML = `<div class="cmd-empty">Type to search across clients, projects, and tasks…</div>`;
+      _cmdPaletteActiveIndex = -1;
+      return;
+    }
+    const clients = state.clients.filter(c=>c.active && c.name.toLowerCase().includes(q)).slice(0,6);
+    const projects = state.projects.filter(p=>p.active!==false && p.name.toLowerCase().includes(q)).slice(0,6);
+    const tasks = state.projTasks.filter(t=>(t.title||'').toLowerCase().includes(q)).slice(0,6);
+    if(!clients.length && !projects.length && !tasks.length){
+      resultsEl.innerHTML = `<div class="cmd-empty">No matches for "${esc(input.value.trim())}"</div>`;
+      _cmdPaletteActiveIndex = -1;
+      return;
+    }
+    let html = '';
+    if(clients.length){
+      html += `<div class="cmd-group-label">Clients</div>`;
+      clients.forEach(c=>{
+        const idx = _cmdPaletteActions.length;
+        _cmdPaletteActions.push(()=>{ closeCommandPalette(); state.view='projects'; state.projView = c.is_retainer?'retainerTasks':'clientProjects'; state.projClientId=c.id; state.projProjectId=null; render(); });
+        html += `<button type="button" class="cmd-item" data-cmdidx="${idx}"><span class="dot" style="background:${colorFor(c)};width:8px;height:8px"></span>${esc(c.name)}${c.is_retainer?'<span class="cmd-tag">Retainer</span>':''}</button>`;
+      });
+    }
+    if(projects.length){
+      html += `<div class="cmd-group-label">Projects</div>`;
+      projects.forEach(p=>{
+        const cl = state.clients.find(x=>x.id===p.client_id);
+        const idx = _cmdPaletteActions.length;
+        _cmdPaletteActions.push(()=>{ closeCommandPalette(); state.view='projects'; state.projView='project'; state.projClientId=p.client_id; state.projProjectId=p.id; render(); });
+        html += `<button type="button" class="cmd-item" data-cmdidx="${idx}">${esc(p.name)}${cl?`<span class="cmd-sub">${esc(cl.name)}</span>`:''}</button>`;
+      });
+    }
+    if(tasks.length){
+      html += `<div class="cmd-group-label">Tasks</div>`;
+      tasks.forEach(t=>{
+        const cl = taskClient(t);
+        const idx = _cmdPaletteActions.length;
+        _cmdPaletteActions.push(()=>{ closeCommandPalette(); jumpToProjTask(t.id); });
+        html += `<button type="button" class="cmd-item" data-cmdidx="${idx}"><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}${cl?`<span class="cmd-sub">${esc(cl.name)}</span>`:''}</button>`;
+      });
+    }
+    resultsEl.innerHTML = html;
+    _cmdPaletteActiveIndex = _cmdPaletteActions.length ? 0 : -1;
+    cmdPaletteHighlight();
+    resultsEl.querySelectorAll('[data-cmdidx]').forEach(b=>b.addEventListener('click', ()=> _cmdPaletteActions[+b.dataset.cmdidx]()));
+  };
+
+  _cmdPaletteKeyHandler = (e)=>{
+    if(e.key==='ArrowDown'){ e.preventDefault(); if(_cmdPaletteActions.length){ _cmdPaletteActiveIndex = Math.min(_cmdPaletteActiveIndex+1, _cmdPaletteActions.length-1); cmdPaletteHighlight(); } }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); if(_cmdPaletteActions.length){ _cmdPaletteActiveIndex = Math.max(_cmdPaletteActiveIndex-1, 0); cmdPaletteHighlight(); } }
+    else if(e.key==='Enter'){ e.preventDefault(); if(_cmdPaletteActions[_cmdPaletteActiveIndex]) _cmdPaletteActions[_cmdPaletteActiveIndex](); }
+    else if(e.key==='Escape'){ e.preventDefault(); closeCommandPalette(); }
+  };
+  document.addEventListener('keydown', _cmdPaletteKeyHandler, true);
+  input.addEventListener('input', renderResults);
+  input.focus();
+  renderResults();
 }
 
 function dashboardLinkButtonHtml(c){
@@ -1996,7 +2200,7 @@ function renderMilestones(){
       return `<div class="day ${dIso===todayIso?'today':''}" data-date="${dIso}"><div class="num">${d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric'})}</div>${chips}</div>`;
     }).join('');
     body = `<div class="cal-head"><button class="btn ghost small" id="mPrev">←</button><h3>${fmtDateY(start)} – ${fmtDateY(end)}</h3><button class="btn ghost small" id="mNext">→</button><button class="btn ghost small" id="mToday">Today</button></div>
-      <div class="week-grid" style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px">${cells}</div>`;
+      <div class="week-grid" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px">${cells}</div>`;
   } else if(state.milestoneViewMode==='year'){
     const y = anchor.getFullYear();
     let months = '';
@@ -2186,7 +2390,7 @@ function renderProjClients(){
       </div>
     </div><div style="margin-bottom:20px"></div>`;
   if(!clients.length){
-    html += `<div class="empty">No clients yet — click "+ New client" to add one.</div>`;
+    html += `<div class="card">${emptyStateHtml({ icon:'folder', title:'No clients yet', subtitle:'Add your first client to start tracking retainers and projects.', actionLabel:'+ New client', actionAttr:'id="emptyNewClientBtn"' })}</div>`;
   } else {
     html += `<h3 style="font-size:15px;font-weight:600;margin-bottom:14px">Retainer clients</h3>`;
     html += retainerClients.length
@@ -2199,6 +2403,7 @@ function renderProjClients(){
   }
   main.innerHTML = html;
   $('#newClientBtn').onclick = openNewClientModal;
+  if($('#emptyNewClientBtn')) $('#emptyNewClientBtn').onclick = openNewClientModal;
   $('#clientListBtn').onclick = ()=>{ state.projView='clientList'; render(); };
   main.querySelectorAll('[data-projgoto]').forEach(el=>el.addEventListener('click', ()=>{
     const cl = state.clients.find(c=>c.id===el.dataset.projgoto);
@@ -2473,7 +2678,7 @@ function blankProjTask(ctx){
   const client = clientId ? state.clients.find(c=>c.id===clientId) : null;
   return { id:null, project_id:ctx.projectId||null, stage_id:ctx.stageId||null, client_id:ctx.clientId||null,
     title:'', priority:'Medium', status:'To do',
-    assigned_designer_ids:[], assigned_reviewer_ids:[], recorded_hours:null, due_date:null, work_date:iso(new Date()),
+    assigned_designer_ids:[], assigned_reviewer_ids:[], assigned_animator_ids:[], recorded_hours:null, due_date:null, work_date:iso(new Date()),
     counts_toward_retainer: !!(client && client.is_retainer), retainer_task_ids:[] };
 }
 
@@ -2483,9 +2688,15 @@ function stageStatus(stageId){
   return tasks.every(t=>isCompleteStatus(t.status)) ? 'Complete' : 'Active';
 }
 
-const TASK_COL_DEFAULTS = { status:205, priority:104, designer:88, reviewer:88, hours:64, due:104, retainer:80 };
+const TASK_COL_DEFAULTS = { status:205, priority:104, designer:88, reviewer:88, animator:88, hours:64, due:104, retainer:80 };
 const TASKSAHEAD_COL_DEFAULTS = { due:96, project:150, status:205, priority:96, assigned:88 };
 function colWidth(store, key, defaults){ return (store[key] || defaults[key]) + 'px'; }
+
+function taskClient(t){
+  if(t.client_id) return state.clients.find(c=>c.id===t.client_id) || null;
+  if(t.project_id){ const p=state.projects.find(p=>p.id===t.project_id); return p ? state.clients.find(c=>c.id===p.client_id)||null : null; }
+  return null;
+}
 
 function taskGridColumns(){
   const cols = ['minmax(160px,1fr)'];
@@ -2493,6 +2704,7 @@ function taskGridColumns(){
   if(state.taskCols.has('priority')) cols.push(colWidth(state.taskColWidths,'priority',TASK_COL_DEFAULTS));
   if(state.taskCols.has('designer')) cols.push(colWidth(state.taskColWidths,'designer',TASK_COL_DEFAULTS));
   if(state.taskCols.has('reviewer')) cols.push(colWidth(state.taskColWidths,'reviewer',TASK_COL_DEFAULTS));
+  if(state.taskCols.has('animator')) cols.push(colWidth(state.taskColWidths,'animator',TASK_COL_DEFAULTS));
   if(state.taskCols.has('hours')) cols.push(colWidth(state.taskColWidths,'hours',TASK_COL_DEFAULTS));
   if(state.taskCols.has('due')) cols.push(colWidth(state.taskColWidths,'due',TASK_COL_DEFAULTS));
   if(state.taskCols.has('retainer')) cols.push(colWidth(state.taskColWidths,'retainer',TASK_COL_DEFAULTS));
@@ -2501,6 +2713,8 @@ function taskGridColumns(){
 }
 
 function taskRowHtml(t){
+  const client = taskClient(t);
+  const retainerClickable = !!client?.is_retainer;
   let retainerCell = '—';
   if(t.counts_toward_retainer){
     retainerCell = (t.retainer_task_ids && t.retainer_task_ids.length)
@@ -2508,14 +2722,15 @@ function taskRowHtml(t){
       : '<span style="color:var(--amber);font-weight:700" title="Ticked, but not syncing yet — check hours and designer">⚠</span>';
   }
   return `<div class="task-grid-row task-row" draggable="true" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns()}">
-    <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</div>
+    <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
     ${state.taskCols.has('status')?`<div><select class="status-select" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}" data-statusinline="${t.id}">${taskStatusNames().map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></div>`:''}
-    ${state.taskCols.has('priority')?`<div><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></div>`:''}
-    ${state.taskCols.has('designer')?`<div>${avatarGroupHtml(t.assigned_designer_ids)}</div>`:''}
-    ${state.taskCols.has('reviewer')?`<div>${avatarGroupHtml(t.assigned_reviewer_ids)}</div>`:''}
+    ${state.taskCols.has('priority')?`<div><select class="priority-pill priority-select priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>`:''}
+    ${state.taskCols.has('designer')?`<div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>`:''}
+    ${state.taskCols.has('reviewer')?`<div class="inline-editable" data-assigninline="${t.id}:reviewer" title="Click to edit reviewers">${avatarGroupHtml(t.assigned_reviewer_ids)}</div>`:''}
+    ${state.taskCols.has('animator')?`<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`:''}
     ${state.taskCols.has('hours')?`<div style="text-align:right">${t.recorded_hours!=null?fmtH(t.recorded_hours):'—'}</div>`:''}
     ${state.taskCols.has('due')?`<div>${t.due_date? fmtDateNatural(t.due_date):'—'}</div>`:''}
-    ${state.taskCols.has('retainer')?`<div style="text-align:center">${retainerCell}</div>`:''}
+    ${state.taskCols.has('retainer')?`<div style="text-align:center" class="${retainerClickable?'inline-editable':''}" ${retainerClickable?`data-retainerinline="${t.id}" title="Click to toggle retainer sync"`:''}>${retainerCell}</div>`:''}
     <div class="tg-actions"><button type="button" class="btn small ghost menu-dots" data-taskmenu="${t.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></div>
   </div>`;
 }
@@ -2525,6 +2740,7 @@ function resizeHandle(key, storeName){
 }
 
 function taskTableHtml(tasks, visibleCount, emptyText){
+  if(!tasks.length) return `<div class="task-grid">${emptyStateHtml({ icon:'tray', title: emptyText||'Nothing here yet.' })}</div>`;
   const gridCols = taskGridColumns();
   const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${gridCols}">
       <div style="position:relative">Task</div>
@@ -2532,24 +2748,24 @@ function taskTableHtml(tasks, visibleCount, emptyText){
       ${state.taskCols.has('priority')?`<div style="position:relative">Priority${resizeHandle('priority','task')}</div>`:''}
       ${state.taskCols.has('designer')?`<div style="position:relative">Designer${resizeHandle('designer','task')}</div>`:''}
       ${state.taskCols.has('reviewer')?`<div style="position:relative">Reviewer${resizeHandle('reviewer','task')}</div>`:''}
+      ${state.taskCols.has('animator')?`<div style="position:relative">Animator${resizeHandle('animator','task')}</div>`:''}
       ${state.taskCols.has('hours')?`<div style="position:relative;text-align:right">Hours${resizeHandle('hours','task')}</div>`:''}
       ${state.taskCols.has('due')?`<div style="position:relative">Due${resizeHandle('due','task')}</div>`:''}
       ${state.taskCols.has('retainer')?`<div style="position:relative;text-align:center">Retainer${resizeHandle('retainer','task')}</div>`:''}
       <div></div>
     </div>`;
-  const rows = tasks.map(taskRowHtml).join('') || `<div class="task-grid-row" style="grid-template-columns:${gridCols}"><div class="empty" style="grid-column:1/-1;padding:10px 0">${emptyText||'Nothing here yet.'}</div></div>`;
+  const rows = tasks.map(taskRowHtml).join('');
   return `<div class="task-grid">${header}${rows}</div>`;
 }
 
 async function duplicateProjTask(taskId){
   const t = state.projTasks.find(t=>t.id===taskId);
   if(!t) return;
-  const client = t.client_id ? state.clients.find(c=>c.id===t.client_id)
-    : (t.project_id ? (()=>{ const p=state.projects.find(p=>p.id===t.project_id); return p ? state.clients.find(c=>c.id===p.client_id) : null; })() : null);
+  const client = taskClient(t);
   const fields = {
     project_id: t.project_id, stage_id: t.stage_id, client_id: t.client_id,
     title: t.title + ' (copy)', status: 'To do', priority: t.priority,
-    assigned_designer_ids: t.assigned_designer_ids||[], assigned_reviewer_ids: t.assigned_reviewer_ids||[],
+    assigned_designer_ids: t.assigned_designer_ids||[], assigned_reviewer_ids: t.assigned_reviewer_ids||[], assigned_animator_ids: t.assigned_animator_ids||[],
     recorded_hours: null, due_date: t.due_date, work_date: iso(new Date()),
     counts_toward_retainer: !!(client && client.is_retainer), retainer_task_ids: []
   };
@@ -2568,14 +2784,17 @@ async function deleteProjTaskQuick(taskId){
   toast('Task deleted'); await refreshProjectView();
 }
 
+const ASSIGN_ROLE_FIELD = { designer:'assigned_designer_ids', reviewer:'assigned_reviewer_ids', animator:'assigned_animator_ids' };
+const ASSIGN_ROLE_CAN = { designer:'can_design', reviewer:'can_review', animator:'can_animate' };
+
 function wireTaskRows(root, opts){
   opts = opts || {};
+  const inlineSelectors = '[data-statusinline], [data-priorityinline], [data-taskmenu], [data-assigninline], [data-retainerinline], [data-taskname]';
   root.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', (e)=>{
-    if(e.target.closest('[data-statusinline]') || e.target.closest('[data-taskmenu]')) return;
+    if(e.target.closest(inlineSelectors)) return;
     const taskId = el.dataset.projtask;
     const task = state.projTasks.find(t=>t.id===taskId);
-    const client = task?.client_id ? state.clients.find(c=>c.id===task.client_id)
-      : (task?.project_id ? (()=>{ const p=state.projects.find(p=>p.id===task.project_id); return p?state.clients.find(c=>c.id===p.client_id):null; })() : null);
+    const client = taskClient(task);
     if(opts.simpleRetainerPopup && task && !task.project_id && client?.is_retainer){
       openRetainerTaskTimeModal(taskId);
     } else {
@@ -2591,17 +2810,72 @@ function wireTaskRows(root, opts){
       await refreshProjectView();
     });
   });
+  root.querySelectorAll('[data-priorityinline]').forEach(el=>{
+    el.addEventListener('click', e=> e.stopPropagation());
+    el.addEventListener('change', async e=>{
+      e.stopPropagation();
+      const { error } = await db.from('rs_proj_tasks').update({ priority: el.value }).eq('id', el.dataset.priorityinline);
+      if(error){ toast('Could not update priority'); return; }
+      await refreshProjectView();
+    });
+  });
+  root.querySelectorAll('[data-assigninline]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const [taskId, role] = el.dataset.assigninline.split(':');
+    const task = state.projTasks.find(t=>t.id===taskId);
+    if(!task) return;
+    const field = ASSIGN_ROLE_FIELD[role];
+    const pool = state.members.filter(m=>m.active && m[ASSIGN_ROLE_CAN[role]]!==false);
+    const current = new Set(task[field]||[]);
+    openCheckboxDropdown(el, pool.map(m=>({key:m.id, label:m.name})), key=>current.has(key), async (key, checked)=>{
+      checked ? current.add(key) : current.delete(key);
+      const { error } = await db.from('rs_proj_tasks').update({ [field]: Array.from(current) }).eq('id', taskId);
+      if(error){ toast('Could not update'); return; }
+      await refreshProjectView();
+    });
+  }));
+  root.querySelectorAll('[data-retainerinline]').forEach(el=>el.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    const taskId = el.dataset.retainerinline;
+    const task = state.projTasks.find(t=>t.id===taskId);
+    const client = taskClient(task);
+    if(!task || !client?.is_retainer) return;
+    const updated = { ...task, counts_toward_retainer: !task.counts_toward_retainer };
+    const { error } = await db.from('rs_proj_tasks').update({ counts_toward_retainer: updated.counts_toward_retainer }).eq('id', taskId);
+    if(error){ toast('Could not update'); return; }
+    const retainerTaskIds = await syncProjTaskRetainer(updated, task.project_id ? state.projects.find(p=>p.id===task.project_id) : null, client);
+    await db.from('rs_proj_tasks').update({ retainer_task_ids: retainerTaskIds }).eq('id', taskId);
+    await refreshProjectView();
+  }));
+  root.querySelectorAll('[data-taskname]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const taskId = el.dataset.taskname;
+    const original = el.textContent;
+    const input = document.createElement('input');
+    input.type = 'text'; input.value = original; input.className = 'inline-rename-input';
+    el.replaceWith(input); input.focus(); input.select();
+    input.addEventListener('click', ev=> ev.stopPropagation());
+    input.addEventListener('keydown', ev=>{
+      if(ev.key==='Enter') input.blur();
+      if(ev.key==='Escape'){ input.dataset.cancel='1'; input.blur(); }
+    });
+    input.addEventListener('blur', async ()=>{
+      const val = input.value.trim();
+      if(input.dataset.cancel || !val || val===original){ input.replaceWith(el); return; }
+      const { error } = await db.from('rs_proj_tasks').update({ title: val }).eq('id', taskId);
+      if(error){ toast('Could not rename task'); input.replaceWith(el); return; }
+      toast('Task renamed');
+      await refreshProjectView();
+    }, { once:true });
+  }));
   root.querySelectorAll('[data-taskmenu]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     const taskId = el.dataset.taskmenu;
-    const task = state.projTasks.find(t=>t.id===taskId);
-    const client = task?.client_id ? state.clients.find(c=>c.id===task.client_id)
-      : (task?.project_id ? (()=>{ const p=state.projects.find(p=>p.id===task.project_id); return p?state.clients.find(c=>c.id===p.client_id):null; })() : null);
-    const isSimplePopupTask = opts.simpleRetainerPopup && task && !task.project_id && client?.is_retainer;
-    const items = [];
-    if(isSimplePopupTask) items.push({ label:'Edit task', onClick:()=> openProjTaskModal(taskId, {}) });
-    items.push({ label:'Duplicate task', onClick:()=> duplicateProjTask(taskId) });
-    items.push({ label:'Delete task', danger:true, onClick:()=> deleteProjTaskQuick(taskId) });
+    const items = [
+      { label:'Edit task', onClick:()=> openProjTaskModal(taskId, {}) },
+      { label:'Duplicate task', onClick:()=> duplicateProjTask(taskId) },
+      { label:'Delete task', danger:true, onClick:()=> deleteProjTaskQuick(taskId) }
+    ];
     openMenuPopover(e.currentTarget, items);
   }));
 }
@@ -2671,7 +2945,7 @@ function renderTasksAhead(){
 
   let html = `<h2>Week Tasks</h2><div class="sub">Everything due ${fmtDateY(today)} – ${fmtDateY(endDate)}, across every client · rolls forward each day</div>`;
   if(!groups.length){
-    html += `<div class="empty">Nothing due in the next 7 days.</div>`;
+    html += `<div class="card">${emptyStateHtml({ icon:'calendar', title:'Nothing due in the next 7 days', subtitle:'Tasks with a due date this week will show up here as soon as one is set.' })}</div>`;
   } else {
     groups.forEach(g=>{
       const items = g.items.sort((a,b)=> (a.t.due_date||'').localeCompare(b.t.due_date||''));
@@ -2693,6 +2967,7 @@ function openProjTaskModal(taskId, ctx){
   const stages = project ? state.stages.filter(s=>s.project_id===project.id).sort((a,b)=>a.position-b.position) : [];
   const designerPool = state.members.filter(m=>m.active && m.can_design!==false);
   const reviewerPool = state.members.filter(m=>m.active && m.can_review!==false);
+  const animatorPool = state.members.filter(m=>m.active && m.can_animate!==false);
   showModal(`
     <h3>${isNew?'New task':'Edit task'}</h3>
     <div class="sub">${esc(project? project.name : client.name)}</div>
@@ -2701,18 +2976,23 @@ function openProjTaskModal(taskId, ctx){
       ${stages.length? `<div><label>Stage</label><select id="pt_stage">${stages.map(s=>`<option value="${s.id}" ${s.id===t.stage_id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>` : ''}
       <div><label>Status</label><select id="pt_status">${taskStatusNames().map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${statusIcon(s)} ${s}</option>`).join('')}</select></div>
       <div><label>Priority</label><select id="pt_priority">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
-      ${!client?.is_retainer ? `<div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t.recorded_hours!=null?t.recorded_hours:''}"></div>` : ''}
+
+      <div class="full modal-section-label">Team</div>
       <div class="full"><label>Designers</label><div id="pt_designers">${pillSelectorHtml(designerPool, t.assigned_designer_ids||[])}</div></div>
       <div class="full"><label>Reviewers</label><div id="pt_reviewers">${pillSelectorHtml(reviewerPool, t.assigned_reviewer_ids||[])}</div></div>
+      <div class="full"><label>Animators</label><div id="pt_animators">${pillSelectorHtml(animatorPool, t.assigned_animator_ids||[])}</div></div>
+
+      <div class="full modal-section-label">Dates & hours</div>
       <div><label>Due date</label>${dateFieldHtml('pt_due', t.due_date, 'Set due date')}</div>
+      ${!client?.is_retainer ? `<div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t.recorded_hours!=null?t.recorded_hours:''}"></div>` : ''}
       ${client.is_retainer? `
       <div><label>Work date <span style="color:var(--muted);font-weight:400">(for retainer sync)</span></label>${dateFieldHtml('pt_work', t.work_date||iso(new Date()), 'Set work date')}</div>
       <div class="full weighted-note" style="display:flex;align-items:center;gap:8px">
         <input type="checkbox" id="pt_retainer" ${t.counts_toward_retainer?'checked':''} style="width:auto">
         <label style="margin:0" for="pt_retainer">Counts toward ${esc(client.name)}'s retainer dashboard</label>
       </div>
-      ${!isNew ? `<div class="full" style="margin-top:4px;border-top:1px solid var(--line);padding-top:14px">
-        <label style="margin-bottom:8px;display:block">Time entries <span style="color:var(--muted);font-weight:400">— one per team member</span></label>
+      ${!isNew ? `<div class="full modal-section-label" style="margin-top:4px">Time entries <span style="text-transform:none;font-weight:400;letter-spacing:0;color:var(--muted)">— one per team member</span></div>
+      <div class="full">
         <div id="pt_entries_list">${taskEntriesHtml(t.id)}</div>
         <button type="button" class="btn small ghost" id="pt_add_entry" style="margin-top:8px">+ Add person's hours</button>
       </div>` : `<div class="full weighted-note" style="color:var(--muted)">Save the task first, then add individual time entries per person.</div>`}
@@ -2725,8 +3005,8 @@ function openProjTaskModal(taskId, ctx){
         <button class="btn" id="pt_save">${isNew?'Add task':'Save changes'}</button>
       </div>
     </div>
-  `);
-  document.querySelectorAll('#pt_designers [data-pillmember], #pt_reviewers [data-pillmember]').forEach(b=>{
+  `, { wide:true });
+  document.querySelectorAll('#pt_designers [data-pillmember], #pt_reviewers [data-pillmember], #pt_animators [data-pillmember]').forEach(b=>{
     b.addEventListener('click', ()=> b.classList.toggle('selected'));
   });
   wireDateField('pt_due', 'Set due date');
@@ -2771,6 +3051,7 @@ function openProjTaskModal(taskId, ctx){
       priority: $('#pt_priority').value,
       assigned_designer_ids: Array.from(document.querySelectorAll('#pt_designers .member-pill.selected')).map(b=>b.dataset.pillmember),
       assigned_reviewer_ids: Array.from(document.querySelectorAll('#pt_reviewers .member-pill.selected')).map(b=>b.dataset.pillmember),
+      assigned_animator_ids: Array.from(document.querySelectorAll('#pt_animators .member-pill.selected')).map(b=>b.dataset.pillmember),
       recorded_hours: $('#pt_hours') ? ($('#pt_hours').value ? +$('#pt_hours').value : null) : null,
       due_date: $('#pt_due').value || null,
       work_date: document.getElementById('pt_work') ? ($('#pt_work').value || null) : (t.work_date||null),
@@ -3330,25 +3611,26 @@ function renderSettings(){
 
       <div class="card">
         <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Team members</h3>
-        <table><thead><tr><th>Name</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th></th></tr></thead><tbody>
+        <table><thead><tr><th>Name</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th></th></tr></thead><tbody>
         ${state.members.map(m=>`<tr style="${m.active?'':'opacity:.45'}">
           <td>${esc(m.name)}</td>
           <td>×${m.weight}</td>
           <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_design" ${m.can_design!==false?'checked':''} style="width:auto"></td>
           <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_review" ${m.can_review!==false?'checked':''} style="width:auto"></td>
+          <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_animate" ${m.can_animate!==false?'checked':''} style="width:auto"></td>
           <td class="action-cell">
             <button class="btn small ghost" data-mweight="${m.id}">Change factor</button>
             <button class="btn small ghost" data-mactive="${m.id}">${m.active?'Archive':'Restore'}</button>
             ${!m.active? `<button class="btn small danger" data-mdelete="${m.id}">Delete</button>`:''}
           </td>
-        </tr>`).join('') || '<tr><td colspan="5" class="empty">No team members yet.</td></tr>'}
+        </tr>`).join('') || '<tr><td colspan="6" class="empty">No team members yet.</td></tr>'}
         </tbody></table>
         <div class="row-form">
           <input id="m_name" placeholder="Name" style="flex:2">
           <input id="m_weight" type="number" step="0.25" min="0.25" value="1" title="Weighting factor">
           <button class="btn small" id="m_add">Add</button>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Designer/Reviewer checkboxes control who shows up in those pickers on project tasks. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Designer/Reviewer/Animator checkboxes control who shows up in those pickers on project tasks. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
       </div>
     </div>
 
@@ -3545,7 +3827,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.10.0';
+const APP_VERSION = '0.11.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -4217,6 +4499,7 @@ async function boot(){
   if(clientSlug){ await bootPublicDashboard(clientSlug, qs.get('admin')==='1'); return; }
 
   $('#sidebar').style.display = 'flex';
+  $('#themeToggleBtn').addEventListener('click', toggleTheme);
   if(store.get('rs_sidebar_collapsed')==='1') $('#sidebar').classList.add('collapsed');
   $('#sidebarCollapseBtn').addEventListener('click', ()=>{
     const collapsed = $('#sidebar').classList.toggle('collapsed');
@@ -4233,6 +4516,10 @@ async function boot(){
   }));
   $('#quickAddFab').style.display = 'flex';
   $('#quickAddFab').addEventListener('click', e=> openQuickAddMenu(e.currentTarget));
+  $('#sidebarSearchBtn').addEventListener('click', openCommandPalette);
+  document.addEventListener('keydown', e=>{
+    if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); openCommandPalette(); }
+  });
   await loadAll();
 }
 boot();

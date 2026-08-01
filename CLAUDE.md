@@ -1,16 +1,17 @@
 # RS Retainer Tracker — Claude Code Context
 
 ## Project overview
-Single-file HTML app: `index.html` (~4,720 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
+Single-file HTML app: `index.html` (~5,010 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.10.0**
+Current version: **v0.11.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
 - Anon key: `sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj`
 - RLS is fully open (anon key can read/write everything — known risk, flagged)
+- ⚠️ **Pending manual step:** `outputs/v19_add_animator.sql` has not been run yet — Animator assignments won't persist server-side until it is. See "v0.11.0 additions" below.
 
-Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · Inter font · Notion + Linear + Arc-inspired visual system (warm off-white canvas, soft blue accent, 12px radius, muted status chips) — see Design tokens section. Collapsible sidebar + global Quick Add shipped in v0.10.0; command palette, global search, dashboard widget reordering, dark mode, and tablet-specific responsive work are intentionally deferred (see rs-function-index.md's "Redesign status" section for the full checklist).
+Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · Inter font · Notion + Linear + Arc-inspired visual system with a dark-mode variant — see Design tokens section. v0.10.0 shipped the visual redesign + collapsible sidebar + Quick Add; v0.11.0 shipped command palette/global search, dark mode, tablet responsive, inline editing, better empty states, clearer modal layouts, and an Animator role. Deferred: reorderable dashboard widgets, project-page restructuring (progress/milestones/links/activity grouped together).
 
 ---
 
@@ -36,8 +37,8 @@ Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · 
    ```
    Both counts must be 0. Never ship if node --check fails.
 5. **Bump the version on every session** — two places must match:
-   - `APP_VERSION` constant (~line 3547): `const APP_VERSION = 'X.X.X';`
-   - Badge in HTML body (~line 445): `<div id="versionBadge" ...>vX.X.X</div>`
+   - `APP_VERSION` constant (~line 3830): `const APP_VERSION = 'X.X.X';`
+   - Badge in HTML body (~line 527): `<div id="versionBadge" ...>vX.X.X</div>`
 6. **Previous versions are tracked via git**, not a manual outputs copy — commit when the user asks, and the prior `index.html` stays recoverable from git history/log.
 
 ---
@@ -46,9 +47,9 @@ Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · 
 
 ```
 HTML structure:
-  <style>        CSS (~390 lines) — design tokens, all component styles
-  <body>         .app-shell (collapsible #sidebar + #main) + #quickAddFab + #modalRoot + #toast
-  <script>       All app logic (~4,320 lines)
+  <style>        CSS (~450 lines) — design tokens incl. dark theme, all component styles
+  <body>         .app-shell (collapsible #sidebar + #main) + #quickAddFab + #modalRoot + #toast (#cmdPalette is created dynamically, not static markup)
+  <script>       All app logic (~4,550 lines)
 
 Nav views (state.view):
   'home'         → renderHome()
@@ -72,12 +73,12 @@ Public dashboard (no internal nav):
 | Table | Migration | Purpose |
 |-------|-----------|---------|
 | `rs_clients` | v1 + v14 | Clients. Has: slug, dash_accent_color, dash_logo_text, dash_greeting, dash_logo_url, dash_contact_email |
-| `rs_members` | v1 | Team members with billing weight |
+| `rs_members` | v1, **v19** | Team members with billing weight. v19 adds `can_animate` (not yet run) |
 | `rs_tasks` | v1 | Legacy retainer hour-log entries |
 | `rs_client_settings_history` | v1 | Retainer terms history per client |
 | `rs_projects` | v4 | Projects. Has: review_days, anim_total_seconds |
 | `rs_project_stages` | v4 | Stages per project with due_date |
-| `rs_proj_tasks` | v4 | Tasks (retainer to-do + project stage tasks) |
+| `rs_proj_tasks` | v4, **v19** | Tasks (retainer to-do + project stage tasks). v19 adds `assigned_animator_ids` (not yet run) |
 | `rs_project_types` | v4 | Editable project types with stage templates |
 | `rs_task_statuses` | v13 | Editable status names, colours, is_complete flag |
 | `rs_stage_categories` | v14+v15 | Asset link categories per stage or project |
