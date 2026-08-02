@@ -1,17 +1,17 @@
 # RS Retainer Tracker — Claude Code Context
 
 ## Project overview
-Single-file HTML app: `index.html` (~5,010 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
+Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.11.0**
+Current version: **v0.13.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
 - Anon key: `sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj`
 - RLS is fully open (anon key can read/write everything — known risk, flagged)
-- ⚠️ **Pending manual step:** `outputs/v19_add_animator.sql` has not been run yet — Animator assignments won't persist server-side until it is. See "v0.11.0 additions" below.
+- ⚠️ **Pending manual step:** `outputs/v19_add_animator.sql` has not been run yet — Animator assignments won't persist server-side until it is.
 
-Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · Inter font · Notion + Linear + Arc-inspired visual system with a dark-mode variant — see Design tokens section. v0.10.0 shipped the visual redesign + collapsible sidebar + Quick Add; v0.11.0 shipped command palette/global search, dark mode, tablet responsive, inline editing, better empty states, clearer modal layouts, and an Animator role. Deferred: reorderable dashboard widgets, project-page restructuring (progress/milestones/links/activity grouped together).
+Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · Inter font · Notion + Linear + Arc-inspired visual system with a dark-mode variant. **The standalone "Retainers" nav page/dashboard is gone as of v0.13.0** — its content (allowance meter, remaining hours, renewal date) now lives directly on each retainer client's card on the All Projects page, and the client detail page merges what used to be two separate pages (to-do list / allowance history) into one page with a "To-do list" / "Monthly allowance" tab toggle. The old "Calendar view" for ad-hoc hour-logging (not tied to a task) was removed with it — hours are logged through the task modal (tick "counts toward retainer" + recorded hours) instead. See "What shipped in v0.13.0" below.
 
 ---
 
@@ -37,8 +37,8 @@ Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · 
    ```
    Both counts must be 0. Never ship if node --check fails.
 5. **Bump the version on every session** — two places must match:
-   - `APP_VERSION` constant (~line 3830): `const APP_VERSION = 'X.X.X';`
-   - Badge in HTML body (~line 527): `<div id="versionBadge" ...>vX.X.X</div>`
+   - `APP_VERSION` constant (~line 3632): `const APP_VERSION = 'X.X.X';`
+   - Badge in HTML body (~line 532): `<div id="versionBadge" ...>vX.X.X</div>`
 6. **Previous versions are tracked via git**, not a manual outputs copy — commit when the user asks, and the prior `index.html` stays recoverable from git history/log.
 
 ---
@@ -51,10 +51,10 @@ HTML structure:
   <body>         .app-shell (collapsible #sidebar + #main) + #quickAddFab + #modalRoot + #toast (#cmdPalette is created dynamically, not static markup)
   <script>       All app logic (~4,550 lines)
 
-Nav views (state.view):
+Nav views (state.view) — 'dashboard' (Retainers) is gone as of v0.13.0:
   'home'         → renderHome()
   'projects'     → renderProjects() → dispatches on state.projView
-  'dashboard'    → renderDashboard()  [Retainers]
+                     'retainerTasks' → renderClientTasksView(c) — now internally tabs Tasks/Allowance via state.retainerTab
   'animation'    → renderAnimation()  [Animation Beta]
   'tasksahead'   → renderTasksAhead() [Week Tasks]
   'milestones'   → renderMilestones()
@@ -95,16 +95,18 @@ Public dashboard (no internal nav):
 ## Key constants and state
 
 ```js
-CURRENT_USER_NAME = 'Ross Hall'   // ~line 1389 — links Home to team member
-APP_VERSION = '0.11.0'            // ~line 3830
-PALETTE = [8 hex colours]         // ~line 623 — dot/avatar colours
-DEFAULT_TASK_STATUSES = [...]      // ~line 649 — fallback if v13 migration not run
-ANIM_DEFAULT_STEPS = [...]         // ~line 3982 — seeded on first animation use
-ANIM_CELL_STATUSES = {...}         // ~line 3983 — status → {color, text, short}
+CURRENT_USER_NAME = 'Ross Hall'   // ~line 1326 — links Home to team member
+APP_VERSION = '0.13.0'            // ~line 3632
+PALETTE = [8 hex colours]         // ~line 636 — dot/avatar colours
+DEFAULT_TASK_STATUSES = [...]      // ~line 669 — fallback if v13 migration not run
+ANIM_DEFAULT_STEPS = [...]         // ~line 3784 — seeded on first animation use
+ANIM_CELL_STATUSES = {...}         // ~line 3785 — status → {color, text, short}
 
 state = {
   view, projView, projClientId, projProjectId,
-  clients[], members[], tasks[], projects[], stages[], projTasks[],
+  retainerTab,                      // 'tasks'|'allowance' — new in v0.13.0, tab within the retainer client detail page
+  clients[], members[], tasks[],    // tasks[] is still the legacy rs_tasks read side that clientUsage() sums — kept even though the manual quick-log UI that wrote to it is gone; task-based retainer sync still writes to it
+  projects[], stages[], projTasks[],
   projectTypes[], taskStatuses[], stageCategories[], stageLinks[],
   animShots[], animSteps[], animCells[], animFeedback[], animDeps[],
   animProjectId, animTab,           // animation page state
@@ -112,13 +114,12 @@ state = {
   taskCols,                         // Set of visible column keys — now defaults to include 'animator'
   taskColWidths:{}, tasksAheadColWidths:{},  // drag-resized widths (session-only)
   clientListGroup, clientListSort,  // 'client'|'type', 'alpha'|'started'
-  retainerView,                     // 'dashboard'|'calendar'
   homeCols,                         // Set of visible Home columns
   milestoneViewMode, milestoneAnchor, milestoneShowProjects, milestoneShowRetainer,
   milestoneHidden, milestoneTypeHidden,
-  dashSearch, dashSort, calMonth, clientId, calHidden,
 }
 ```
+Removed in v0.13.0 (were only used by the deleted Retainers dashboard/calendar): `retainerView`, `dashSearch`, `dashSort`, `calMonth`, `calHidden`.
 Theme (light/dark) is deliberately **not** in `state` — it's a `data-theme` attribute on `<html>` plus a `localStorage['rs_theme']` value, same pattern as sidebar-collapsed, since it doesn't affect any `render()` output.
 
 ---
@@ -170,9 +171,15 @@ Font: Inter (unchanged from v0.9.0)
 - **Clearer modal layouts** — `showModal(html, {wide:true})` for a 660px variant, plus `.modal-section-label` dividers grouping the task and client-edit modals into named sections instead of one flat field dump.
 - **Animator role** — third assignment category alongside Designer/Reviewer, mirroring that pattern exactly (own DB column, Settings checkbox, pill selector, avatar column). Needs `outputs/v19_add_animator.sql` run before it persists — see the pending-step note at the top of this file.
 
-Full technical detail (exact line numbers, which functions touch what) is in `rs-function-index.md`'s "v0.11.0 — this session's additions" section.
+**What shipped in v0.13.0** (retainer/All Projects rejig — the standalone Retainers page is gone):
+- **Retainer client cards on All Projects** (`clientCardHtml`) now show the allowance meter, a colored remaining/over-limit status line, and the renewal cycle dates — this is the content that used to live only on the separate Retainers dashboard grid.
+- **Client detail page merged**: `renderClientTasksView` + `renderClientAllowanceView` are now one function with a shared header (`clientRetainerHeaderHtml`, simplified — no more `mode` param or "Retainers /" breadcrumb variant) and a `retainerTabsHtml`/`wireRetainerTabs` To-do list / Monthly allowance toggle backed by `state.retainerTab`. The `'retainerAllowance'` `projView` no longer exists — everything routes through `'retainerTasks'`; every navigation site that jumps to a client's retainer view now also resets `state.retainerTab='tasks'` so switching clients doesn't strand you on the Allowance tab.
+- **Retainers nav item removed**, along with `renderDashboard()` (the card-grid overview + flagged-clients/pending-hours banners + search/sort), `renderCalendar()` (the ad-hoc hour-logging calendar), and the legacy `openQuickLogModal()`/`openTaskModal()` modals that only that calendar used. This was a deliberate, user-confirmed deletion, not an oversight — retainer hours are still logged the same way they mostly already were (tick "counts toward retainer" + recorded hours on a task, which syncs into `rs_tasks` via `syncProjTaskRetainer`), just without the supplementary manual/ad-hoc calendar entry point.
+- `render()`'s nav-active-state logic simplified (no more `effectiveNavView` special-casing for the old `'retainerAllowance'` → `'dashboard'` mapping, since both are gone).
 
-Prior versions recoverable via git history: v0.10.0 (no dark mode/command palette/inline editing) is the commit right before this session; v0.9.0 (sharp 3px corners) and v0.8.2 (original top nav, Rubik, 14px radius) are further back — `5664307` or earlier for the pre-redesign baseline.
+Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted; grep for function names rather than trusting them.
+
+Prior versions recoverable via git history: v0.12.x/v0.11.x (Retainers page still present) are recent commits before this session; v0.10.0 (no dark mode/command palette/inline editing) and v0.9.0 (sharp 3px corners) are further back; v0.8.2 (original top nav, Rubik, 14px radius) is `5664307` or earlier for the pre-redesign baseline.
 
 ---
 

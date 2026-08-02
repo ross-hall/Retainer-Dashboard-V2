@@ -93,6 +93,7 @@
   #sidebar nav button.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
   #sidebar nav button.active svg{opacity:1}
   #sidebar nav button[data-view="settings"]{margin-top:auto}
+  #sidebar nav button.nav-group-start{margin-top:18px}
   #sidebar nav .flag-count{background:var(--amber);color:#fff;border-radius:99px;font-size:10.5px;padding:1px 6px;margin-left:auto;font-weight:600}
   #sidebar .sidebar-user{display:flex;align-items:center;gap:9px;padding:8px;border-top:1px solid var(--line);margin-top:8px;flex:none}
   #sidebar .sidebar-user .nav-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;color:var(--ink)}
@@ -172,6 +173,10 @@
   .meter .tick-label{position:absolute;top:-22px;left:75%;transform:translateX(-50%);font-size:10.5px;color:var(--muted);white-space:nowrap;font-weight:500}
   .meter-stats{display:flex;justify-content:space-between;font-size:13px;font-variant-numeric:tabular-nums;margin-top:10px}
   .meter-stats .pct{font-weight:600}
+  .meter-compact{position:relative;height:6px;background:var(--track);border-radius:99px;overflow:hidden;margin:8px 0 2px}
+  .meter-compact .fill{position:absolute;inset:0 auto 0 0;height:100%;border-radius:99px;background:var(--accent);transition:width .4s ease;max-width:100%}
+  .meter-compact .fill.over{background:var(--red)}
+  .meter-compact .tick{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.35;left:75%}
   .status{margin-top:12px;font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px}
   .status.ok{background:#e8f2ec;color:var(--green)}
   .status.warn{background:var(--amber-bg);color:var(--amber)}
@@ -313,6 +318,11 @@
   .home-cols{display:grid;grid-template-columns:1fr;gap:24px}
   .home-col h3{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
   .home-count{font-size:12px;font-weight:500;color:var(--muted);background:var(--track);padding:2px 9px;border-radius:99px}
+  .hours-stepper{display:inline-flex;align-items:center;gap:8px}
+  .hours-stepper .hs-val{font-size:12.5px;font-variant-numeric:tabular-nums;min-width:34px;text-align:center;color:var(--ink)}
+  .hours-stepper .hs-btn{width:22px;height:22px;flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
+  .hours-stepper .hs-btn:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent)}
+  .hours-stepper .hs-btn:disabled{opacity:.35;cursor:default}
   .proj-pill{background:var(--track);border:1px solid var(--line);color:var(--ink);font-size:12px;font-weight:500;padding:4px 12px;border-radius:99px;cursor:pointer;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
   .proj-pill:hover{background:var(--accent-soft);border-color:var(--accent)}
 
@@ -504,17 +514,13 @@
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7a1 1 0 0 1 1-1h4l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="nav-label">All Projects</span>
       </button>
-      <button data-view="dashboard" title="Retainers">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 12a8 8 0 0 1 13.5-5.8M20 6v4h-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12a8 8 0 0 1-13.5 5.8M4 18v-4h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="nav-label">Retainers</span>
-      </button>
-      <button data-view="tasksahead" title="Week Tasks">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="5.5" width="16" height="14.5" rx="1.5" stroke="currentColor" stroke-width="1.7"/><path d="M4 9.5h16M8 3.5v3M16 3.5v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-        <span class="nav-label">Week Tasks</span>
-      </button>
       <button data-view="animation" title="Animation (Beta)">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="5" width="16" height="14" rx="1.5" stroke="currentColor" stroke-width="1.7"/><path d="M10 9.2 15 12l-5 2.8Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         <span class="nav-label">Animation (Beta)</span>
+      </button>
+      <button data-view="tasksahead" title="Week Tasks" class="nav-group-start">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="5.5" width="16" height="14.5" rx="1.5" stroke="currentColor" stroke-width="1.7"/><path d="M4 9.5h16M8 3.5v3M16 3.5v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span class="nav-label">Week Tasks</span>
       </button>
       <button data-view="milestones" title="Milestones">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3v18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M6 4.5h11l-2.5 3.5 2.5 3.5H6" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
@@ -533,7 +539,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.12.0</div>
+    <div id="versionBadge" class="version-badge">v0.14.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -550,12 +556,12 @@ const SUPABASE_ANON_KEY = "sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj";
 /* ================================ */
 
 let db = null;
-let state = { view:'home', clients:[], members:[], tasks:[], calMonth:null, clientId:null, calHidden:new Set(), dashSearch:'', dashSort:'name',
-  projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null,
+let state = { view:'home', clients:[], members:[], tasks:[],
+  projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null, retainerTab:'tasks',
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  retainerView:'dashboard', homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
+  homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -639,10 +645,14 @@ function cycleFor(renewalDay, ref){
 
 const PALETTE = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200'];
 const COLOR_PRESETS = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200','#c9372c','#0369a1'];
-function clientColor(id){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return PALETTE[h%PALETTE.length]; }
+/* Lighter, Notion-tag-style palette for client dot colours — 15 swatches, offered in the client colour picker */
+const CLIENT_PALETTE = ['#EB5757','#E8684A','#F2994A','#F2C94C','#A9D171','#6FCF97','#27AE8F','#56CCF2','#2D9CDB','#2F80ED','#6C5CE7','#9B51E0','#BB6BD9','#EB5286','#9B9A97'];
+function clientColor(id){ let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return CLIENT_PALETTE[h%CLIENT_PALETTE.length]; }
 function colorFor(client){ return (client && (client.dash_accent_color || client.color)) ? (client.dash_accent_color || client.color) : clientColor(client.id); }
 
-const MIRO_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" style="vertical-align:-2px;margin-right:5px"><rect x="1" y="1" width="14" height="14" rx="2.5" stroke="currentColor" stroke-width="1.4"/><rect x="3.3" y="3.3" width="4" height="4" rx="0.6" fill="currentColor"/><rect x="8.7" y="6.7" width="4" height="4" rx="0.6" fill="currentColor" opacity="0.55"/></svg>`;
+/* Three angled flag/chevron shapes forming the Miro "M" mark — foreground glyph only (currentColor), the yellow comes from the button background */
+const MIRO_LOGO_GLYPH = `<polygon points="3,3 9.5,3 6,21"/><polygon points="9,3 15.5,3 12,21"/><polygon points="15,3 21.5,3 18,21"/>`;
+const MIRO_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="vertical-align:-2px;margin-right:5px">${MIRO_LOGO_GLYPH}</svg>`;
 
 /* One Miro board (external/internal) per client, shared across all their projects */
 function miroExternal(client){ return (client && client.miro_link_external) || null; }
@@ -655,7 +665,7 @@ function miroButtonsHtml(client){
 function miroIconBtnHtml(client){
   const link = miroExternal(client) || miroInternal(client);
   if(!link) return '';
-  return `<a class="miro-icon-btn" href="${esc(link)}" target="_blank" rel="noopener" title="Open in Miro" onclick="event.stopPropagation()"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2.5" stroke="currentColor" stroke-width="1.4"/><rect x="3.3" y="3.3" width="4" height="4" rx="0.6" fill="currentColor"/><rect x="8.7" y="6.7" width="4" height="4" rx="0.6" fill="currentColor" opacity="0.55"/></svg></a>`;
+  return `<a class="miro-icon-btn" href="${esc(link)}" target="_blank" rel="noopener" title="Open in Miro" onclick="event.stopPropagation()"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">${MIRO_LOGO_GLYPH}</svg></a>`;
 }
 function miroFieldsHtml(prefix, extVal, intVal){
   return `<div><label>Miro (external) <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="${prefix}_miro_ext" value="${esc(extVal||'')}" placeholder="https://miro.com/..."></div>
@@ -904,7 +914,7 @@ function closeColorPicker(){
   if(_activeColorPopover){ _activeColorPopover.remove(); _activeColorPopover=null; }
   if(_colorOutsideHandler){ document.removeEventListener('mousedown', _colorOutsideHandler); _colorOutsideHandler=null; }
 }
-function openColorPicker(anchorEl, currentValue, onSelect){
+function openColorPicker(anchorEl, currentValue, onSelect, presets){
   closeColorPicker();
   const pop = document.createElement('div');
   pop.className = 'color-popover';
@@ -913,7 +923,7 @@ function openColorPicker(anchorEl, currentValue, onSelect){
   const hasEyeDropper = 'EyeDropper' in window;
   const cur = (currentValue||'').toLowerCase();
   pop.innerHTML = `
-    <div class="color-swatch-grid">${COLOR_PRESETS.map(c=>`<button type="button" class="color-swatch ${c.toLowerCase()===cur?'sel':''}" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>
+    <div class="color-swatch-grid">${(presets||COLOR_PRESETS).map(c=>`<button type="button" class="color-swatch ${c.toLowerCase()===cur?'sel':''}" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>
     <button type="button" class="color-eyedropper-btn" id="cpEyedrop">${hasEyeDropper?'🎨 Pick with eyedropper':'🎨 Custom colour'}</button>
     ${!hasEyeDropper? `<input type="color" id="cpNative" value="${currentValue||'#2383e2'}" style="width:100%;margin-top:8px;height:34px;padding:2px">` : ''}
   `;
@@ -940,19 +950,19 @@ function openColorPicker(anchorEl, currentValue, onSelect){
 function colorCircleHtml(id, color){
   return `<button type="button" class="color-circle" id="${id}_btn" style="background:${color}" title="Choose colour"></button><input type="hidden" id="${id}" value="${color}">`;
 }
-function wireColorCircle(id){
+function wireColorCircle(id, presets){
   $(`#${id}_btn`).onclick = (e)=>{
     e.preventDefault();
     openColorPicker(e.currentTarget, $(`#${id}`).value, (hex)=>{
       $(`#${id}`).value = hex;
       $(`#${id}_btn`).style.background = hex;
-    });
+    }, presets);
   };
 }
-function wireColorCircleCustom(id, onSelect){
+function wireColorCircleCustom(id, onSelect, presets){
   $(`#${id}_btn`).onclick = (e)=>{
     e.preventDefault();
-    openColorPicker(e.currentTarget, $(`#${id}`).value, onSelect);
+    openColorPicker(e.currentTarget, $(`#${id}`).value, onSelect, presets);
   };
 }
 
@@ -978,62 +988,11 @@ function openMenuPopover(anchorEl, items){
   setTimeout(()=> document.addEventListener('mousedown', _menuOutsideHandler), 0);
 }
 
-function openTaskModal(taskId){
-  const t = state.tasks.find(t=>t.id===taskId) || (state._clientTaskCache||[]).find(t=>t.id===taskId);
-  if(!t){ toast('Task not found'); return; }
-  const clients = state.clients.filter(c=>c.active || c.id===t.client_id);
-  const members = state.members.filter(m=>m.active || m.id===t.member_id);
-  showModal(`
-    <h3>Edit task</h3>
-    <div class="sub">Changes recalculate weighted hours using the selected member's current factor</div>
-    <form class="log" id="editForm" style="max-width:none">
-      <div><label>Client</label><select id="e_client">${clients.map(c=>`<option value="${c.id}" ${c.id===t.client_id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
-      <div><label>Team member</label><select id="e_member">${members.map(m=>`<option value="${m.id}" ${m.id===t.member_id?'selected':''}>${esc(m.name)} (×${m.weight})</option>`).join('')}</select></div>
-      <div><label>Date</label><input type="date" id="e_date" value="${t.task_date}"></div>
-      <div><label>Hours worked</label><input type="number" min="0.25" step="0.25" id="e_hours" value="${t.hours}"></div>
-      <div class="full"><label>Task</label><input type="text" id="e_desc" value="${esc(t.description||'')}"></div>
-      <div class="full"><label>Notes</label><textarea id="e_notes" placeholder="Scribble any notes here…">${esc(t.notes||'')}</textarea></div>
-      <div class="weighted-note full" id="e_note">—</div>
-    </form>
-    <div class="modal-actions">
-      <button class="btn danger" id="e_delete">Delete task</button>
-      <div class="right">
-        <button class="btn ghost" id="e_cancel">Cancel</button>
-        <button class="btn" id="e_save">Save changes</button>
-      </div>
-    </div>
-  `);
-  const upd = ()=>{
-    const m = members.find(m=>m.id===$('#e_member').value);
-    const h = parseFloat($('#e_hours').value);
-    $('#e_note').innerHTML = (m && h>0) ? `${fmtH(h)} × ${m.weight} — counts as <b>${fmtH(h*m.weight)}</b> against the retainer` : 'Enter hours and a member';
-  };
-  $('#e_member').addEventListener('change', upd); $('#e_hours').addEventListener('input', upd); upd();
-  $('#e_cancel').onclick = closeModal;
-  $('#e_delete').onclick = async ()=>{
-    if(!confirm('Delete this task? This cannot be undone.')) return;
-    const { error } = await db.from('rs_tasks').delete().eq('id', t.id);
-    if(error){ toast('Delete failed'); return; }
-    closeModal(); toast('Task deleted'); await refreshCurrentView();
-  };
-  $('#e_save').onclick = async ()=>{
-    const member = members.find(m=>m.id===$('#e_member').value);
-    const hours = parseFloat($('#e_hours').value);
-    if(!$('#e_client').value || !member || !(hours>0) || !$('#e_date').value){ toast('Fill in all required fields'); return; }
-    const { error } = await db.from('rs_tasks').update({
-      client_id: $('#e_client').value, member_id: member.id, task_date: $('#e_date').value,
-      hours, description: $('#e_desc').value.trim()||null, notes: $('#e_notes').value.trim()||null,
-      weight_applied: member.weight
-    }).eq('id', t.id);
-    if(error){ toast('Save failed'); console.error(error); return; }
-    closeModal(); toast('Task updated'); await refreshCurrentView();
-  };
-}
 async function refreshCurrentView(){
   await loadAll();
-  if(state.view==='projects' && state.projView==='retainerAllowance'){
+  if(state.view==='projects' && state.projView==='retainerTasks' && state.retainerTab==='allowance'){
     const c = state.clients.find(c=>c.id===state.projClientId);
-    if(c) renderClientAllowanceView(c);
+    if(c) await loadRetainerAllowanceBody(c);
   }
 }
 async function refreshProjectView(){ await refreshCurrentView(); }
@@ -1077,7 +1036,7 @@ function openNewClientModal(){
   showModal(`
     <h3>New client</h3>
     <form class="log" style="max-width:none">
-      <div><label>Dot colour</label>${colorCircleHtml('nc_color', PALETTE[state.clients.length%PALETTE.length])}</div>
+      <div><label>Dot colour</label>${colorCircleHtml('nc_color', CLIENT_PALETTE[state.clients.length%CLIENT_PALETTE.length])}</div>
       <div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="nc_isretainer" style="width:auto"> On retainer</label></div>
       <div class="full"><label>Client name</label><input type="text" id="nc_name" placeholder="Client name"></div>
       ${miroFieldsHtml('nc', null, null)}
@@ -1106,7 +1065,7 @@ function openNewClientModal(){
     </div>
   `);
   $('#nc_isretainer').addEventListener('change', e=>{ $('#nc_retainer_fields').style.display = e.target.checked?'contents':'none'; });
-  wireColorCircle('nc_color');
+  wireColorCircle('nc_color', CLIENT_PALETTE);
   $('#nc_cancel').onclick = closeModal;
   $('#nc_save').onclick = async ()=>{
     const name = $('#nc_name').value.trim();
@@ -1122,7 +1081,7 @@ function openNewClientModal(){
     if(error){ toast('Could not create client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     closeModal(); toast('Client created');
-    state.projClientId = data.id; state.projView = is_retainer ? 'retainerTasks' : 'clientProjects';
+    state.projClientId = data.id; state.projView = is_retainer ? 'retainerTasks' : 'clientProjects'; state.retainerTab = 'tasks';
     await refreshProjectView();
   };
 }
@@ -1189,7 +1148,7 @@ function openClientEditModal(clientId){
     </div>
   `, { wide:true });
   $('#ec_isretainer').addEventListener('change', e=>{ $('#ec_retainer_fields').style.display = e.target.checked?'contents':'none'; });
-  wireColorCircle('ec_color');
+  wireColorCircle('ec_color', CLIENT_PALETTE);
   $('#ec_copylink').onclick = ()=>{
     const slug = $('#ec_slug').value.trim() || c.slug;
     if(!slug){ toast('Add a dashboard link first, then save'); return; }
@@ -1230,59 +1189,6 @@ function openClientEditModal(clientId){
   };
 }
 
-function openQuickLogModal(clientId, dateOverride){
-  const clients = state.clients.filter(cc=>cc.active && cc.is_retainer);
-  if(!clients.length){ toast('Add a retainer client first — see Settings'); return; }
-  const c = clientId ? state.clients.find(c=>c.id===clientId) : null;
-  const members = state.members.filter(m=>m.active);
-  if(!members.length){ toast('Add a team member first — see Settings'); return; }
-  const lastMember = store.get('rs_last_member') || '';
-  const today = dateOverride || iso(new Date());
-  showModal(`
-    <h3>Log time${c? ' — '+esc(c.name) : ''}</h3>
-    <div class="sub">Raw hours are multiplied by the team member's factor</div>
-    <form class="log" style="max-width:none">
-      <div><label>Client</label><select id="q_client">${clients.map(cc=>`<option value="${cc.id}" ${cc.id===clientId?'selected':''}>${esc(cc.name)}</option>`).join('')}</select></div>
-      <div><label>Team member</label><select id="q_member">${members.map(m=>`<option value="${m.id}" ${m.id===lastMember?'selected':''}>${esc(m.name)} (×${m.weight})</option>`).join('')}</select></div>
-      <div><label>Date</label>${dateFieldHtml('q_date', today, 'Set date')}</div>
-      <div><label>Hours worked</label><input type="number" min="0.25" step="0.25" id="q_hours" placeholder="e.g. 4"></div>
-      <div class="full"><label>Task</label><input type="text" id="q_desc" placeholder="What was the work?"></div>
-      <div class="full"><label>Notes (optional)</label><textarea id="q_notes" placeholder="Anything worth remembering…"></textarea></div>
-      <div class="weighted-note full" id="q_note">Counts as <b>—</b> against the retainer</div>
-    </form>
-    <div class="modal-actions">
-      <div class="right">
-        <button class="btn ghost" id="q_cancel">Cancel</button>
-        <button class="btn" id="q_save">Log task</button>
-      </div>
-    </div>
-  `);
-  const upd = ()=>{
-    const m = members.find(m=>m.id===$('#q_member').value);
-    const h = parseFloat($('#q_hours').value);
-    $('#q_note').innerHTML = (m && h>0) ? `${fmtH(h)} × ${m.weight} — counts as <b>${fmtH(h*m.weight)}</b> against the retainer` : `Counts as <b>—</b> against the retainer`;
-  };
-  $('#q_member').addEventListener('change', upd);
-  $('#q_hours').addEventListener('input', upd);
-  wireDateField('q_date', 'Set date');
-  upd();
-  $('#q_cancel').onclick = closeModal;
-  $('#q_save').onclick = async ()=>{
-    const member = members.find(m=>m.id===$('#q_member').value);
-    const hours = parseFloat($('#q_hours').value);
-    if(!$('#q_client').value || !member || !(hours>0) || !$('#q_date').value){ toast('Fill in client, member, date and hours'); return; }
-    const { error } = await db.from('rs_tasks').insert({
-      client_id: $('#q_client').value, member_id: member.id, task_date: $('#q_date').value, hours,
-      description: $('#q_desc').value.trim() || null, notes: $('#q_notes').value.trim() || null,
-      weight_applied: member.weight
-    });
-    if(error){ toast('Could not save'); console.error(error); return; }
-    store.set('rs_last_member', member.id);
-    closeModal();
-    toast(`Logged — ${fmtH(hours*member.weight)} weighted`);
-    await refreshCurrentView();
-  };
-}
 
 /* Client-safe PDF: totals + a plain task list. No notes, no team member
    names, no weighting factors — just what was delivered and hours consumed. */
@@ -1406,23 +1312,11 @@ function updateSidebarUser(){
 
 function render(){
   updateSidebarUser();
-  const activeClients = state.clients.filter(c=>c.active && c.is_retainer);
-  const flagged = activeClients.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
-  const effectiveNavView = (state.view==='projects' && state.projView==='retainerAllowance') ? 'dashboard' : state.view;
   document.querySelectorAll('#nav button').forEach(b=>{
-    b.classList.toggle('active', b.dataset.view===effectiveNavView);
-    if(b.dataset.view==='dashboard'){
-      const lbl = b.querySelector('.nav-label');
-      if(lbl) lbl.innerHTML = 'Retainers' + (flagged.length? ` <span class="flag-count">${flagged.length}</span>`:'');
-    }
+    b.classList.toggle('active', b.dataset.view===state.view);
   });
-  ({home:renderHome, tasksahead:renderTasksAhead, dashboard:renderRetainer, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation}[state.view])();
+  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation}[state.view])();
   main.classList.remove('fade-in'); void main.offsetWidth; main.classList.add('fade-in');
-}
-
-function renderRetainer(){
-  if(state.retainerView==='calendar') renderCalendar();
-  else renderDashboard();
 }
 
 function typeConfig(name){ return state.projectTypes.find(t=>t.name===name); }
@@ -1472,6 +1366,36 @@ function homeTaskTableHtml(tasks, emptyLabel){
   </tbody></table>`;
 }
 
+function hoursToFillTableHtml(tasks){
+  if(!tasks.length) return emptyStateHtml({ icon:'check', title:'No retainer hours outstanding', subtitle:'Nothing needs your attention right now.' });
+  return `<table class="task-table"><colgroup><col style="width:170px"><col style="width:auto"><col style="width:120px"></colgroup><thead><tr><th>Client / Project</th><th>Task</th><th>Hours</th></tr></thead><tbody>
+    ${tasks.map(t=>`<tr class="task-row" data-projtask="${t.id}">
+      <td style="color:var(--muted);font-size:12.5px">${homeTaskContextHtml(t)}</td>
+      <td><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></td>
+      <td>${hoursStepperHtml(t)}</td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+function hoursStepperHtml(t){
+  return `<div class="hours-stepper" onclick="event.stopPropagation()">
+    <button type="button" class="hs-btn" data-hourstep="${t.id}:-0.5" title="Subtract 30 minutes" ${t.recorded_hours>0?'':'disabled'}>−</button>
+    <span class="hs-val">${t.recorded_hours!=null?fmtH(t.recorded_hours):'0h'}</span>
+    <button type="button" class="hs-btn" data-hourstep="${t.id}:0.5" title="Add 30 minutes">+</button>
+  </div>`;
+}
+function wireHoursSteppers(root){
+  root.querySelectorAll('[data-hourstep]').forEach(el=>el.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    const [taskId, delta] = el.dataset.hourstep.split(':');
+    const task = state.projTasks.find(t=>t.id===taskId);
+    if(!task) return;
+    const next = Math.max(0, Math.round(((task.recorded_hours||0) + parseFloat(delta)) * 100) / 100);
+    const { error } = await db.from('rs_proj_tasks').update({ recorded_hours: next }).eq('id', taskId);
+    if(error){ toast('Could not update hours'); return; }
+    await refreshProjectView();
+  }));
+}
+
 function timeOfDayGreeting(){
   const h = new Date().getHours();
   if(h<5) return 'Good night';
@@ -1491,6 +1415,12 @@ function renderHome(){
     .sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
   const toDo = state.projTasks.filter(t=> (t.assigned_designer_ids||[]).includes(me.id) && !isCompleteStatus(t.status))
     .sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
+  const hoursToFill = state.projTasks.filter(t=>{
+    if(!(t.assigned_designer_ids||[]).includes(me.id)) return false;
+    if(t.recorded_hours!=null) return false;
+    const client = taskClient(t);
+    return !!(client && client.is_retainer);
+  }).sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
 
   html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="homeColDropdownBtn">Columns ▾</button></div>
   <div class="home-cols">
@@ -1502,9 +1432,14 @@ function renderHome(){
       <h3>To review <span class="home-count">${toReview.length}</span></h3>
       <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toReview, 'Nothing to review')}</div>
     </div>
+    <div class="home-col">
+      <h3>Retainer hours to fill <span class="home-count">${hoursToFill.length}</span></h3>
+      <div class="card" style="padding:8px 12px">${hoursToFillTableHtml(hoursToFill)}</div>
+    </div>
   </div>`;
   main.innerHTML = html;
   wireTaskRows(main, { onRowClick: navigateToTaskContext });
+  wireHoursSteppers(main);
   $('#homeColDropdownBtn').onclick = (e)=>{
     e.stopPropagation();
     openCheckboxDropdown(e.currentTarget, [
@@ -1529,112 +1464,24 @@ function meterHtml(u, retainerHours){
       <div class="meter-stats"><span>${fmtH(u.used)} of ${fmtH(retainerHours)}</span><span class="pct">${Math.round(u.pct)}%</span></div>
     </div>`;
 }
-
-function renderDashboard(){
-  const allActive = state.clients.filter(c=>c.active && c.is_retainer);
-  const flagged = allActive.map(c=>({c,u:clientUsage(c)})).filter(x=>x.u.pct>=75);
-
-  let items = allActive
-    .filter(c=>c.name.toLowerCase().includes(state.dashSearch.toLowerCase()))
-    .map(c=>({c,u:clientUsage(c)}));
-  const sorters = {
-    name: (a,b)=>a.c.name.localeCompare(b.c.name),
-    pct_desc: (a,b)=>b.u.pct-a.u.pct,
-    pct_asc: (a,b)=>a.u.pct-b.u.pct,
-    hours_desc: (a,b)=>b.u.used-a.u.used,
-    hours_asc: (a,b)=>a.u.used-b.u.used,
-  };
-  items.sort(sorters[state.dashSort]||sorters.name);
-
-  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-    <div><h2>Retainers this cycle</h2></div>
-    <button class="btn small ghost" id="toCalendarBtn">Calendar view</button>
-  </div><div style="margin-bottom:22px"></div>`;
-
-  if (flagged.length){
-    const over = flagged.filter(x=>x.u.pct>=100);
-    html += `<div class="banner ${over.length?'over':''}">
-      <div>⚑</div>
-      <div><strong>${flagged.map(x=>esc(x.c.name)).join(', ')}</strong>
-      ${flagged.length===1?'has':'have'} passed 75% of retainer — worth flagging to the client${flagged.length>1?'s':''}.
-      ${over.length? `<br><strong>${over.map(x=>esc(x.c.name)).join(', ')}</strong> ${over.length===1?'is':'are'} over the retainer.`:''}</div>
-    </div>`;
-  }
-
-  function pendingTaskClient(t){
-    if(t.project_id){
-      const proj = state.projects.find(p=>p.id===t.project_id);
-      return proj ? state.clients.find(c=>c.id===proj.client_id) : null;
-    }
-    return t.client_id ? state.clients.find(c=>c.id===t.client_id) : null;
-  }
-  const pending = state.projTasks.filter(t=>{
-    if(!t.counts_toward_retainer || (t.retainer_task_ids||[]).length) return false;
-    const cl = pendingTaskClient(t);
-    return cl && cl.is_retainer;
-  });
-  if(pending.length){
-    html += `<div class="banner">
-      <div>🕓</div>
-      <div><strong>${pending.length} task${pending.length===1?'':'s'}</strong> ${pending.length===1?'is':'are'} ticked for the retainer but still missing hours (or a designer) — ${pending.length===1?'it':'they'} won't count until filled in.
-        <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start">
-          ${pending.map(t=>{
-            const cl = pendingTaskClient(t);
-            const proj = t.project_id ? state.projects.find(p=>p.id===t.project_id) : null;
-            const label = proj ? `${esc(cl.name)} — ${esc(proj.name)}: ${esc(t.title)}` : `${esc(cl.name)}: ${esc(t.title)}`;
-            return `<button class="btn small ghost" data-jumptask="${t.id}">${label}</button>`;
-          }).join('')}
-        </div>
-      </div>
-    </div>`;
-  }
-
-  html += `<div class="dash-controls">
-    <input type="text" id="dashSearch" placeholder="Filter by name…" value="${esc(state.dashSearch)}">
-    <select id="dashSort">
-      <option value="name" ${state.dashSort==='name'?'selected':''}>Sort: Name (A–Z)</option>
-      <option value="pct_desc" ${state.dashSort==='pct_desc'?'selected':''}>Sort: % used (high–low)</option>
-      <option value="pct_asc" ${state.dashSort==='pct_asc'?'selected':''}>Sort: % used (low–high)</option>
-      <option value="hours_desc" ${state.dashSort==='hours_desc'?'selected':''}>Sort: Hours logged (high–low)</option>
-      <option value="hours_asc" ${state.dashSort==='hours_asc'?'selected':''}>Sort: Hours logged (low–high)</option>
-    </select>
-  </div>`;
-
-  if (!allActive.length){
-    html += `<div class="empty">No clients yet — add them under <b>Settings</b>.</div>`;
-  } else if (!items.length){
-    html += `<div class="empty">No clients match "${esc(state.dashSearch)}".</div>`;
-  } else {
-    html += `<div class="grid">` + items.map(({c,u})=>{
-      const status = u.pct>=100
-        ? `<span class="status over"><span class="pulse"></span>Over retainer by ${fmtH(u.used-c.retainer_hours)}</span>`
-        : u.pct>=75
-        ? `<span class="status warn"><span class="pulse"></span>Reaching limit — tell the client</span>`
-        : `<span class="status ok">${fmtH(c.retainer_hours-u.used)} remaining</span>`;
-      const bd = Object.entries(u.perMember).sort((a,b)=>b[1]-a[1])
-        .map(([n,h])=>`<div><span>${esc(n)}</span><span>${fmtH(h)}</span></div>`).join('');
-      return `<div class="card client-card" data-goto="${c.id}">
-        <h3 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h3>
-        <div class="cycle">${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)} · renews ${fmtDate(u.cyc.next)}</div>
-        ${meterHtml(u, c.retainer_hours)}
-        ${status}
-        ${bd? `<div class="breakdown">${bd}</div>`:''}
-      </div>`;
-    }).join('') + `</div>`;
-  }
-  main.innerHTML = html;
-  main.querySelectorAll('[data-goto]').forEach(el=>el.addEventListener('click', ()=>{
-    state.projClientId = el.dataset.goto; state.projView='retainerAllowance';
-    state.view='projects'; render();
-  }));
-  $('#dashSearch').addEventListener('input', e=>{
-    state.dashSearch=e.target.value; renderDashboard();
-    const inp=$('#dashSearch'); inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
-  });
-  $('#dashSort').addEventListener('change', e=>{ state.dashSort=e.target.value; renderDashboard(); });
-  main.querySelectorAll('[data-jumptask]').forEach(el=>el.addEventListener('click', ()=> jumpToProjTask(el.dataset.jumptask)));
-  $('#toCalendarBtn').onclick = ()=>{ state.retainerView='calendar'; render(); };
+function compactMeterHtml(u){
+  const cls = u.pct>=75?'over':'';
+  return `<div class="meter-compact"><div class="fill ${cls}" style="width:${Math.min(u.pct,100)}%"></div><div class="tick"></div></div>`;
 }
+function daysUntilLabel(date){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(date); d.setHours(0,0,0,0);
+  const days = Math.round((d - today) / 86400000);
+  if(days<0) return 'overdue';
+  if(days===0) return 'today';
+  if(days===1) return 'tomorrow';
+  return `in ${days} days`;
+}
+function renewsInDays(date){
+  const label = daysUntilLabel(date);
+  return `Renews ${label==='overdue'?'today':label}`;
+}
+
 
 function navigateToTaskContext(taskId){
   const t = state.projTasks.find(t=>t.id===taskId); if(!t) return false;
@@ -1642,7 +1489,7 @@ function navigateToTaskContext(taskId){
     const proj = state.projects.find(p=>p.id===t.project_id); if(!proj) return false;
     state.view='projects'; state.projView='project'; state.projClientId=proj.client_id; state.projProjectId=proj.id;
   } else if(t.client_id){
-    state.view='projects'; state.projView='retainerTasks'; state.projClientId=t.client_id;
+    state.view='projects'; state.projView='retainerTasks'; state.projClientId=t.client_id; state.retainerTab='tasks';
   } else return false;
   render();
   return true;
@@ -1703,7 +1550,7 @@ function openCommandPalette(){
       html += `<div class="cmd-group-label">Clients</div>`;
       clients.forEach(c=>{
         const idx = _cmdPaletteActions.length;
-        _cmdPaletteActions.push(()=>{ closeCommandPalette(); state.view='projects'; state.projView = c.is_retainer?'retainerTasks':'clientProjects'; state.projClientId=c.id; state.projProjectId=null; render(); });
+        _cmdPaletteActions.push(()=>{ closeCommandPalette(); state.view='projects'; state.projView = c.is_retainer?'retainerTasks':'clientProjects'; state.projClientId=c.id; state.projProjectId=null; state.retainerTab='tasks'; render(); });
         html += `<button type="button" class="cmd-item" data-cmdidx="${idx}"><span class="dot" style="background:${colorFor(c)};width:8px;height:8px"></span>${esc(c.name)}${c.is_retainer?'<span class="cmd-tag">Retainer</span>':''}</button>`;
       });
     }
@@ -1748,10 +1595,8 @@ function dashboardLinkButtonHtml(c){
   const url = `${window.location.origin}${window.location.pathname}?client=${c.slug}&admin=1`;
   return `<a class="btn small ghost" href="${esc(url)}" target="_blank" rel="noopener">View dashboard ↗</a>`;
 }
-function clientRetainerHeaderHtml(c, mode){
-  const bcLabel = mode==='allowance' ? 'Retainers' : 'Clients';
-  const bcTarget = mode==='allowance' ? 'retainers' : 'clients';
-  return `<div class="breadcrumb"><button data-bc="${bcTarget}">${bcLabel}</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+function clientRetainerHeaderHtml(c){
+  return `<div class="breadcrumb"><button data-bc="clients">Clients</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <div class="card" style="margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span></h2>
@@ -1761,23 +1606,42 @@ function clientRetainerHeaderHtml(c, mode){
 }
 function wireClientRetainerHeader(){
   if($('[data-bc="clients"]')) $('[data-bc="clients"]').onclick = ()=>{ state.view='projects'; state.projView='clients'; render(); };
-  if($('[data-bc="retainers"]')) $('[data-bc="retainers"]').onclick = ()=>{ state.view='dashboard'; render(); };
+}
+function retainerTabsHtml(tab){
+  return `<div class="view-toggle">
+    <button class="btn small ${tab==='tasks'?'':'ghost'}" data-retainertab="tasks">To-do list</button>
+    <button class="btn small ${tab==='allowance'?'':'ghost'}" data-retainertab="allowance">Monthly allowance</button>
+  </div>`;
+}
+function wireRetainerTabs(){
+  main.querySelectorAll('[data-retainertab]').forEach(el=>el.addEventListener('click', ()=>{
+    state.retainerTab = el.dataset.retainertab;
+    render();
+  }));
 }
 
 function renderClientTasksView(c){
+  const tab = state.retainerTab || 'tasks';
+  main.innerHTML = clientRetainerHeaderHtml(c) + retainerTabsHtml(tab) + `<div id="retainerTabBody">${tab==='tasks' ? '' : '<div class="empty">Loading…</div>'}</div>`;
+  wireClientRetainerHeader();
+  wireRetainerTabs();
+  if(tab==='tasks'){
+    document.getElementById('retainerTabBody').innerHTML = renderRetainerTasksBodyHtml(c);
+    wireRetainerTasksBody(c);
+  } else {
+    loadRetainerAllowanceBody(c);
+  }
+}
+
+function renderRetainerTasksBodyHtml(c){
   const tasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id).sort((a,b)=>(a.position||0)-(b.position||0));
   const todo = tasks.filter(t=>!isCompleteStatus(t.status));
   const done = tasks.filter(t=>isCompleteStatus(t.status));
   const legacyProjects = state.projects.filter(p=>p.client_id===c.id);
   const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
   const u = clientUsage(c);
-
-  let html = clientRetainerHeaderHtml(c, 'tasks');
-  html += `<div class="card" style="margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px">
-        <span style="font-size:12.5px;color:var(--muted)">This cycle's retainer usage · ${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)}</span>
-        <button class="btn small ghost" id="viewAllowanceBtn">View allowance →</button>
-      </div>
+  return `<div class="card" style="margin-bottom:20px">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:2px">This cycle's retainer usage · ${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)}</div>
       ${meterHtml(u, c.retainer_hours)}
     </div>
     ${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
@@ -1796,20 +1660,15 @@ function renderClientTasksView(c){
         <div class="card" style="padding:8px 12px">${taskTableHtml(done, visibleCount, 'Nothing completed yet.')}</div>
       </div>
     </div>`;
-
-  main.innerHTML = html;
-  wireClientRetainerHeader();
-  $('#viewAllowanceBtn').onclick = ()=>{ state.projView='retainerAllowance'; render(); };
+}
+function wireRetainerTasksBody(c){
   if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
   wireTaskRows(main, { simpleRetainerPopup:true });
 }
 
-async function renderClientAllowanceView(c){
-  main.innerHTML = clientRetainerHeaderHtml(c, 'allowance') + `<div class="empty">Loading…</div>`;
-  wireClientRetainerHeader();
-
+async function loadRetainerAllowanceBody(c){
   const [{ data: tasks, error: tErr }, { data: hist, error: hErr }] = await Promise.all([
     db.from('rs_tasks').select('*').eq('client_id', c.id).order('task_date',{ascending:false}),
     db.from('rs_client_settings_history').select('*').eq('client_id', c.id).order('effective_from',{ascending:true})
@@ -1855,9 +1714,7 @@ async function renderClientAllowanceView(c){
     historyHtml = `<div class="history-list"><b style="display:block;margin-bottom:4px;color:var(--ink)">Retainer history</b>${rows}</div>`;
   }
 
-  let html = clientRetainerHeaderHtml(c, 'allowance');
-  html += `<div style="margin-bottom:18px"><button class="btn small ghost" id="toTodoListBtn">Go to to-do list →</button></div>
-    <div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · tasks below are organised by billing month</div>
+  let html = `<div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · tasks below are organised by billing month</div>
     ${historyHtml}`;
 
   if(undated.length){
@@ -1910,21 +1767,20 @@ async function renderClientAllowanceView(c){
       </div>`;
     });
   }
-  main.innerHTML = html;
-  wireClientRetainerHeader();
-  $('#toTodoListBtn').onclick = ()=>{ state.projView='retainerTasks'; render(); };
-  main.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(el.dataset.projtask, {})));
-  main.querySelectorAll('[data-pdf]').forEach(el=>el.addEventListener('click', ()=> generateClientPdf(c, groups[el.dataset.pdf])));
+  const bodyEl = document.getElementById('retainerTabBody');
+  if(!bodyEl) return;
+  bodyEl.innerHTML = html;
+  bodyEl.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(el.dataset.projtask, {})));
+  bodyEl.querySelectorAll('[data-pdf]').forEach(el=>el.addEventListener('click', ()=> generateClientPdf(c, groups[el.dataset.pdf])));
 }
 
 /* ================= Project Overview ================= */
 function renderProjects(){
   if(state.projView==='project') renderProjDetail();
-  else if(state.projView==='retainerTasks' || state.projView==='retainerAllowance'){
+  else if(state.projView==='retainerTasks'){
     const c = state.clients.find(c=>c.id===state.projClientId);
     if(!c){ state.projView='clients'; render(); return; }
-    if(state.projView==='retainerTasks') renderClientTasksView(c);
-    else renderClientAllowanceView(c);
+    renderClientTasksView(c);
   }
   else if(state.projView==='clientProjects') renderProjClientProjects();
   else if(state.projView==='clientList') renderClientListTable();
@@ -2413,6 +2269,7 @@ function renderClientListTable(){
     const cl = state.clients.find(c=>c.id===el.dataset.clientrow);
     state.projClientId = cl.id;
     state.projView = cl.is_retainer ? 'retainerTasks' : 'clientProjects';
+    state.retainerTab = 'tasks';
     render();
   }));
 }
@@ -2420,21 +2277,32 @@ function renderClientListTable(){
 function clientCardHtml(c){
   if(c.is_retainer){
     const openTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id && !isCompleteStatus(t.status));
+    const u = clientUsage(c);
     return `<div class="card client-card" data-projgoto="${c.id}">
-      <h3 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span>
+      <h3 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="home-count">${openTasks.length}</span>
         <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
       </h3>
-      <div class="cycle">${openTasks.length} open task${openTasks.length===1?'':'s'}</div>
+      <div class="cycle">${renewsInDays(u.cyc.next)}</div>
+      ${compactMeterHtml(u)}
     </div>`;
   }
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
+  const projectIds = new Set(projects.map(p=>p.id));
+  const openTaskCount = state.projTasks.filter(t=>projectIds.has(t.project_id) && !isCompleteStatus(t.status)).length;
+  const nextMilestone = state.stages
+    .filter(s=>projectIds.has(s.project_id) && s.due_date && stageStatus(s.id)!=='Complete')
+    .sort((a,b)=>a.due_date.localeCompare(b.due_date))[0];
+  const milestoneLine = nextMilestone
+    ? `<div style="margin:6px 0 10px;font-size:12px"><span style="color:var(--muted)">Next milestone:</span> <span style="color:var(--accent);font-weight:500">${esc(nextMilestone.name)} is ${daysUntilLabel(nextMilestone.due_date+'T00:00')}</span></div>`
+    : '';
   const body = projects.length
     ? `<div class="proj-pills">${projects.map(p=>{ const tc=typeConfig(p.project_type); return `<button type="button" class="proj-pill" data-projectgoto="${p.id}" data-projectclientid="${c.id}">${tc?projectTypeIconHtml(p.project_type,12)+' ':''}${esc(p.name)}</button>`; }).join('')}</div>`
     : `<div class="cycle">No projects yet</div>`;
   return `<div class="card client-card" data-projgoto="${c.id}">
-    <h3 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}
+    <h3 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="home-count">${openTaskCount}</span>
       <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
     </h3>
+    ${milestoneLine}
     ${body}
   </div>`;
 }
@@ -2470,6 +2338,7 @@ function renderProjClients(){
     const cl = state.clients.find(c=>c.id===el.dataset.projgoto);
     state.projClientId = el.dataset.projgoto;
     state.projView = (cl && cl.is_retainer) ? 'retainerTasks' : 'clientProjects';
+    state.retainerTab = 'tasks';
     render();
   }));
   main.querySelectorAll('[data-projectgoto]').forEach(el=>el.addEventListener('click', (e)=>{
@@ -3510,91 +3379,6 @@ function openDiscordModal(projectId){
   };
 }
 
-function renderCalendar(){
-  if (!state.calMonth) state.calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  const m0 = state.calMonth;
-  const y = m0.getFullYear(), mo = m0.getMonth();
-  const first = new Date(y, mo, 1);
-  const daysIn = new Date(y, mo+1, 0).getDate();
-  const todayIso = iso(new Date());
-  const activeClients = state.clients.filter(c=>c.active && c.is_retainer);
-  const byDay = {};
-  state.tasks.forEach(t=>{ if(state.calHidden.has(t.client_id)) return; (byDay[t.task_date]=byDay[t.task_date]||[]).push(t); });
-  const renewByDay = {};
-  activeClients.forEach(c=>{
-    if(state.calHidden.has(c.id)) return;
-    if(c.renewal_day<=daysIn){ const dIso = iso(new Date(y,mo,c.renewal_day)); (renewByDay[dIso]=renewByDay[dIso]||[]).push(c); }
-  });
-
-  const cells = monthWeekdayCells(y, mo, todayIso, (d,dIso,isToday)=>{
-    const list = (byDay[dIso]||[]);
-    const renews = (renewByDay[dIso]||[]);
-    const chips = renews.map(c=>`<div class="renew-chip" data-goto="${c.id}">↻ ${esc(c.name)} renews</div>`).join('')
-      + list.slice(0,3).map(t=>{
-        const c = state.clients.find(c=>c.id===t.client_id);
-        return `<div class="task-chip" draggable="true" data-task="${t.id}" style="background:${c?colorFor(c):'#999'}" title="${esc(t.description||'')} — drag to another day to reschedule">${esc(c?c.name:'?')} · ${fmtH(t.hours*t.weight_applied)}</div>`;
-      }).join('') + (list.length>3? `<div style="color:var(--muted)">+${list.length-3} more</div>`:'');
-    return `<div class="day ${isToday?'today':''}" data-date="${dIso}"><div class="num">${d}</div>${chips}</div>`;
-  });
-
-  main.innerHTML = `
-    <button class="btn ghost small back-btn" id="backToRetainerBtn">← Retainer</button>
-    <h2>Retainer calendar</h2><div class="sub">Weighted hours per task · renewal dates marked automatically · click a day to log time, or a task to edit it</div>
-    <div style="margin-bottom:16px"><button class="btn small ghost" id="calClientsBtn">Clients ▾</button></div>
-    <div class="cal-head">
-      <button class="btn ghost small" id="calPrev">←</button>
-      <h3>${m0.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</h3>
-      <button class="btn ghost small" id="calNext">→</button>
-      <button class="btn ghost small" id="calToday">Today</button>
-    </div>
-    <div class="cal">
-      ${['Mon','Tue','Wed','Thu','Fri'].map(d=>`<div class="dow">${d}</div>`).join('')}
-      ${cells}
-    </div>`;
-
-  $('#calPrev').onclick = ()=>{ state.calMonth = new Date(y, mo-1, 1); renderCalendar(); };
-  $('#backToRetainerBtn').onclick = ()=>{ state.retainerView='dashboard'; render(); };
-  $('#calClientsBtn').onclick = (e)=>{
-    e.stopPropagation();
-    openCheckboxDropdown(e.currentTarget, activeClients.map(c=>({key:c.id, label:c.name, dot:colorFor(c)})),
-      key=>!state.calHidden.has(key),
-      (key,checked)=>{ checked ? state.calHidden.delete(key) : state.calHidden.add(key); renderCalendar(); });
-  };
-  $('#calNext').onclick = ()=>{ state.calMonth = new Date(y, mo+1, 1); renderCalendar(); };
-  $('#calToday').onclick = ()=>{ state.calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1); renderCalendar(); };
-  main.querySelectorAll('.day[data-date]').forEach(el=>el.addEventListener('click', (e)=>{
-    if(e.target.closest('[data-task]') || e.target.closest('[data-goto]')) return;
-    openQuickLogModal(null, el.dataset.date);
-  }));
-  main.querySelectorAll('.task-chip[data-task]').forEach(el=>{
-    el.addEventListener('click', (e)=>{ e.stopPropagation(); openTaskModal(el.dataset.task); });
-    el.addEventListener('dragstart', (e)=>{
-      e.dataTransfer.setData('text/plain', el.dataset.task);
-      e.dataTransfer.effectAllowed = 'move';
-    });
-  });
-  main.querySelectorAll('.renew-chip[data-goto]').forEach(el=>el.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    state.projClientId=el.dataset.goto; state.projView='retainerAllowance';
-    state.view='projects'; render();
-  }));
-  main.querySelectorAll('.day[data-date]').forEach(dayEl=>{
-    dayEl.addEventListener('dragover', e=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; dayEl.classList.add('drop-target'); });
-    dayEl.addEventListener('dragleave', ()=> dayEl.classList.remove('drop-target'));
-    dayEl.addEventListener('drop', async e=>{
-      e.preventDefault(); dayEl.classList.remove('drop-target');
-      const taskId = e.dataTransfer.getData('text/plain');
-      const newDate = dayEl.dataset.date;
-      if(!taskId || !newDate) return;
-      const t = state.tasks.find(t=>t.id===taskId);
-      if(t && t.task_date===newDate) return;
-      const { error } = await db.from('rs_tasks').update({ task_date:newDate }).eq('id', taskId);
-      if(error){ toast('Could not move task'); console.error(error); return; }
-      toast(`Moved to ${fmtDate(new Date(newDate+'T00:00'))}`);
-      await loadAll();
-    });
-  });
-}
 
 function renderArchived(){
   const archivedClients = state.clients.filter(c=>!c.active);
@@ -3631,7 +3415,7 @@ function renderArchived(){
   $('[data-bc="settings"]').onclick = ()=>{ state.view='settings'; render(); };
   main.querySelectorAll('[data-viewclient]').forEach(el=>el.addEventListener('click', ()=>{
     const c = state.clients.find(c=>c.id===el.dataset.viewclient);
-    state.view='projects'; state.projClientId=c.id; state.projView = c.is_retainer?'retainerTasks':'clientProjects';
+    state.view='projects'; state.projClientId=c.id; state.projView = c.is_retainer?'retainerTasks':'clientProjects'; state.retainerTab='tasks';
     render();
   }));
   main.querySelectorAll('[data-restoreclient]').forEach(el=>el.addEventListener('click', async ()=>{
@@ -3674,7 +3458,7 @@ function renderSettings(){
         </tr>`).join('') || '<tr><td colspan="5" class="empty">No clients yet.</td></tr>'}
         </tbody></table>
         <div class="row-form">
-          ${colorCircleHtml('c_color', PALETTE[state.clients.length%PALETTE.length])}
+          ${colorCircleHtml('c_color', CLIENT_PALETTE[state.clients.length%CLIENT_PALETTE.length])}
           <input id="c_name" placeholder="Client name" style="flex:2">
           <input type="url" id="c_miro_ext" placeholder="Miro (external)" style="flex:1 1 130px">
           <input type="url" id="c_miro_int" placeholder="Miro (internal)" style="flex:1 1 130px">
@@ -3766,7 +3550,7 @@ function renderSettings(){
     </div>`;
 
   $('#c_isretainer').addEventListener('change', e=>{ $('#c_retainer_fields').style.display = e.target.checked?'flex':'none'; });
-  wireColorCircle('c_color');
+  wireColorCircle('c_color', CLIENT_PALETTE);
   $('#c_add').onclick = async ()=>{
     const name = $('#c_name').value.trim(); if(!name){ toast('Client needs a name'); return; }
     const is_retainer = $('#c_isretainer').checked;
@@ -3917,7 +3701,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.12.0';
+const APP_VERSION = '0.14.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -3983,7 +3767,7 @@ async function runImport(){
     const key = (c.name||'').trim().toLowerCase();
     if(!key) continue;
     if(clientNameMap[key]){ append(`↷ Client "${c.name}" already exists — skipped`); continue; }
-    const color = PALETTE[Object.keys(clientNameMap).length % PALETTE.length];
+    const color = CLIENT_PALETTE[Object.keys(clientNameMap).length % CLIENT_PALETTE.length];
     const slug = uniqueSlug(c.name.trim());
     const { data: row, error } = await db.from('rs_clients').insert({ name:c.name.trim(), is_retainer: !!c.is_retainer, color, dash_accent_color:color, slug }).select().single();
     if(error){ append(`❌ Client "${c.name}": ${error.message}`); continue; }
@@ -4601,7 +4385,6 @@ async function boot(){
   document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{
     state.view = b.dataset.view;
     if(state.view==='projects'){ state.projView='clients'; state.projClientId=null; state.projProjectId=null; }
-    if(state.view==='dashboard'){ state.retainerView='dashboard'; }
     render();
   }));
   $('#quickAddFab').style.display = 'flex';

@@ -1,14 +1,23 @@
 # RS Retainer Tracker — Function Index
-**Current version: v0.11.1** | **File: index.html** | **Lines: ~5,038**
+**Current version: v0.13.0** | **File: index.html** | **Lines: ~4,808**
 
 Use this as a starting point each session to avoid grepping the whole file.
 Update the version and any changed line numbers when making edits.
 
-⚠️ **Post-v0.11.0 patches (v0.11.1, not a full re-index yet):** line numbers below were captured before these landed; everything from `taskGridColumns()` onward has drifted (~+30 lines total now). Function names/order unchanged — `grep -n "^function name"` rather than trusting exact numbers past that point.
+⚠️ **This index predates the v0.13.0 retainer/All Projects restructure and v0.11.1/v0.12.x patches — line numbers throughout are stale (the file shrank ~215 lines in v0.13.0 alone). Function names for anything not listed below are still a reasonable starting point (`grep -n "^function name"`), but the following no longer exist or changed shape:**
 
-**Patch 1** (animator scoping + save-bug fix):
-1. Animator column/section is now conditional on `project_type==='Animations'`, not a manual toggle — see `showAnimator` param threaded through `taskGridColumns`/`taskRowHtml`/`taskTableHtml`, and `showAnimators` local in `openProjTaskModal`.
-2. Fixed "Could not save task" — `assigned_animator_ids` was unconditionally sent to Supabase even though migration v19 hasn't been run yet. Now only sent for animation tasks, and those retry once on a Postgres `42703` (undefined_column) error.
+**Deleted in v0.13.0** (the standalone Retainers nav page is gone — confirmed with the user before deleting, since it removed a working ad-hoc hour-logging feature): `renderDashboard()`, `renderRetainer()`, `renderCalendar()`, `openQuickLogModal()`, `openTaskModal()` (the legacy rs_tasks edit modal — not the same as `openProjTaskModal`), and the `'dashboard'` nav button/`state.view` value. State fields `retainerView`, `dashSearch`, `dashSort`, `calMonth`, `calHidden` are gone too — they were only used by the deleted code. `meterHtml()` and `clientUsage()` survived (still used by the retainer client cards and the merged tabs).
+
+**Changed shape in v0.13.0:**
+- `clientRetainerHeaderHtml(c)` — dropped the `mode` param and the "Retainers /" breadcrumb variant; there's only one entry point now.
+- `renderClientTasksView(c)` — now renders a shared header + `retainerTabsHtml(tab)` toggle + tab body, instead of being one of two separate page functions. Split into `renderRetainerTasksBodyHtml(c)` / `wireRetainerTasksBody(c)` (sync, the to-do list) and `loadRetainerAllowanceBody(c)` (async, the monthly-allowance history — was `renderClientAllowanceView`, same logic, now writes into `#retainerTabBody` instead of `main` directly).
+- `renderProjects()` dispatcher — the `'retainerAllowance'` `projView` branch is gone; both tabs live under `'retainerTasks'` now, switched via `state.retainerTab`.
+- `clientCardHtml(c)` — the retainer branch now includes `meterHtml()`, a colored remaining/over status line, and the renewal cycle dates (previously just showed the open-task count).
+- `refreshCurrentView()` — re-checks `state.projView==='retainerTasks' && state.retainerTab==='allowance'` (was `state.projView==='retainerAllowance'`) to decide whether to re-run the async allowance fetch after a data refresh.
+
+**Prior patch notes (v0.11.1, pre-dates v0.13.0 too):**
+1. Animator column/section conditional on `project_type==='Animations'` via a `showAnimator` param threaded through `taskGridColumns`/`taskRowHtml`/`taskTableHtml`.
+2. Fixed "Could not save task" — `assigned_animator_ids` is only sent to Supabase for animation tasks now, with a retry-on-`42703` fallback for when migration v19 hasn't been run yet.
 
 **Patch 2** (Home page pass, this session):
 1. Greeting shows first name only (`me.name.split(/\s+/)[0]`).
