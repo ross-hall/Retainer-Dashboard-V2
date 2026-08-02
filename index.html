@@ -212,7 +212,7 @@
   .btn[disabled]{opacity:.4;cursor:not-allowed}
 
   table{width:100%;border-collapse:collapse;font-size:13.5px}
-  .todo-complete-group{border:1px solid var(--line);border-radius:var(--radius);padding:22px;margin-bottom:20px}
+  .todo-complete-group{margin-bottom:20px}
   .task-grid{display:flex;flex-direction:column;overflow-x:auto;overflow-y:hidden}
   .task-grid-row{display:grid;align-items:center;gap:10px;padding:12px 10px;border-bottom:1px solid var(--line-soft);transition:background var(--fast) var(--ease)}
   .task-grid-row:last-child{border-bottom:none}
@@ -365,6 +365,8 @@
   .mdp-day{background:none;border:none;border-radius:6px;padding:6px 0;font-size:12.5px;cursor:pointer}
   .mdp-day:hover{background:var(--track)}
   .mdp-day.sel{background:var(--accent);color:#fff;font-weight:600}
+  .mdp-day.today{background:var(--accent-soft);color:var(--accent);font-weight:700}
+  .mdp-day.today.sel{background:var(--accent);color:#fff}
   .mdp-foot{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;text-align:center}
   .mdp-clear{background:none;border:none;color:var(--red);font-size:11.5px;cursor:pointer}
   .mdp-time{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
@@ -540,7 +542,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.15.0</div>
+    <div id="versionBadge" class="version-badge">v0.15.2</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -842,9 +844,10 @@ function openMiniDatePicker(anchorEl, currentValue, onSelect, opts){
     const first=new Date(y,mo,1); const startPad=(first.getDay()+6)%7; const daysIn=new Date(y,mo+1,0).getDate();
     let cells='';
     for(let i=0;i<startPad;i++) cells+='<span></span>';
+    const todayIso = iso(new Date());
     for(let d=1; d<=daysIn; d++){
       const dIso = iso(new Date(y,mo,d));
-      cells += `<button type="button" class="mdp-day ${dIso===currentValue?'sel':''}" data-d="${dIso}">${d}</button>`;
+      cells += `<button type="button" class="mdp-day ${dIso===currentValue?'sel':''} ${dIso===todayIso?'today':''}" data-d="${dIso}">${d}</button>`;
     }
     const timeRow = opts.withTime ? `<div class="mdp-time">Time <input type="time" id="mdpTime" value="${opts.currentTime||''}"></div>` : '';
     pop.innerHTML = `
@@ -1656,25 +1659,26 @@ function dashboardLinkButtonHtml(c){
   const url = `${window.location.origin}${window.location.pathname}?client=${c.slug}&admin=1`;
   return `<a class="btn small ghost" href="${esc(url)}" target="_blank" rel="noopener">View dashboard ↗</a>`;
 }
-function clientRetainerHeaderHtml(c){
+function clientRetainerHeaderHtml(c, tab){
+  const u = clientUsage(c);
   return `<div class="breadcrumb"><button data-bc="clients">Clients</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <div class="card" style="margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span></h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}${dashboardLinkButtonHtml(c)}</div>
       </div>
+      <div style="margin-top:18px">
+        <div style="font-size:12.5px;color:var(--muted);margin-bottom:2px">${renewsInDays(u.cyc.next)} (${fmtDate(u.cyc.next)})</div>
+        ${meterHtml(u, c.retainer_hours)}
+      </div>
+      <div class="view-toggle" style="margin:18px 0 0">
+        <button class="btn small ${tab==='tasks'?'':'ghost'}" data-retainertab="tasks">Task list</button>
+        <button class="btn small ${tab==='allowance'?'':'ghost'}" data-retainertab="allowance">Monthly allowance</button>
+      </div>
     </div>`;
 }
 function wireClientRetainerHeader(){
   if($('[data-bc="clients"]')) $('[data-bc="clients"]').onclick = ()=>{ state.view='projects'; state.projView='clients'; render(); };
-}
-function retainerTabsHtml(tab){
-  return `<div class="view-toggle">
-    <button class="btn small ${tab==='tasks'?'':'ghost'}" data-retainertab="tasks">To-do list</button>
-    <button class="btn small ${tab==='allowance'?'':'ghost'}" data-retainertab="allowance">Monthly allowance</button>
-  </div>`;
-}
-function wireRetainerTabs(){
   main.querySelectorAll('[data-retainertab]').forEach(el=>el.addEventListener('click', ()=>{
     state.retainerTab = el.dataset.retainertab;
     render();
@@ -1683,9 +1687,8 @@ function wireRetainerTabs(){
 
 function renderClientTasksView(c){
   const tab = state.retainerTab || 'tasks';
-  main.innerHTML = clientRetainerHeaderHtml(c) + retainerTabsHtml(tab) + `<div id="retainerTabBody">${tab==='tasks' ? '' : '<div class="empty">Loading…</div>'}</div>`;
+  main.innerHTML = clientRetainerHeaderHtml(c, tab) + `<div id="retainerTabBody">${tab==='tasks' ? '' : '<div class="empty">Loading…</div>'}</div>`;
   wireClientRetainerHeader();
-  wireRetainerTabs();
   if(tab==='tasks'){
     document.getElementById('retainerTabBody').innerHTML = renderRetainerTasksBodyHtml(c);
     wireRetainerTasksBody(c);
@@ -1700,18 +1703,13 @@ function renderRetainerTasksBodyHtml(c){
   const done = tasks.filter(t=>isCompleteStatus(t.status));
   const legacyProjects = state.projects.filter(p=>p.client_id===c.id);
   const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
-  const u = clientUsage(c);
-  return `<div class="card" style="margin-bottom:20px">
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:2px">This cycle's retainer usage · ${fmtDate(u.cyc.start)} – ${fmtDate(u.cyc.end)}</div>
-      ${meterHtml(u, c.retainer_hours)}
-    </div>
-    ${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
+  return `${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
     <div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" data-addclienttask="${c.id}">+ Task</button>
       <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
     </div>
     <div class="todo-complete-group">
-      <div class="stage-section" style="margin-bottom:0;padding-bottom:24px;border-bottom:1px solid var(--line)">
+      <div class="stage-section" style="margin-bottom:0;padding-bottom:24px">
         <div class="stage-head"><h4>To do</h4></div>
         <div class="card" style="padding:8px 12px">${taskTableHtml(todo, visibleCount, 'Nothing to do yet.')}</div>
         <div style="margin-top:10px"><button class="btn small ghost" data-addclienttask="${c.id}">+ Task</button></div>
@@ -3747,7 +3745,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.15.0';
+const APP_VERSION = '0.15.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
