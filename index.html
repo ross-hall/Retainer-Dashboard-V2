@@ -540,7 +540,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.14.5</div>
+    <div id="versionBadge" class="version-badge">v0.15.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -741,18 +741,36 @@ function settingsAt(history, dateObj){
   return applicable;
 }
 
+/* Usage is the sum of two sources: legacy ad-hoc rs_tasks rows (pre-dating per-task time entries)
+   plus rs_proj_task_entries for this client's tasks — the latter is the only system still being
+   written to, so it must count toward the same total or the allowance meter silently undercounts. */
 function clientUsage(client, taskList){
   const cyc = cycleFor(client.renewal_day);
   const s = iso(cyc.start), e = iso(cyc.end);
   const tasks = (taskList||state.tasks).filter(t => t.client_id===client.id && t.task_date>=s && t.task_date<=e);
-  const used = tasks.reduce((a,t)=>a + t.hours*t.weight_applied, 0);
+  const entryRows = (state.projTaskEntries||[]).filter(en=>{
+    if(en.work_date<s || en.work_date>e) return false;
+    const pt = state.projTasks.find(p=>p.id===en.proj_task_id);
+    const cl = pt && taskClient(pt);
+    return !!(cl && cl.id===client.id);
+  });
   const perMember = {};
+  let used = 0;
   tasks.forEach(t=>{
     const m = state.members.find(m=>m.id===t.member_id);
     const key = m ? m.name : 'Unassigned';
-    perMember[key] = (perMember[key]||0) + t.hours*t.weight_applied;
+    const val = t.hours*t.weight_applied;
+    used += val;
+    perMember[key] = (perMember[key]||0) + val;
   });
-  return { cyc, tasks, used, perMember, pct: client.retainer_hours>0 ? used/client.retainer_hours*100 : 0 };
+  entryRows.forEach(en=>{
+    const m = state.members.find(m=>m.id===en.member_id);
+    const key = m ? m.name : 'Unassigned';
+    const val = en.hours*(m?(m.weight||1):1);
+    used += val;
+    perMember[key] = (perMember[key]||0) + val;
+  });
+  return { cyc, tasks, entryRows, used, perMember, pct: client.retainer_hours>0 ? used/client.retainer_hours*100 : 0 };
 }
 
 /* ---------- data ---------- */
@@ -1391,10 +1409,13 @@ function hoursToFillTableHtml(tasks){
   </tbody></table>`;
 }
 function hoursStepperHtml(t){
-  const filled = t.recorded_hours>0;
+  const me = currentUser();
+  const myEntry = me && (state.projTaskEntries||[]).find(e=>e.proj_task_id===t.id && e.member_id===me.id);
+  const hrs = myEntry ? myEntry.hours : 0;
+  const filled = hrs>0;
   return `<div class="hours-stepper" onclick="event.stopPropagation()">
     <button type="button" class="hs-btn" data-hourstep="${t.id}:-0.5" title="Subtract 30 minutes" ${filled?'':'disabled'}>−</button>
-    <span class="hs-val${filled?' hs-filled':''}">${t.recorded_hours!=null?fmtH(t.recorded_hours):'0h'}</span>
+    <span class="hs-val${filled?' hs-filled':''}">${fmtH(hrs)}</span>
     <button type="button" class="hs-btn" data-hourstep="${t.id}:0.5" title="Add 30 minutes">+</button>
   </div>`;
 }
@@ -1406,10 +1427,18 @@ function wireHoursSteppers(root){
     e.stopPropagation();
     const [taskId, delta] = el.dataset.hourstep.split(':');
     const task = state.projTasks.find(t=>t.id===taskId);
-    if(!task) return;
-    const next = Math.max(0, Math.round(((task.recorded_hours||0) + parseFloat(delta)) * 100) / 100);
-    const { error } = await db.from('rs_proj_tasks').update({ recorded_hours: next }).eq('id', taskId);
-    if(error){ toast('Could not update hours'); return; }
+    const me = currentUser();
+    if(!task || !me) return;
+    const existing = (state.projTaskEntries||[]).find(en=>en.proj_task_id===taskId && en.member_id===me.id);
+    const next = Math.max(0, Math.round(((existing?existing.hours:0) + parseFloat(delta)) * 100) / 100);
+    if(existing){
+      const { error } = await db.from('rs_proj_task_entries').update({ hours: next }).eq('id', existing.id);
+      if(error){ toast('Could not update hours'); return; }
+    } else if(next>0){
+      const work_date = task.work_date || iso(new Date());
+      const { error } = await db.from('rs_proj_task_entries').insert({ proj_task_id:taskId, member_id:me.id, hours:next, work_date }).select().single();
+      if(error){ toast('Could not update hours'); return; }
+    }
     await refreshProjectView();
   }));
   root.querySelectorAll('[data-workdateinline]').forEach(el=>el.addEventListener('click', (e)=>{
@@ -1719,6 +1748,19 @@ async function loadRetainerAllowanceBody(c){
     groups[key].tasks.push(t);
   });
 
+  // per-person time entries are the only system still being logged to, so their hours
+  // must feed the same per-cycle totals as the legacy rs_tasks rows above
+  const clientTaskIds = new Set(state.projTasks.filter(pt=>{ const cl=taskClient(pt); return cl && cl.id===c.id; }).map(pt=>pt.id));
+  (state.projTaskEntries||[]).forEach(en=>{
+    if(!clientTaskIds.has(en.proj_task_id)) return;
+    const s = settingsAt(history, new Date(en.work_date+'T00:00'));
+    const cyc = cycleFor(s.renewal_day, new Date(en.work_date+'T00:00'));
+    const key = iso(cyc.start);
+    if(!groups[key]) groups[key] = { cyc, retainer_hours:s.retainer_hours, tasks:[] };
+    const m = state.members.find(mm=>mm.id===en.member_id);
+    groups[key].entryHours = (groups[key].entryHours||0) + en.hours*(m?(m.weight||1):1);
+  });
+
   // to-do list tasks (tracked or not) surfaced in the same cycles, by work date / due date
   const projTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id);
   const projGroups = {};
@@ -1762,7 +1804,7 @@ async function loadRetainerAllowanceBody(c){
   } else {
     keys.forEach(key=>{
       const g = groups[key];
-      const used = g.tasks.reduce((a,t)=>a+t.hours*t.weight_applied,0);
+      const used = g.tasks.reduce((a,t)=>a+t.hours*t.weight_applied,0) + (g.entryHours||0);
       const pct = g.retainer_hours>0 ? used/g.retainer_hours*100 : 0;
       const isCurrent = key===currentKey;
       const badgeCls = pct>=100?'over':pct>=75?'warn':'ok';
@@ -1779,10 +1821,10 @@ async function loadRetainerAllowanceBody(c){
         <div class="card" style="padding:8px 12px">
           ${items.length? `<table><thead><tr><th>Task</th><th>Date</th><th>Assigned</th><th style="text-align:right">Hours (entries)</th><th style="text-align:center">Tracked</th></tr></thead>
           <tbody>${items.map(pt=>{
-            const tracked = pt.counts_toward_retainer && pt.retainer_task_ids && pt.retainer_task_ids.length;
+            const tracked = pt.counts_toward_retainer && taskEntriesFor(pt.id).length>0;
             const dateStr = pt.work_date || pt.due_date;
             const entries = taskEntriesFor(pt.id);
-            const entriesTotal = entries.reduce((n,e)=> n + e.hours * (state.members.find(m=>m.id===e.member_id)?.weight||1), 0);
+            const entriesTotal = taskHoursTotal(pt.id);
             const hoursDisplay = entries.length
               ? `<div style="font-weight:600">${fmtH(entriesTotal)} <span style="color:var(--muted);font-weight:400;font-size:11.5px">(${entries.length} entr${entries.length===1?'y':'ies'})</span></div>
                  <div style="font-size:11px;color:var(--muted)">${entries.map(e=>{ const m=state.members.find(mm=>mm.id===e.member_id); return `${esc(m?initials(m.name):'?')} ${fmtH(e.hours)}`; }).join(', ')}</div>`
@@ -2475,6 +2517,9 @@ function pillSelectorHtml(members, selectedIds){
 }
 
 function taskEntriesFor(taskId){ return (state.projTaskEntries||[]).filter(e=>e.proj_task_id===taskId).sort((a,b)=>a.work_date.localeCompare(b.work_date)); }
+function taskHoursTotal(taskId){
+  return taskEntriesFor(taskId).reduce((n,e)=>{ const m=state.members.find(mm=>mm.id===e.member_id); return n + e.hours*(m?(m.weight||1):1); }, 0);
+}
 
 function taskEntriesHtml(taskId){
   const entries = taskEntriesFor(taskId);
@@ -2683,9 +2728,9 @@ function taskRowHtml(t, showAnimator){
   const retainerClickable = !!client?.is_retainer;
   let retainerCell = '—';
   if(t.counts_toward_retainer){
-    retainerCell = (t.retainer_task_ids && t.retainer_task_ids.length)
+    retainerCell = taskEntriesFor(t.id).length
       ? '<span class="retainer-tick">✓</span>'
-      : '<span style="color:var(--amber);font-weight:700" title="Ticked, but not syncing yet — check hours and designer">⚠</span>';
+      : '<span style="color:var(--amber);font-weight:700" title="Ticked, but no time entries logged yet">⚠</span>';
   }
   return `<div class="task-grid-row task-row" draggable="true" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns(showAnimator)}">
     <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
@@ -2694,9 +2739,9 @@ function taskRowHtml(t, showAnimator){
     ${state.taskCols.has('designer')?`<div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>`:''}
     ${state.taskCols.has('reviewer')?`<div class="inline-editable" data-assigninline="${t.id}:reviewer" title="Click to edit reviewers">${avatarGroupHtml(t.assigned_reviewer_ids)}</div>`:''}
     ${showAnimator?`<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`:''}
-    ${state.taskCols.has('hours')?`<div style="text-align:right">${t.recorded_hours!=null?fmtH(t.recorded_hours):'—'}</div>`:''}
+    ${state.taskCols.has('hours')?`<div style="text-align:right">${taskEntriesFor(t.id).length? fmtH(taskHoursTotal(t.id)) : (t.recorded_hours!=null?fmtH(t.recorded_hours):'—')}</div>`:''}
     ${state.taskCols.has('due')?`<div>${t.due_date? fmtDateNatural(t.due_date):'—'}</div>`:''}
-    ${state.taskCols.has('retainer')?`<div style="text-align:center" class="${retainerClickable?'inline-editable':''}" ${retainerClickable?`data-retainerinline="${t.id}" title="Click to toggle retainer sync"`:''}>${retainerCell}</div>`:''}
+    ${state.taskCols.has('retainer')?`<div style="text-align:center" class="${retainerClickable?'inline-editable':''}" ${retainerClickable?`data-retainerinline="${t.id}" title="Click to toggle counting toward the retainer"`:''}>${retainerCell}</div>`:''}
     <div class="tg-actions"><button type="button" class="btn small ghost menu-dots" data-taskmenu="${t.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></div>
   </div>`;
 }
@@ -2812,11 +2857,8 @@ function wireTaskRows(root, opts){
     const task = state.projTasks.find(t=>t.id===taskId);
     const client = taskClient(task);
     if(!task || !client?.is_retainer) return;
-    const updated = { ...task, counts_toward_retainer: !task.counts_toward_retainer };
-    const { error } = await db.from('rs_proj_tasks').update({ counts_toward_retainer: updated.counts_toward_retainer }).eq('id', taskId);
+    const { error } = await db.from('rs_proj_tasks').update({ counts_toward_retainer: !task.counts_toward_retainer }).eq('id', taskId);
     if(error){ toast('Could not update'); return; }
-    const retainerTaskIds = await syncProjTaskRetainer(updated, task.project_id ? state.projects.find(p=>p.id===task.project_id) : null, client);
-    await db.from('rs_proj_tasks').update({ retainer_task_ids: retainerTaskIds }).eq('id', taskId);
     await refreshProjectView();
   }));
   root.querySelectorAll('[data-taskname]').forEach(el=>el.addEventListener('click', (e)=>{
@@ -3060,8 +3102,6 @@ function openProjTaskModal(taskId, ctx){
       if(error){ toast('Could not save task'); console.error(error); return; }
       saved = { ...t, ...fields };
     }
-    const retainerTaskIds = await syncProjTaskRetainer(saved, project, client);
-    await db.from('rs_proj_tasks').update({ retainer_task_ids: retainerTaskIds }).eq('id', saved.id);
     closeModal();
     toast(animatorColMissing ? 'Saved — run migration v19 to enable animator assignments' : (isNew?'Task added':'Task updated'));
     await refreshProjectView();
@@ -3272,32 +3312,6 @@ function openProjectModal(projectId, clientId){
   };
 }
 
-async function syncProjTaskRetainer(pt, project, client){
-  const existingIds = pt.retainer_task_ids || [];
-  const designers = state.members.filter(m => (pt.assigned_designer_ids||[]).includes(m.id));
-  const wantsSync = pt.counts_toward_retainer && client && client.is_retainer && designers.length && pt.recorded_hours>0 && pt.work_date;
-
-  if(!wantsSync){
-    if(existingIds.length) await Promise.all(existingIds.map(id=>db.from('rs_tasks').delete().eq('id',id)));
-    if(pt.counts_toward_retainer && (!client || !client.is_retainer)) toast("This client isn't marked as a retainer client — turn that on in Settings first");
-    else if(pt.counts_toward_retainer) toast('Assign a designer, recorded hours, and a work date to sync this to the retainer dashboard');
-    return [];
-  }
-
-  // simplest reliable approach: clear old synced rows, recreate one per designer
-  if(existingIds.length) await Promise.all(existingIds.map(id=>db.from('rs_tasks').delete().eq('id',id)));
-  const perDesignerHours = pt.recorded_hours / designers.length;
-  const newIds = [];
-  for(const d of designers){
-    const { data, error } = await db.from('rs_tasks').insert({
-      client_id: client.id, member_id: d.id, task_date: pt.work_date, hours: perDesignerHours,
-      description: project ? `${project.name} — ${pt.title}` : pt.title, weight_applied: d.weight
-    }).select().single();
-    if(error){ console.error(error); toast('Retainer sync failed for '+d.name); }
-    else newIds.push(data.id);
-  }
-  return newIds;
-}
 
 function openProjectTypeModal(typeId){
   const isNew = !typeId;
@@ -3733,7 +3747,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.14.5';
+const APP_VERSION = '0.15.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
