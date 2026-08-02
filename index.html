@@ -319,7 +319,8 @@
   .home-col h3{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
   .home-count{font-size:12px;font-weight:500;color:var(--muted);background:var(--track);padding:2px 9px;border-radius:99px}
   .hours-stepper{display:inline-flex;align-items:center;gap:8px}
-  .hours-stepper .hs-val{font-size:12.5px;font-variant-numeric:tabular-nums;min-width:34px;text-align:center;color:var(--ink)}
+  .hours-stepper .hs-val{font-size:12.5px;font-variant-numeric:tabular-nums;min-width:34px;text-align:center;color:var(--ink);font-weight:500;transition:color var(--fast) var(--ease)}
+  .hours-stepper .hs-val.hs-filled{color:var(--green);font-weight:700}
   .hours-stepper .hs-btn{width:22px;height:22px;flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
   .hours-stepper .hs-btn:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent)}
   .hours-stepper .hs-btn:disabled{opacity:.35;cursor:default}
@@ -539,7 +540,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.14.1</div>
+    <div id="versionBadge" class="version-badge">v0.14.5</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -561,7 +562,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  homeCols:new Set(['priority','due']), taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
+  homeCols:new Set(['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -641,6 +642,18 @@ function cycleFor(renewalDay, ref){
   const next = clampDay(start.getFullYear(), start.getMonth()+1, renewalDay);
   const end = new Date(next); end.setDate(end.getDate()-1);
   return { start, end, next };
+}
+/* ISO-string date range covering just the current retainer cycle */
+function currentCycleRange(client){
+  const cur = cycleFor(client.renewal_day);
+  return { start: iso(cur.start), end: iso(cur.end) };
+}
+/* ISO-string date range spanning the current retainer cycle plus the one before it */
+function lastTwoCyclesRange(client){
+  const cur = cycleFor(client.renewal_day);
+  const prevRef = new Date(cur.start); prevRef.setDate(prevRef.getDate()-1);
+  const prev = cycleFor(client.renewal_day, prevRef);
+  return { start: iso(prev.start), end: iso(cur.end) };
 }
 
 const PALETTE = ['#2a37a8','#0e7c86','#8a3ffc','#b2560d','#1d7a4d','#a02a6e','#4a5568','#946200'];
@@ -1368,20 +1381,25 @@ function homeTaskTableHtml(tasks, emptyLabel){
 
 function hoursToFillTableHtml(tasks){
   if(!tasks.length) return emptyStateHtml({ icon:'check', title:'No retainer hours outstanding', subtitle:'Nothing needs your attention right now.' });
-  return `<table class="task-table"><colgroup><col style="width:170px"><col style="width:auto"><col style="width:120px"></colgroup><thead><tr><th>Client / Project</th><th>Task</th><th>Hours</th></tr></thead><tbody>
+  return `<table class="task-table"><colgroup><col style="width:170px"><col style="width:auto"><col style="width:120px"><col style="width:130px"></colgroup><thead><tr><th>Client / Project</th><th>Task</th><th>Hours</th><th>Work date</th></tr></thead><tbody>
     ${tasks.map(t=>`<tr class="task-row" data-projtask="${t.id}">
       <td style="color:var(--muted);font-size:12.5px">${homeTaskContextHtml(t)}</td>
       <td><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></td>
       <td>${hoursStepperHtml(t)}</td>
+      <td>${workDateBtnHtml(t)}</td>
     </tr>`).join('')}
   </tbody></table>`;
 }
 function hoursStepperHtml(t){
+  const filled = t.recorded_hours>0;
   return `<div class="hours-stepper" onclick="event.stopPropagation()">
-    <button type="button" class="hs-btn" data-hourstep="${t.id}:-0.5" title="Subtract 30 minutes" ${t.recorded_hours>0?'':'disabled'}>−</button>
-    <span class="hs-val">${t.recorded_hours!=null?fmtH(t.recorded_hours):'0h'}</span>
+    <button type="button" class="hs-btn" data-hourstep="${t.id}:-0.5" title="Subtract 30 minutes" ${filled?'':'disabled'}>−</button>
+    <span class="hs-val${filled?' hs-filled':''}">${t.recorded_hours!=null?fmtH(t.recorded_hours):'0h'}</span>
     <button type="button" class="hs-btn" data-hourstep="${t.id}:0.5" title="Add 30 minutes">+</button>
   </div>`;
+}
+function workDateBtnHtml(t){
+  return `<button type="button" class="stage-date-btn" data-workdateinline="${t.id}" style="margin-top:0" onclick="event.stopPropagation()">${t.work_date? fmtDateNatural(t.work_date) : 'Set date'}</button>`;
 }
 function wireHoursSteppers(root){
   root.querySelectorAll('[data-hourstep]').forEach(el=>el.addEventListener('click', async (e)=>{
@@ -1393,6 +1411,17 @@ function wireHoursSteppers(root){
     const { error } = await db.from('rs_proj_tasks').update({ recorded_hours: next }).eq('id', taskId);
     if(error){ toast('Could not update hours'); return; }
     await refreshProjectView();
+  }));
+  root.querySelectorAll('[data-workdateinline]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const taskId = el.dataset.workdateinline;
+    const task = state.projTasks.find(t=>t.id===taskId);
+    if(!task) return;
+    openMiniDatePicker(el, task.work_date, async (newDate)=>{
+      const { error } = await db.from('rs_proj_tasks').update({ work_date:newDate }).eq('id', taskId);
+      if(error){ toast('Could not save date'); return; }
+      await refreshProjectView();
+    });
   }));
 }
 
@@ -1417,9 +1446,11 @@ function renderHome(){
     .sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
   const hoursToFill = state.projTasks.filter(t=>{
     if(!(t.assigned_designer_ids||[]).includes(me.id)) return false;
-    if(t.recorded_hours!=null) return false;
     const client = taskClient(t);
-    return !!(client && client.is_retainer);
+    if(!client || !client.is_retainer) return false;
+    const range = state.homeHoursExpanded ? lastTwoCyclesRange(client) : currentCycleRange(client);
+    const taskDate = t.due_date || iso(new Date(t.created_at));
+    return taskDate>=range.start && taskDate<=range.end;
   }).sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
 
   html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="homeColDropdownBtn">Columns ▾</button></div>
@@ -1433,13 +1464,14 @@ function renderHome(){
       <div class="card" style="padding:8px 12px">${homeTaskTableHtml(toReview, 'Nothing to review')}</div>
     </div>
     <div class="home-col">
-      <h3>Retainer hours to fill <span class="home-count">${hoursToFill.length}</span></h3>
+      <h3>Retainer hours to fill <span class="home-count">${hoursToFill.length}</span><button class="btn small ghost" id="hoursCycleToggleBtn" style="margin-left:auto">${state.homeHoursExpanded?'Show current cycle only':'Show last 2 months'}</button></h3>
       <div class="card" style="padding:8px 12px">${hoursToFillTableHtml(hoursToFill)}</div>
     </div>
   </div>`;
   main.innerHTML = html;
   wireTaskRows(main, { onRowClick: navigateToTaskContext });
   wireHoursSteppers(main);
+  $('#hoursCycleToggleBtn').onclick = ()=>{ state.homeHoursExpanded = !state.homeHoursExpanded; renderHome(); };
   $('#homeColDropdownBtn').onclick = (e)=>{
     e.stopPropagation();
     openCheckboxDropdown(e.currentTarget, [
@@ -3701,7 +3733,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.14.1';
+const APP_VERSION = '0.14.5';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
