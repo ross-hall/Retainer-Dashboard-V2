@@ -472,6 +472,13 @@
   .anim-cell-fb{font-size:8.5px;opacity:.9}
   .anim-step-del{position:absolute;top:2px;right:3px;background:none;border:none;color:var(--muted);font-size:13px;line-height:1;opacity:0;cursor:pointer}
   .anim-grid th:hover .anim-step-del{opacity:1}
+
+  .anim-timeline-track{display:flex;height:56px;border-radius:8px;overflow:hidden;background:var(--track)}
+  .anim-timeline-shot{flex-basis:0;min-width:2px;border:none;border-right:1px solid rgba(0,0,0,.12);display:flex;align-items:center;justify-content:center;padding:0 6px;font-family:inherit;cursor:pointer;transition:filter var(--fast) var(--ease)}
+  .anim-timeline-shot:last-child{border-right:none}
+  .anim-timeline-shot:hover{filter:brightness(.93)}
+  .anim-timeline-shot-code{font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .anim-timeline-remainder{background:repeating-linear-gradient(45deg,var(--track),var(--track) 6px,var(--line) 6px,var(--line) 12px);color:var(--muted);font-size:10.5px;cursor:default}
   .pd-tabs{max-width:1000px;margin:0 auto;padding:0 24px;display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
   .pd-tab{padding:10px 16px;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
   .pd-stage-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer}
@@ -542,7 +549,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.15.3</div>
+    <div id="versionBadge" class="version-badge">v0.16.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -564,7 +571,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  homeCols:new Set(['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animDeps:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
+  homeCols:new Set(['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -787,7 +794,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,adp,pte] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -799,14 +806,13 @@ async function loadAll(){
     db.from('rs_anim_steps').select('*').order('position'),
     db.from('rs_anim_cells').select('*'),
     db.from('rs_anim_feedback').select('*').order('created_at'),
-    db.from('rs_anim_deps').select('*'),
     db.from('rs_proj_task_entries').select('*').order('work_date',{ascending:false})
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
   state.stageCategories = sc.data||[]; state.stageLinks = sl.data||[];
   state.animShots = ash.data||[]; state.animSteps = ast.data||[]; state.animCells = acl.data||[];
-  state.animFeedback = afb.data||[]; state.animDeps = adp.data||[];
+  state.animFeedback = afb.data||[];
   state.projTaskEntries = pte.data||[];
   if(pte.error) console.warn('Task time entries table not found — run retainer-tracker-migration-v18.sql', pte.error);
   if(ash.error) console.warn('Animation tables not found — run retainer-tracker-migration-v16.sql', ash.error);
@@ -3746,7 +3752,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.15.3';
+const APP_VERSION = '0.16.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -4454,43 +4460,19 @@ function animAllFeedback(projectId){
     .sort((a,b)=>b.created_at.localeCompare(a.created_at));
 }
 
-/* ── 2. Dependency helpers ────────────────────────────────────────────── */
-function animDepsFor(projectId){ return (state.animDeps||[]).filter(d=>d.project_id===projectId); }
-function animIsBlocked(shotId, projectId){
-  const deps = animDepsFor(projectId);
-  return deps.filter(d=>d.blocked_shot_id===shotId).some(d=>{
-    const blocker = state.animShots.find(s=>s.id===d.blocking_shot_id);
-    if(!blocker) return false;
-    const steps = animStepsFor(projectId);
-    return steps.length && steps.some(st=>animCellStatus(blocker.id, st.id)!=='Approved');
-  });
-}
-function animBlockedBy(shotId, projectId){
-  return animDepsFor(projectId)
-    .filter(d=>d.blocked_shot_id===shotId)
-    .map(d=>state.animShots.find(s=>s.id===d.blocking_shot_id))
-    .filter(Boolean);
-}
-function animBlocks(shotId, projectId){
-  return animDepsFor(projectId)
-    .filter(d=>d.blocking_shot_id===shotId)
-    .map(d=>state.animShots.find(s=>s.id===d.blocked_shot_id))
-    .filter(Boolean);
-}
-
-/* ── 3. Daily snapshot helpers ───────────────────────────────────────── */
+/* ── 2. Daily snapshot helpers ───────────────────────────────────────── */
 function animChangedSince(projectId, hoursAgo){
   const since = new Date(Date.now() - hoursAgo*3600000).toISOString();
   const shotIds = new Set(state.animShots.filter(s=>s.project_id===projectId).map(s=>s.id));
   return (state.animCells||[]).filter(c=> shotIds.has(c.shot_id) && c.updated_at >= since);
 }
 
-/* ── Patched renderAnimation: inject feedback count, dependency badge,
-      snapshot tab, and dependency tab into the existing page ─────────── */
+/* ── Patched renderAnimation: inject feedback count, snapshot tab,
+      and timeline tab into the existing page ────────────────────────── */
 const _origRenderAnimation = renderAnimation;
 function renderAnimation(){
   if(state.animTab === 'snapshot') { renderAnimSnapshot(); return; }
-  if(state.animTab === 'deps')     { renderAnimDeps();     return; }
+  if(state.animTab === 'timeline') { renderAnimTimeline(); return; }
   renderAnimGrid();
 }
 
@@ -4509,11 +4491,7 @@ function renderAnimGrid(){
           style="${pr.id===state.animProjectId?`color:var(--accent);border-color:var(--accent)`:''}">${esc(c?c.name:'?')}${pr.label?` · ${esc(pr.label)}`:''}</button>`;
       }).join('')}
     </div>
-    <div class="view-toggle" style="margin-bottom:20px">
-      <button class="btn small ${!state.animTab||state.animTab==='grid'?'':'ghost'}" data-animtab="grid">Grid</button>
-      <button class="btn small ${state.animTab==='snapshot'?'':'ghost'}" data-animtab="snapshot">Today's snapshot</button>
-      <button class="btn small ${state.animTab==='deps'?'':'ghost'}" data-animtab="deps">Dependencies</button>
-    </div>`;
+    ${animViewToggleHtml(state.animTab)}`;
 
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
@@ -4551,13 +4529,8 @@ function renderAnimGrid(){
     return n + (pr.done===steps.length && steps.length ? (s.duration_seconds ? +s.duration_seconds : 0) : 0);
   }, 0);
 
-  const flags = { retakes:[], overdue:[], clientWait:[], unassigned:[], stalled:[], blocked:[] };
+  const flags = { retakes:[], overdue:[], clientWait:[], unassigned:[], stalled:[] };
   shots.forEach(s=>{
-    if(animIsBlocked(s.id, p.id)){
-      const blockers = animBlockedBy(s.id, p.id);
-      if(blockers.some(b=>{ const pr=animShotProgress(b,steps); return pr.done<steps.length; }))
-        flags.blocked.push({s});
-    }
     steps.forEach(st=>{
       const c = animCell(s.id, st.id);
       if(!c) return;
@@ -4577,7 +4550,6 @@ function renderAnimGrid(){
         ${chip('need retakes', flags.retakes.length, '#E8623D')}
         ${chip('overdue', flags.overdue.length, '#c9372c')}
         ${chip('awaiting client', flags.clientWait.length, '#15AABF')}
-        ${chip('blocked', flags.blocked.length, '#8B5CF6')}
         ${chip('unassigned', flags.unassigned.length, '#e08c00')}
         ${chip('not started', flags.stalled.length, '#7b7d92')}
         ${!Object.values(flags).some(a=>a.length) ? '<span style="font-size:13px;color:var(--green);font-weight:600">✓ Nothing needs attention</span>' : ''}
@@ -4609,15 +4581,12 @@ function renderAnimGrid(){
         <tbody>
           ${shots.map(s=>{
             const pr = animShotProgress(s, steps);
-            const blocked = animIsBlocked(s.id, p.id);
-            const blockedBy = blocked ? animBlockedBy(s.id, p.id).map(b=>b.code).join(', ') : '';
             const feedbackTotal = steps.reduce((n,st)=>n+animFeedbackCount(s.id,st.id),0);
             return `<tr>
               <td>
                 <div style="display:flex;align-items:center;gap:8px">
                   <b style="font-size:13px">${esc(s.code)}</b>
                   ${s.duration_seconds!=null?`<span style="font-size:11.5px;color:var(--muted)">${s.duration_seconds}s</span>`:''}
-                  ${blocked?`<span style="font-size:10.5px;background:#8B5CF622;color:#8B5CF6;padding:2px 6px;border-radius:99px;font-weight:600" title="Waiting on ${blockedBy}">⊠ blocked</span>`:''}
                   ${feedbackTotal?`<span style="font-size:10.5px;color:var(--muted)">💬 ${feedbackTotal}</span>`:''}
                   <button class="btn small ghost" data-animshotedit="${s.id}" style="margin-left:auto">Edit</button>
                 </div>
@@ -4670,6 +4639,113 @@ function renderAnimGrid(){
     await db.from('rs_anim_steps').delete().eq('id', st.id);
     toast('Step removed'); await loadAll();
   }));
+}
+
+/* A shot's single headline colour/status for the timeline bar — same urgency
+   priority order as the flag chips above the grid, collapsed to one signal
+   per shot instead of one per cell. */
+function animShotTimelineStatus(shot, steps, todayIso){
+  let anyOverdue=false, anyRetakes=false, anyClientReview=false, anyTouched=false;
+  steps.forEach(st=>{
+    const c = animCell(shot.id, st.id);
+    if(!c) return;
+    anyTouched = true;
+    if(c.status==='Retakes') anyRetakes = true;
+    if(c.status==='Client review') anyClientReview = true;
+    if(c.due_date && c.due_date < todayIso && c.status!=='Approved' && c.status!=='Omitted') anyOverdue = true;
+  });
+  const pr = animShotProgress(shot, steps);
+  if(anyOverdue) return { label:'Overdue', color:'#c9372c', text:'#fff' };
+  if(anyRetakes) return { label:'Needs retakes', color:'#E8623D', text:'#fff' };
+  if(anyClientReview) return { label:'Awaiting client', color:'#15AABF', text:'#fff' };
+  if(steps.length && pr.done===steps.length) return { label:'Approved', color:'#2FB380', text:'#fff' };
+  if(!anyTouched) return { label:'Not started', color:'#e7e7ee', text:'#7b7d92' };
+  return { label:'In progress', color:'#4C6EF5', text:'#fff' };
+}
+
+/* ── Timeline view — same shots/progress as Pipeline, laid out by running
+      screen-time instead of by row. Shots play back-to-back in pipeline
+      order (position), each occupying a slice equal to its own duration. ── */
+function renderAnimTimeline(){
+  const p = animProjects().find(x=>x.id===state.animProjectId);
+  if(!p){ state.animTab='grid'; renderAnimation(); return; }
+  const shots = animShotsFor(p.id);
+  const steps = animStepsFor(p.id);
+  const todayIso = iso(new Date());
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
+  </div><div style="margin-bottom:18px"></div>`;
+  html += `<div class="pd-tabs" style="padding:0;margin-bottom:20px">${animProjects().map(pr=>{
+    const cl = state.clients.find(c=>c.id===pr.client_id);
+    return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
+      style="${pr.id===state.animProjectId?`color:var(--accent);border-color:var(--accent)`:''}">${esc(cl?cl.name:'?')}</button>`;
+  }).join('')}</div>
+  ${animViewToggleHtml('timeline')}`;
+
+  if(!steps.length){
+    html += `<div class="banner"><div>🎬</div><div>This project has no pipeline steps yet. Set up the pipeline from the Pipeline tab first.</div></div>`;
+    main.innerHTML = html; wireAnimTabsAll(); return;
+  }
+  if(!shots.length){
+    html += `<div class="empty">No shots yet — add your first shot from the Pipeline tab to see it here.</div>`;
+    main.innerHTML = html; wireAnimTabsAll(); return;
+  }
+
+  const timedShots = shots.filter(s=> s.duration_seconds!=null && +s.duration_seconds>0);
+  const undatedShots = shots.filter(s=> s.duration_seconds==null || +s.duration_seconds<=0);
+  const allocated = timedShots.reduce((n,s)=> n + +s.duration_seconds, 0);
+  const budget = p.anim_total_seconds!=null ? +p.anim_total_seconds : null;
+  const remainder = budget!=null ? Math.max(0, budget - allocated) : 0;
+
+  html += `<div class="card" style="margin-bottom:18px">
+    <div style="font-size:12.5px;color:var(--muted)">
+      <b style="color:var(--ink)">${allocated}s</b> of shots laid out across the timeline${budget!=null?` · ${budget}s contracted${remainder?` · ${remainder}s unallocated`:''}`:''}
+    </div>
+  </div>`;
+
+  if(undatedShots.length){
+    html += `<div class="banner"><div>🕓</div><div><strong>${undatedShots.length} shot${undatedShots.length===1?'':'s'}</strong> ${undatedShots.length===1?"doesn't":"don't"} have a duration set, so ${undatedShots.length===1?"it isn't":"they aren't"} placed on the timeline below.
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+        ${undatedShots.map(s=>`<button class="btn small ghost" data-animshotedit="${s.id}">${esc(s.code)}</button>`).join('')}
+      </div>
+    </div></div>`;
+  }
+
+  if(!timedShots.length){
+    html += `<div class="empty">No shots have a duration set yet — add one from the Pipeline tab to place shots on the timeline.</div>`;
+  } else {
+    const scale = Math.max(allocated + remainder, 1);
+    const tickCount = Math.min(10, Math.max(4, Math.round(scale/10)));
+    const tickEvery = scale / tickCount;
+    const ticks = Array.from({length: tickCount+1}, (_, i)=> Math.round(i*tickEvery));
+
+    html += `<div class="card" style="padding:16px">
+      <div style="display:flex;font-size:10.5px;color:var(--muted);margin-bottom:6px">
+        ${ticks.map((t,i)=> `<span style="flex:${i===ticks.length-1?'0 0 auto':'1'};${i===ticks.length-1?'':'border-right:1px dashed var(--line)'};padding-left:4px">${t}s</span>`).join('')}
+      </div>
+      <div class="anim-timeline-track">
+        ${timedShots.map(s=>{
+          const st = animShotTimelineStatus(s, steps, todayIso);
+          return `<button type="button" class="anim-timeline-shot" data-animshottl="${s.id}" style="flex-grow:${+s.duration_seconds};background:${st.color};color:${st.text}"
+            title="${esc(s.code)} · ${st.label} · ${s.duration_seconds}s${s.description?' · '+esc(s.description):''}">
+            <span class="anim-timeline-shot-code">${esc(s.code)}</span>
+          </button>`;
+        }).join('')}
+        ${remainder ? `<div class="anim-timeline-shot anim-timeline-remainder" style="flex-grow:${remainder}" title="${remainder}s of contracted time not yet allocated to a shot">unallocated</div>` : ''}
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:11.5px;color:var(--muted)">
+        ${[['Not started','#e7e7ee'],['In progress','#4C6EF5'],['Awaiting client','#15AABF'],['Needs retakes','#E8623D'],['Overdue','#c9372c'],['Approved','#2FB380']].map(([label,color])=>
+          `<span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:${color};display:inline-block"></span>${label}</span>`
+        ).join('')}
+      </div>
+    </div>`;
+  }
+
+  main.innerHTML = html;
+  wireAnimTabsAll();
+  main.querySelectorAll('[data-animshotedit]').forEach(el=>el.addEventListener('click', ()=> openAnimShotModal(p.id, el.dataset.animshotedit)));
+  main.querySelectorAll('[data-animshottl]').forEach(el=>el.addEventListener('click', ()=> openAnimShotModal(p.id, el.dataset.animshottl)));
 }
 
 /* ── Snapshot view ─────────────────────────────────────────────────────── */
@@ -4740,11 +4816,7 @@ function renderAnimSnapshot(){
     return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
       style="${pr.id===state.animProjectId?`color:var(--accent);border-color:var(--accent)`:''}">${esc(cl?cl.name:'?')}</button>`;
   }).join('')}</div>
-  <div class="view-toggle" style="margin-bottom:20px">
-    <button class="btn small ghost" data-animtab="grid">Grid</button>
-    <button class="btn small" data-animtab="snapshot">Today's snapshot</button>
-    <button class="btn small ghost" data-animtab="deps">Dependencies</button>
-  </div>`;
+  ${animViewToggleHtml('snapshot')}`;
 
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
     <div class="card">
@@ -4765,76 +4837,13 @@ function renderAnimSnapshot(){
   wireAnimTabsAll();
 }
 
-/* ── Dependency management view ────────────────────────────────────────── */
-function renderAnimDeps(){
-  const p = animProjects().find(x=>x.id===state.animProjectId);
-  if(!p){ state.animTab='grid'; renderAnimation(); return; }
-  const shots = animShotsFor(p.id);
-  const steps = animStepsFor(p.id);
-  const deps = animDepsFor(p.id);
-
-  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-    <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
-  </div><div style="margin-bottom:18px"></div>`;
-  html += `<div class="pd-tabs" style="padding:0;margin-bottom:20px">${animProjects().map(pr=>{
-    const cl = state.clients.find(c=>c.id===pr.client_id);
-    return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
-      style="${pr.id===state.animProjectId?`color:var(--accent);border-color:var(--accent)`:''}">${esc(cl?cl.name:'?')}</button>`;
-  }).join('')}</div>
-  <div class="view-toggle" style="margin-bottom:20px">
-    <button class="btn small ghost" data-animtab="grid">Grid</button>
-    <button class="btn small ghost" data-animtab="snapshot">Today's snapshot</button>
-    <button class="btn small" data-animtab="deps">Dependencies</button>
+/* ── Shared view-toggle tab bar (Pipeline / Timeline / Today's snapshot) ── */
+function animViewToggleHtml(tab){
+  return `<div class="view-toggle" style="margin-bottom:20px">
+    <button class="btn small ${!tab||tab==='grid'?'':'ghost'}" data-animtab="grid">Pipeline</button>
+    <button class="btn small ${tab==='timeline'?'':'ghost'}" data-animtab="timeline">Timeline</button>
+    <button class="btn small ${tab==='snapshot'?'':'ghost'}" data-animtab="snapshot">Today's snapshot</button>
   </div>`;
-
-  html += `<div class="sub" style="margin-bottom:18px">A dependency means one shot must be fully Approved before another can start. Blocked shots are flagged in the grid.</div>`;
-
-  const depRows = deps.map(d=>{
-    const blocker = shots.find(s=>s.id===d.blocking_shot_id);
-    const blocked  = shots.find(s=>s.id===d.blocked_shot_id);
-    if(!blocker||!blocked) return '';
-    const pr = animShotProgress(blocker, steps);
-    const resolved = pr.done===steps.length && steps.length>0;
-    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
-      <b>${esc(blocker.code)}</b>
-      <span style="color:var(--muted)">blocks</span>
-      <b>${esc(blocked.code)}</b>
-      <span class="status ${resolved?'ok':'warn'}" style="margin-left:auto">${resolved?'✓ Resolved – blocker approved':'⊠ Active'}</span>
-      <button class="btn small ghost" data-animdeldep="${d.id}">Remove</button>
-    </div>`;
-  }).join('') || `<div class="empty" style="padding:16px 0">No dependencies set. Add one below.</div>`;
-
-  html += `<div class="card" style="margin-bottom:20px">${depRows}</div>`;
-  html += `<div class="card">
-    <div style="font-size:13.5px;font-weight:600;margin-bottom:12px">Add dependency</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <select id="dep_blocker" style="flex:1;min-width:120px"><option value="">Blocking shot…</option>
-        ${shots.map(s=>`<option value="${s.id}">${esc(s.code)}${s.description?` — ${esc(s.description.slice(0,40))}`:''}</option>`).join('')}
-      </select>
-      <span style="color:var(--muted)">must complete before</span>
-      <select id="dep_blocked" style="flex:1;min-width:120px"><option value="">Blocked shot…</option>
-        ${shots.map(s=>`<option value="${s.id}">${esc(s.code)}${s.description?` — ${esc(s.description.slice(0,40))}`:''}</option>`).join('')}
-      </select>
-      <button class="btn small" id="dep_add">Add</button>
-    </div>
-  </div>`;
-
-  main.innerHTML = html;
-  wireAnimTabsAll();
-  main.querySelectorAll('[data-animdeldep]').forEach(el=>el.addEventListener('click', async ()=>{
-    await db.from('rs_anim_deps').delete().eq('id', el.dataset.animdeldep);
-    toast('Dependency removed'); await loadAll();
-  }));
-  $('#dep_add').onclick = async ()=>{
-    const blockingId = $('#dep_blocker').value;
-    const blockedId  = $('#dep_blocked').value;
-    if(!blockingId||!blockedId){ toast('Select both shots'); return; }
-    if(blockingId===blockedId){ toast('A shot can\'t depend on itself'); return; }
-    if(deps.some(d=>d.blocking_shot_id===blockingId && d.blocked_shot_id===blockedId)){ toast('Already exists'); return; }
-    const { error } = await db.from('rs_anim_deps').insert({ project_id:p.id, blocking_shot_id:blockingId, blocked_shot_id:blockedId });
-    if(error){ toast('Could not add dependency'); console.error(error); return; }
-    toast('Dependency added'); await loadAll();
-  };
 }
 
 /* ── Shared tab wiring ─────────────────────────────────────────────────── */
