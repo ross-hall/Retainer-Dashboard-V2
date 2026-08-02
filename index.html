@@ -542,7 +542,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.15.2</div>
+    <div id="versionBadge" class="version-badge">v0.15.3</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -753,7 +753,8 @@ function clientUsage(client, taskList){
   const entryRows = (state.projTaskEntries||[]).filter(en=>{
     if(en.work_date<s || en.work_date>e) return false;
     const pt = state.projTasks.find(p=>p.id===en.proj_task_id);
-    const cl = pt && taskClient(pt);
+    if(!pt || !pt.counts_toward_retainer) return false;
+    const cl = taskClient(pt);
     return !!(cl && cl.id===client.id);
   });
   const perMember = {};
@@ -1748,7 +1749,7 @@ async function loadRetainerAllowanceBody(c){
 
   // per-person time entries are the only system still being logged to, so their hours
   // must feed the same per-cycle totals as the legacy rs_tasks rows above
-  const clientTaskIds = new Set(state.projTasks.filter(pt=>{ const cl=taskClient(pt); return cl && cl.id===c.id; }).map(pt=>pt.id));
+  const clientTaskIds = new Set(state.projTasks.filter(pt=>{ if(!pt.counts_toward_retainer) return false; const cl=taskClient(pt); return cl && cl.id===c.id; }).map(pt=>pt.id));
   (state.projTaskEntries||[]).forEach(en=>{
     if(!clientTaskIds.has(en.proj_task_id)) return;
     const s = settingsAt(history, new Date(en.work_date+'T00:00'));
@@ -3745,7 +3746,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.15.2';
+const APP_VERSION = '0.15.3';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
