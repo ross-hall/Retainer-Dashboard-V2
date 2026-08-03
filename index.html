@@ -437,6 +437,13 @@
   .mini-progress .fill{height:100%;background:var(--green);border-radius:99px;transition:width .4s var(--ease)}
 
   .view-toggle{display:flex;gap:6px;margin-bottom:14px}
+  .switch-toggle{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
+  .switch-toggle input{display:none}
+  .switch-track{width:34px;height:19px;border-radius:99px;background:var(--track);border:1px solid var(--line);position:relative;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease);flex:none}
+  .switch-knob{position:absolute;top:1px;left:1px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:var(--shadow-sm);transition:transform var(--fast) var(--ease)}
+  .switch-toggle input:checked + .switch-track{background:var(--accent);border-color:var(--accent)}
+  .switch-toggle input:checked + .switch-track .switch-knob{transform:translateX(15px)}
+  .switch-toggle .switch-label{font-size:13px;font-weight:500;color:var(--ink)}
   .cal.milestones .day{min-height:170px;padding:10px}
   .cal.milestones{gap:8px}
   .milestone-chip{border-radius:8px;padding:8px 9px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--line);color:var(--ink);margin-bottom:6px;font-size:11px;line-height:1.5;cursor:grab;box-shadow:var(--shadow-sm);transition:box-shadow var(--fast) var(--ease),transform var(--fast) var(--ease)}
@@ -551,7 +558,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.17.2</div>
+    <div id="versionBadge" class="version-badge">v0.17.3</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -1691,18 +1698,19 @@ function clientRetainerHeaderHtml(c, tab){
         <div style="font-size:12.5px;color:var(--muted);margin-bottom:2px">${renewsInDays(u.cyc.next)} (${fmtDate(u.cyc.next)})</div>
         ${meterHtml(u, c.retainer_hours)}
       </div>
-      <div class="view-toggle" style="margin:18px 0 0">
-        <button class="btn small ${tab==='tasks'?'':'ghost'}" data-retainertab="tasks">Task list</button>
-        <button class="btn small ${tab==='allowance'?'':'ghost'}" data-retainertab="allowance">Monthly allowance</button>
-      </div>
+      <label class="switch-toggle" style="margin:18px 0 0">
+        <input type="checkbox" id="allowanceTrackingToggle" ${tab==='allowance'?'checked':''}>
+        <span class="switch-track"><span class="switch-knob"></span></span>
+        <span class="switch-label">Allowance Tracking</span>
+      </label>
     </div>`;
 }
 function wireClientRetainerHeader(){
   if($('[data-bc="clients"]')) $('[data-bc="clients"]').onclick = ()=>{ state.view='projects'; state.projView='clients'; render(); };
-  main.querySelectorAll('[data-retainertab]').forEach(el=>el.addEventListener('click', ()=>{
-    state.retainerTab = el.dataset.retainertab;
+  if($('#allowanceTrackingToggle')) $('#allowanceTrackingToggle').addEventListener('change', (e)=>{
+    state.retainerTab = e.target.checked ? 'allowance' : 'tasks';
     render();
-  }));
+  });
 }
 
 function renderClientTasksView(c){
@@ -1780,7 +1788,7 @@ async function loadRetainerAllowanceBody(c){
   });
 
   // to-do list tasks (tracked or not) surfaced in the same cycles, by work date / due date
-  const projTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id && !isPausedStatus(t.status));
+  const projTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id && !isPausedStatus(t.status) && t.counts_toward_retainer);
   const projGroups = {};
   const undated = [];
   projTasks.forEach(pt=>{
@@ -1839,7 +1847,7 @@ async function loadRetainerAllowanceBody(c){
         <div class="card" style="padding:8px 12px">
           ${items.length? `<table><thead><tr><th>Task</th><th>Date</th><th>Assigned</th><th style="text-align:right">Hours (entries)</th><th style="text-align:center">Tracked</th><th></th></tr></thead>
           <tbody>${items.map(pt=>{
-            const tracked = pt.counts_toward_retainer && taskEntriesFor(pt.id).length>0;
+            const tracked = taskEntriesFor(pt.id).length>0;
             const dateStr = pt.work_date || pt.due_date;
             const entries = taskEntriesFor(pt.id);
             const entriesTotal = taskHoursTotal(pt.id);
@@ -3871,7 +3879,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.17.2';
+const APP_VERSION = '0.17.3';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
