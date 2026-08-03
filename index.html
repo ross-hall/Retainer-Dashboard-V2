@@ -135,17 +135,28 @@
     .cal .day{min-height:78px;padding:5px;font-size:11px}
     .week-grid .day{min-height:260px;padding:10px}
   }
+  .mobile-top-bar{display:none;align-items:center;gap:12px;position:sticky;top:0;z-index:45;background:var(--card);border-bottom:1px solid var(--line);padding:10px 14px}
+  .mobile-menu-btn{flex:none;width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--ink);border-radius:8px;transition:background var(--fast) var(--ease)}
+  .mobile-menu-btn:hover{background:var(--track)}
+  .mobile-menu-btn svg{width:19px;height:19px}
+  .mobile-top-bar-title{font-size:14.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mobile-nav-backdrop{display:none;position:fixed;inset:0;background:rgba(20,18,15,.35);z-index:240}
+  .mobile-nav-backdrop.show{display:block;animation:backdropIn var(--fast) var(--ease)}
+
   @media(max-width:760px){
+    .mobile-top-bar{display:flex}
     .app-shell{flex-direction:column}
-    #sidebar{width:100% !important;height:auto;position:sticky;top:0;z-index:40;flex-direction:row;align-items:center;border-right:none;border-bottom:1px solid var(--line);padding:8px 10px;overflow-x:auto;gap:10px}
-    #sidebar .side-top{display:none}
-    #sidebar .sidebar-search-btn{width:auto;margin-bottom:0;padding:7px}
-    #sidebar .sidebar-search-btn .nav-label,#sidebar .sidebar-search-btn .cmd-hint{display:none}
-    #sidebar nav{flex-direction:row;gap:2px}
-    #sidebar nav button span{display:none}
+    #sidebar{position:fixed !important;top:0;left:0;width:268px !important;max-width:82vw;height:100vh;z-index:250;flex-direction:column;transform:translateX(-100%);transition:transform var(--dur) var(--ease);box-shadow:var(--shadow-pop)}
+    #sidebar.mobile-open{transform:translateX(0)}
+    #sidebar .side-top{display:flex}
+    #sidebar .sidebar-search-btn{width:100%;padding:7px 8px}
+    #sidebar .sidebar-search-btn .nav-label,#sidebar .sidebar-search-btn .cmd-hint{display:inline}
+    #sidebar nav{flex-direction:column;gap:1px}
+    #sidebar nav button{width:100%}
+    #sidebar nav button span{display:inline}
   }
 
-  main{flex:1;min-width:0;max-width:1120px;padding:36px 40px 100px}
+  main{flex:1;min-width:0;max-width:1520px;padding:36px 40px 100px}
   h2{font-size:29px;font-weight:700;margin-bottom:10px;letter-spacing:-.015em;line-height:1.25}
   .sub{color:var(--muted);font-size:13.5px;margin-bottom:24px}
 
@@ -503,6 +514,14 @@
 </style>
 </head>
 <body>
+
+<div class="mobile-top-bar" id="mobileTopBar">
+  <button class="mobile-menu-btn" id="mobileMenuBtn" title="Menu">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </button>
+  <span class="mobile-top-bar-title" id="mobileTopBarTitle">Reciprocal Space</span>
+</div>
+<div class="mobile-nav-backdrop" id="mobileNavBackdrop"></div>
 
 <div class="app-shell">
   <aside id="sidebar">
@@ -1364,11 +1383,24 @@ function updateSidebarUser(){
   document.getElementById('sidebarUserName').textContent = me.name;
 }
 
+function closeMobileNav(){
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('mobileNavBackdrop');
+  if(sidebar) sidebar.classList.remove('mobile-open');
+  if(backdrop) backdrop.classList.remove('show');
+}
+
 function render(){
   updateSidebarUser();
   document.querySelectorAll('#nav button').forEach(b=>{
     b.classList.toggle('active', b.dataset.view===state.view);
   });
+  const titleEl = document.getElementById('mobileTopBarTitle');
+  if(titleEl){
+    const activeLabel = document.querySelector('#nav button.active .nav-label');
+    titleEl.textContent = activeLabel ? activeLabel.textContent : 'Reciprocal Space';
+  }
+  closeMobileNav();
   ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation}[state.view])();
   main.classList.remove('fade-in'); void main.offsetWidth; main.classList.add('fade-in');
 }
@@ -1500,6 +1532,7 @@ function renderHome(){
   const hoursToFill = state.projTasks.filter(t=>{
     if(!(t.assigned_designer_ids||[]).includes(me.id)) return false;
     if(isPausedStatus(t.status)) return false;
+    if(!t.counts_toward_retainer) return false;
     const client = taskClient(t);
     if(!client || !client.is_retainer) return false;
     const range = state.homeHoursExpanded ? lastTwoCyclesRange(client) : currentCycleRange(client);
@@ -4567,6 +4600,11 @@ async function boot(){
     $('#sidebarCollapseBtn').title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
   });
   if($('#sidebar').classList.contains('collapsed')) $('#sidebarCollapseBtn').title = 'Expand sidebar';
+  $('#mobileMenuBtn').addEventListener('click', ()=>{
+    $('#sidebar').classList.add('mobile-open');
+    $('#mobileNavBackdrop').classList.add('show');
+  });
+  $('#mobileNavBackdrop').addEventListener('click', closeMobileNav);
   $('#brandBtn').addEventListener('click', ()=>{ state.view='home'; render(); });
   document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{
     state.view = b.dataset.view;
