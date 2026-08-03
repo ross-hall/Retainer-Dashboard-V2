@@ -549,7 +549,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.17.0</div>
+    <div id="versionBadge" class="version-badge">v0.17.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -717,6 +717,7 @@ function statusRecord(s){ return (state.taskStatuses.length?state.taskStatuses:D
 function statusColor(s){ return statusRecord(s).color; }
 function statusIcon(s){ return statusRecord(s).is_complete ? '✓' : '○'; }
 function isCompleteStatus(s){ return statusRecord(s).is_complete; }
+function isPausedStatus(s){ return s==='Hold' || s==='Pause'; }
 function contrastText(hex){
   if(!hex) return '#fff';
   const h = hex.replace('#','');
@@ -1401,7 +1402,7 @@ function homeTaskTableHtml(tasks, emptyLabel){
   return `<table class="task-table"><colgroup>${cols.join('')}</colgroup><thead><tr><th>Client / Project</th><th>Task</th><th>Status</th>${state.homeCols.has('priority')?'<th>Priority</th>':''}${state.homeCols.has('due')?'<th>Due</th>':''}<th></th></tr></thead><tbody>
     ${tasks.map(t=>`<tr class="task-row" data-projtask="${t.id}">
       <td style="color:var(--muted);font-size:12.5px">${homeTaskContextHtml(t)}</td>
-      <td><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></td>
+      <td><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></td>
       <td><select class="status-select" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}" data-statusinline="${t.id}">${taskStatusNames().map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></td>
       ${state.homeCols.has('priority')?`<td><select class="priority-pill priority-select priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></td>`:''}
       ${state.homeCols.has('due')?`<td>${t.due_date? fmtDateNatural(t.due_date) : '—'}</td>`:''}
@@ -1415,7 +1416,7 @@ function hoursToFillTableHtml(tasks){
   return `<table class="task-table"><colgroup><col style="width:170px"><col style="width:auto"><col style="width:120px"><col style="width:130px"></colgroup><thead><tr><th>Client / Project</th><th>Task</th><th>Hours</th><th>Work date</th></tr></thead><tbody>
     ${tasks.map(t=>`<tr class="task-row" data-projtask="${t.id}">
       <td style="color:var(--muted);font-size:12.5px">${homeTaskContextHtml(t)}</td>
-      <td><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></td>
+      <td><span class="status-dot" style="background:${statusColor(t.status)}" title="${esc(t.status||'To do')}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></td>
       <td>${hoursStepperHtml(t)}</td>
       <td>${workDateBtnHtml(t)}</td>
     </tr>`).join('')}
@@ -1488,11 +1489,17 @@ function renderHome(){
     .sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
   const hoursToFill = state.projTasks.filter(t=>{
     if(!(t.assigned_designer_ids||[]).includes(me.id)) return false;
+    if(isPausedStatus(t.status)) return false;
     const client = taskClient(t);
     if(!client || !client.is_retainer) return false;
     const range = state.homeHoursExpanded ? lastTwoCyclesRange(client) : currentCycleRange(client);
+    // small grace window past the cycle end so a task due just a couple of days
+    // after the boundary (e.g. created today, due in 2 days) doesn't vanish —
+    // without this, only due_date (falling back to created_at when unset) is used,
+    // so old backlog tasks stay correctly excluded regardless of import date
+    const graceEnd = iso(new Date(new Date(range.end+'T00:00').getTime() + 7*86400000));
     const taskDate = t.due_date || iso(new Date(t.created_at));
-    return taskDate>=range.start && taskDate<=range.end;
+    return taskDate>=range.start && taskDate<=graceEnd;
   }).sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
 
   html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="homeColDropdownBtn">Columns ▾</button></div>
@@ -1770,7 +1777,7 @@ async function loadRetainerAllowanceBody(c){
   });
 
   // to-do list tasks (tracked or not) surfaced in the same cycles, by work date / due date
-  const projTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id);
+  const projTasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id && !isPausedStatus(t.status));
   const projGroups = {};
   const undated = [];
   projTasks.forEach(pt=>{
@@ -3849,7 +3856,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.17.0';
+const APP_VERSION = '0.17.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
