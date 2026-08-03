@@ -549,7 +549,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.16.0</div>
+    <div id="versionBadge" class="version-badge">v0.17.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -571,7 +571,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  homeCols:new Set(['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
+  homeCols:new Set(['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 
@@ -794,7 +794,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -806,16 +806,19 @@ async function loadAll(){
     db.from('rs_anim_steps').select('*').order('position'),
     db.from('rs_anim_cells').select('*'),
     db.from('rs_anim_feedback').select('*').order('created_at'),
-    db.from('rs_proj_task_entries').select('*').order('work_date',{ascending:false})
+    db.from('rs_proj_task_entries').select('*').order('work_date',{ascending:false}),
+    db.from('rs_anim_cell_statuses').select('*').order('position')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
   state.stageCategories = sc.data||[]; state.stageLinks = sl.data||[];
   state.animShots = ash.data||[]; state.animSteps = ast.data||[]; state.animCells = acl.data||[];
   state.animFeedback = afb.data||[];
+  state.animCellStatuses = (acs.data && acs.data.length) ? acs.data : [];
   state.projTaskEntries = pte.data||[];
   if(pte.error) console.warn('Task time entries table not found — run retainer-tracker-migration-v18.sql', pte.error);
   if(ash.error) console.warn('Animation tables not found — run retainer-tracker-migration-v16.sql', ash.error);
+  if(acs.error) console.warn('Animation cell statuses table not found — run retainer-tracker-migration-v20.sql', acs.error);
   if(ts.error) console.warn('Task statuses table not found — run retainer-tracker-migration-v13.sql', ts.error);
   if(sc.error) console.warn('Client dashboard tables not found — run retainer-tracker-migration-v14.sql', sc.error);
   if(pr.error) console.warn('Project Overview tables not found — run retainer-tracker-migration-v4.sql', pr.error);
@@ -3592,6 +3595,30 @@ function renderSettings(){
     </div>
 
     <div class="card" style="margin-top:22px">
+      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Pipeline cell statuses</h3>
+      <div class="sub" style="margin-bottom:14px">The status options for each shot × pipeline-step cell on the Animation page. "Behaviour" is what the rest of the app keys off — progress %, the flag chips, and the overdue check all follow behaviour, not the name, so you can rename or recolour freely without breaking anything.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="animStatusList">
+        ${state.animCellStatuses.length ? state.animCellStatuses.slice().sort((a,b)=>a.position-b.position).map((st,i,arr)=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          ${colorCircleHtml('as_color_'+st.id, st.color)}
+          <input type="text" data-animstatusname="${st.id}" value="${esc(st.name)}" placeholder="Name" style="flex:1;min-width:120px">
+          <input type="text" data-animstatusshort="${st.id}" value="${esc(st.short)}" placeholder="Short" maxlength="4" style="width:64px;text-align:center" title="Shown inside the small pipeline cell">
+          <select data-animstatusbehavior="${st.id}" style="min-width:170px">
+            <option value="none" ${st.behavior==='none'?'selected':''}>No special meaning</option>
+            <option value="wip" ${st.behavior==='wip'?'selected':''}>Active work in progress</option>
+            <option value="waiting" ${st.behavior==='waiting'?'selected':''}>Waiting on feedback</option>
+            <option value="retake" ${st.behavior==='retake'?'selected':''}>Needs retakes</option>
+            <option value="done" ${st.behavior==='done'?'selected':''}>Counts as done</option>
+            <option value="omitted" ${st.behavior==='omitted'?'selected':''}>Omitted / not applicable</option>
+          </select>
+          <button class="btn small ghost" data-animstatusup="${st.id}" ${i===0?'disabled':''} title="Move up">↑</button>
+          <button class="btn small ghost" data-animstatusdown="${st.id}" ${i===arr.length-1?'disabled':''} title="Move down">↓</button>
+          <button class="btn small danger" data-animstatusdelete="${st.id}" title="Delete">Delete</button>
+        </div>`).join('') : '<div class="empty">No pipeline statuses yet — run migration v20 (outputs/v20_anim_cell_statuses.sql) in Supabase, then reload. Until then the Animation page keeps using its original 7 built-in statuses.</div>'}
+      </div>
+      <button class="btn small" id="newAnimStatusBtn">+ New status</button>
+    </div>
+
+    <div class="card" style="margin-top:22px">
       <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Data & backups</h3>
       <div class="sub" style="margin-bottom:14px">Export everything currently in Supabase — good for a periodic backup, or before making big changes.</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -3732,6 +3759,76 @@ function renderSettings(){
     if(error){ toast('Could not add status'); console.error(error); return; }
     toast('Status added — rename it below'); await loadAll();
   };
+
+  state.animCellStatuses.forEach(st=>{
+    wireColorCircleCustom('as_color_'+st.id, async (hex)=>{
+      const { error } = await db.from('rs_anim_cell_statuses').update({ color:hex }).eq('id', st.id);
+      if(error){ toast(error.code==='PGRST205'||error.code==='PGRST204' ? 'Run migration v20 to enable pipeline status editing' : 'Could not save colour'); return; }
+      await loadAll();
+    });
+  });
+  main.querySelectorAll('[data-animstatusname]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const name = inp.value.trim();
+      if(!name){ toast('Status needs a name'); inp.value = animStatusList().find(s=>s.id===inp.dataset.animstatusname).name; return; }
+      const { error } = await db.from('rs_anim_cell_statuses').update({ name }).eq('id', inp.dataset.animstatusname);
+      if(error){ toast('Could not rename'); return; }
+      toast('Status renamed'); await loadAll();
+    });
+  });
+  main.querySelectorAll('[data-animstatusshort]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const short = inp.value.trim();
+      const { error } = await db.from('rs_anim_cell_statuses').update({ short }).eq('id', inp.dataset.animstatusshort);
+      if(error){ toast('Could not save'); return; }
+      await loadAll();
+    });
+  });
+  main.querySelectorAll('[data-animstatusbehavior]').forEach(sel=>{
+    sel.addEventListener('change', async ()=>{
+      const { error } = await db.from('rs_anim_cell_statuses').update({ behavior: sel.value }).eq('id', sel.dataset.animstatusbehavior);
+      if(error){ toast('Could not save'); return; }
+      await loadAll();
+    });
+  });
+  main.querySelectorAll('[data-animstatusup]').forEach(b=>b.onclick = async ()=>{
+    const list = animStatusList();
+    const i = list.findIndex(s=>s.id===b.dataset.animstatusup);
+    if(i<=0) return;
+    const a=list[i], p=list[i-1];
+    await Promise.all([
+      db.from('rs_anim_cell_statuses').update({position:p.position}).eq('id',a.id),
+      db.from('rs_anim_cell_statuses').update({position:a.position}).eq('id',p.id)
+    ]);
+    await loadAll();
+  });
+  main.querySelectorAll('[data-animstatusdown]').forEach(b=>b.onclick = async ()=>{
+    const list = animStatusList();
+    const i = list.findIndex(s=>s.id===b.dataset.animstatusdown);
+    if(i<0 || i>=list.length-1) return;
+    const a=list[i], n=list[i+1];
+    await Promise.all([
+      db.from('rs_anim_cell_statuses').update({position:n.position}).eq('id',a.id),
+      db.from('rs_anim_cell_statuses').update({position:a.position}).eq('id',n.id)
+    ]);
+    await loadAll();
+  });
+  main.querySelectorAll('[data-animstatusdelete]').forEach(b=>b.onclick = async ()=>{
+    const st = animStatusList().find(s=>s.id===b.dataset.animstatusdelete);
+    const inUse = state.animCells.some(c=>c.status===st.name);
+    if(inUse){ toast(`Can't delete "${st.name}" — some pipeline cells are still using it. Change their status first.`); return; }
+    if(!confirm(`Delete the "${st.name}" status? This can't be undone.`)) return;
+    const { error } = await db.from('rs_anim_cell_statuses').delete().eq('id', st.id);
+    if(error){ toast('Delete failed'); return; }
+    toast('Status deleted'); await loadAll();
+  });
+  if($('#newAnimStatusBtn')) $('#newAnimStatusBtn').onclick = async ()=>{
+    const list = animStatusList();
+    const nextPos = list.length ? Math.max(...list.map(s=>s.position))+1 : 0;
+    const { error } = await db.from('rs_anim_cell_statuses').insert({ name:'New status', color:PALETTE[list.length%PALETTE.length], short:'?', behavior:'none', position:nextPos });
+    if(error){ toast(error.code==='PGRST205' ? 'Run migration v20 first — see outputs/v20_anim_cell_statuses.sql' : 'Could not add status'); console.error(error); return; }
+    toast('Status added — rename it below'); await loadAll();
+  };
 }
 
 /* ---------- setup / boot ---------- */
@@ -3752,7 +3849,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.16.0';
+const APP_VERSION = '0.17.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -3905,15 +4002,23 @@ initColumnResize();
    inside a stage-level "in progress". */
 
 const ANIM_DEFAULT_STEPS = ['Storyboard','Animatic','Blocking','Animation','Render','Comp','Approved'];
-const ANIM_CELL_STATUSES = {
-  'Not started':      { color:'#e7e7ee', text:'#7b7d92', short:'–'  },
-  'In progress':      { color:'#4C6EF5', text:'#fff',    short:'WIP'},
-  'Internal review':  { color:'#F0B429', text:'#3a2c00', short:'IR' },
-  'Client review':    { color:'#15AABF', text:'#fff',    short:'CR' },
-  'Retakes':          { color:'#E8623D', text:'#fff',    short:'RT' },
-  'Approved':         { color:'#2FB380', text:'#fff',    short:'✓'  },
-  'Omitted':          { color:'#cfcfd8', text:'#7b7d92', short:'om' }
-};
+/* Editable per-cell pipeline statuses (rs_anim_cell_statuses). `behavior` is the
+   semantic flag the rest of the app keys off instead of the display name, so
+   renaming/recolouring a status never breaks progress %, flag chips, or the
+   overdue/unassigned checks: 'wip' | 'waiting' | 'retake' | 'done' | 'omitted' | 'none'. */
+const DEFAULT_ANIM_CELL_STATUSES = [
+  { name:'Not started',     color:'#e7e7ee', short:'–',   behavior:'none',    position:0 },
+  { name:'In progress',     color:'#4C6EF5', short:'WIP', behavior:'wip',     position:1 },
+  { name:'Internal review', color:'#F0B429', short:'IR',  behavior:'none',    position:2 },
+  { name:'Client review',   color:'#15AABF', short:'CR',  behavior:'waiting', position:3 },
+  { name:'Retakes',         color:'#E8623D', short:'RT',  behavior:'retake',  position:4 },
+  { name:'Approved',        color:'#2FB380', short:'✓',   behavior:'done',    position:5 },
+  { name:'Omitted',         color:'#cfcfd8', short:'om',  behavior:'omitted', position:6 }
+];
+function animStatusList(){ return (state.animCellStatuses.length?state.animCellStatuses:DEFAULT_ANIM_CELL_STATUSES).slice().sort((a,b)=>a.position-b.position); }
+function animStatusNames(){ return animStatusList().map(s=>s.name); }
+function animStatusRecord(name){ return animStatusList().find(s=>s.name===name) || animStatusList()[0]; }
+function animStatusBehavior(name){ return animStatusRecord(name)?.behavior || 'none'; }
 
 function animProjects(){
   const cfgNames = state.projectTypes.filter(t=>/anim/i.test(t.name)).map(t=>t.name);
@@ -3927,7 +4032,7 @@ function animCellStatus(shotId, stepId){ const c = animCell(shotId, stepId); ret
 /* A shot's overall position = the last step it has fully approved. */
 function animShotProgress(shot, steps){
   let done = 0;
-  for(const st of steps){ if(animCellStatus(shot.id, st.id)==='Approved') done++; else break; }
+  for(const st of steps){ if(animStatusBehavior(animCellStatus(shot.id, st.id))==='done') done++; else break; }
   return { done, total: steps.length, pct: steps.length? Math.round(done/steps.length*100):0 };
 }
 
@@ -4192,7 +4297,7 @@ function openAnimCellModal(shotId, stepId){
   showModal(`
     <h3>${esc(shot.code)} · ${esc(step.name)}</h3>
     <form class="log" style="max-width:none">
-      <div><label>Status</label><select id="ac_status">${Object.keys(ANIM_CELL_STATUSES).map(k=>`<option value="${k}" ${c.status===k?'selected':''}>${k}</option>`).join('')}</select></div>
+      <div><label>Status</label><select id="ac_status">${animStatusNames().map(k=>`<option value="${esc(k)}" ${c.status===k?'selected':''}>${esc(k)}</option>`).join('')}</select></div>
       <div><label>Assigned to</label><select id="ac_who"><option value="">— nobody —</option>${designers.map(m=>`<option value="${m.id}" ${c.assignee_id===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
       <div><label>Version</label><input type="number" min="0" id="ac_version" value="${c.version||0}"></div>
       <div><label>Retake rounds</label><input type="number" min="0" id="ac_retakes" value="${c.retakes||0}"></div>
@@ -4459,6 +4564,7 @@ function animAllFeedback(projectId){
   return (state.animFeedback||[]).filter(f=>shotIds.has(f.shot_id))
     .sort((a,b)=>b.created_at.localeCompare(a.created_at));
 }
+function animOutstandingFeedback(projectId){ return animAllFeedback(projectId).filter(f=>!f.resolved); }
 
 /* ── 2. Daily snapshot helpers ───────────────────────────────────────── */
 function animChangedSince(projectId, hoursAgo){
@@ -4468,11 +4574,12 @@ function animChangedSince(projectId, hoursAgo){
 }
 
 /* ── Patched renderAnimation: inject feedback count, snapshot tab,
-      and timeline tab into the existing page ────────────────────────── */
+      timeline tab, and feedback tab into the existing page ─────────────── */
 const _origRenderAnimation = renderAnimation;
 function renderAnimation(){
   if(state.animTab === 'snapshot') { renderAnimSnapshot(); return; }
   if(state.animTab === 'timeline') { renderAnimTimeline(); return; }
+  if(state.animTab === 'feedback') { renderAnimFeedbackTab(); return; }
   renderAnimGrid();
 }
 
@@ -4534,10 +4641,11 @@ function renderAnimGrid(){
     steps.forEach(st=>{
       const c = animCell(s.id, st.id);
       if(!c) return;
-      if(c.status==='Retakes')       flags.retakes.push({s,st,c});
-      if(c.status==='Client review') flags.clientWait.push({s,st,c});
-      if(c.due_date && c.due_date < todayIso && c.status!=='Approved' && c.status!=='Omitted') flags.overdue.push({s,st,c});
-      if(c.status==='In progress' && !c.assignee_id) flags.unassigned.push({s,st,c});
+      const beh = animStatusBehavior(c.status);
+      if(beh==='retake')  flags.retakes.push({s,st,c});
+      if(beh==='waiting') flags.clientWait.push({s,st,c});
+      if(c.due_date && c.due_date < todayIso && beh!=='done' && beh!=='omitted') flags.overdue.push({s,st,c});
+      if(beh==='wip' && !c.assignee_id) flags.unassigned.push({s,st,c});
     });
     const anyTouched = steps.some(st=>animCell(s.id,st.id));
     if(!anyTouched) flags.stalled.push({s});
@@ -4595,15 +4703,16 @@ function renderAnimGrid(){
               ${steps.map(st=>{
                 const c = animCell(s.id, st.id);
                 const status = c ? c.status : 'Not started';
-                const cfg = ANIM_CELL_STATUSES[status] || ANIM_CELL_STATUSES['Not started'];
+                const cfg = animStatusRecord(status);
+                const beh = animStatusBehavior(status);
                 const m = c && c.assignee_id ? state.members.find(mm=>mm.id===c.assignee_id) : null;
-                const overdue = c && c.due_date && c.due_date < todayIso && status!=='Approved' && status!=='Omitted';
+                const overdue = c && c.due_date && c.due_date < todayIso && beh!=='done' && beh!=='omitted';
                 const fb = animFeedbackCount(s.id, st.id);
                 return `<td style="text-align:center;padding:5px">
                   <button class="anim-cell" data-animcell="${s.id}:${st.id}"
                     title="${esc(status)}${m?' · '+esc(m.name):''}${c&&c.due_date?' · due '+c.due_date:''}"
-                    style="background:${cfg.color};color:${cfg.text};${overdue?'box-shadow:inset 0 0 0 2px var(--red)':''}">
-                    <span style="font-size:11px;font-weight:700">${cfg.short}</span>
+                    style="background:${cfg.color};color:${contrastText(cfg.color)};${overdue?'box-shadow:inset 0 0 0 2px var(--red)':''}">
+                    <span style="font-size:11px;font-weight:700">${esc(cfg.short)}</span>
                     ${c&&c.version?`<span class="anim-cell-v">v${String(c.version).padStart(3,'0')}</span>`:''}
                     ${c&&c.retakes?`<span class="anim-cell-rt">${c.retakes}↻</span>`:''}
                     ${m?`<span class="anim-cell-who">${esc(initials(m.name))}</span>`:''}
@@ -4618,7 +4727,7 @@ function renderAnimGrid(){
       </table>
     </div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--muted)">
-      ${Object.entries(ANIM_CELL_STATUSES).map(([k,v])=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:${v.color};display:inline-block"></span>${esc(k)}</span>`).join('')}
+      ${animStatusList().map(s=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:${s.color};display:inline-block"></span>${esc(s.name)}</span>`).join('')}
     </div>`;
   }
 
@@ -4650,9 +4759,10 @@ function animShotTimelineStatus(shot, steps, todayIso){
     const c = animCell(shot.id, st.id);
     if(!c) return;
     anyTouched = true;
-    if(c.status==='Retakes') anyRetakes = true;
-    if(c.status==='Client review') anyClientReview = true;
-    if(c.due_date && c.due_date < todayIso && c.status!=='Approved' && c.status!=='Omitted') anyOverdue = true;
+    const beh = animStatusBehavior(c.status);
+    if(beh==='retake') anyRetakes = true;
+    if(beh==='waiting') anyClientReview = true;
+    if(c.due_date && c.due_date < todayIso && beh!=='done' && beh!=='omitted') anyOverdue = true;
   });
   const pr = animShotProgress(shot, steps);
   if(anyOverdue) return { label:'Overdue', color:'#c9372c', text:'#fff' };
@@ -4748,6 +4858,69 @@ function renderAnimTimeline(){
   main.querySelectorAll('[data-animshottl]').forEach(el=>el.addEventListener('click', ()=> openAnimShotModal(p.id, el.dataset.animshottl)));
 }
 
+/* ── Feedback view — shots with outstanding (unresolved) feedback notes ── */
+function renderAnimFeedbackTab(){
+  const p = animProjects().find(x=>x.id===state.animProjectId);
+  if(!p){ state.animTab='grid'; renderAnimation(); return; }
+  const shots = animShotsFor(p.id);
+  const steps = animStepsFor(p.id);
+  const allFb = animAllFeedback(p.id);
+  const outstanding = allFb.filter(f=>!f.resolved);
+  const resolved = allFb.filter(f=>f.resolved);
+
+  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
+  </div><div style="margin-bottom:18px"></div>`;
+  html += `<div class="pd-tabs" style="padding:0;margin-bottom:20px">${animProjects().map(pr=>{
+    const cl = state.clients.find(c=>c.id===pr.client_id);
+    return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
+      style="${pr.id===state.animProjectId?`color:var(--accent);border-color:var(--accent)`:''}">${esc(cl?cl.name:'?')}</button>`;
+  }).join('')}</div>
+  ${animViewToggleHtml('feedback')}`;
+
+  if(allFb.some(f=>f.resolved===undefined)){
+    html += `<div class="banner"><div>⚠️</div><div>Resolving feedback needs a small database update — run <code>outputs/v20_anim_cell_statuses.sql</code> in Supabase, then reload.</div></div>`;
+  }
+
+  const noteHtml = (f, muted)=>{
+    const shot = shots.find(s=>s.id===f.shot_id);
+    const step = steps.find(s=>s.id===f.step_id);
+    const author = f.author_id ? state.members.find(m=>m.id===f.author_id) : null;
+    return `<div class="card" style="padding:12px 14px;margin-bottom:8px;${muted?'opacity:.55':''}" data-animfbjump="${f.shot_id}:${f.step_id}">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px">
+        <span style="font-weight:600;font-size:13px">${shot?esc(shot.code):'?'} <span style="color:var(--muted);font-weight:400">· ${step?esc(step.name):'?'}</span></span>
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">${author?esc(author.name)+' · ':''}${fmtDate(new Date(f.created_at))}</span>
+      </div>
+      <div style="font-size:13px;color:var(--ink);white-space:pre-wrap;${muted?'text-decoration:line-through':''}">${esc(f.body)}</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);margin-top:8px" onclick="event.stopPropagation()"><input type="checkbox" data-animfbresolve="${f.id}" ${f.resolved?'checked':''} style="width:auto"> Resolved</label>
+    </div>`;
+  };
+
+  html += `<div style="margin-bottom:10px;font-size:12.5px;color:var(--muted)">${outstanding.length} outstanding note${outstanding.length===1?'':'s'} across ${new Set(outstanding.map(f=>f.shot_id)).size} shot${new Set(outstanding.map(f=>f.shot_id)).size===1?'':'s'}</div>`;
+  html += outstanding.length
+    ? outstanding.map(f=>noteHtml(f,false)).join('')
+    : emptyStateHtml({ icon:'check', title:'Nothing outstanding', subtitle:'Every piece of feedback logged so far has been marked resolved.' });
+
+  if(resolved.length){
+    html += `<div style="margin-top:24px">
+      <div class="stage-head"><h4>Resolved <span class="home-count">${resolved.length}</span></h4></div>
+      ${resolved.map(f=>noteHtml(f,true)).join('')}
+    </div>`;
+  }
+
+  main.innerHTML = html;
+  wireAnimTabsAll();
+  main.querySelectorAll('[data-animfbjump]').forEach(el=>el.addEventListener('click', ()=>{
+    const [shotId, stepId] = el.dataset.animfbjump.split(':');
+    openAnimCellModal(shotId, stepId);
+  }));
+  main.querySelectorAll('[data-animfbresolve]').forEach(cb=>cb.addEventListener('change', async ()=>{
+    const { error } = await db.from('rs_anim_feedback').update({ resolved: cb.checked }).eq('id', cb.dataset.animfbresolve);
+    if(error){ toast(error.code==='PGRST204' ? 'Run migration v20 to enable resolving feedback' : 'Could not save'); cb.checked = !cb.checked; return; }
+    await loadAll();
+  }));
+}
+
 /* ── Snapshot view ─────────────────────────────────────────────────────── */
 function renderAnimSnapshot(){
   const p = animProjects().find(x=>x.id===state.animProjectId);
@@ -4770,11 +4943,11 @@ function renderAnimSnapshot(){
       const shot = shots.find(s=>s.id===c.shot_id);
       const step = steps.find(s=>s.id===c.step_id);
       const m = c.assignee_id ? state.members.find(mm=>mm.id===c.assignee_id) : null;
-      const cfg = ANIM_CELL_STATUSES[c.status] || ANIM_CELL_STATUSES['Not started'];
+      const cfg = animStatusRecord(c.status);
       const fb = animFeedbackFor(c.shot_id, c.step_id);
       const latest = fb[fb.length-1];
       return `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
-        <span style="background:${cfg.color};color:${cfg.text};font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap;flex-shrink:0">${esc(cfg.short)}</span>
+        <span style="background:${cfg.color};color:${contrastText(cfg.color)};font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap;flex-shrink:0">${esc(cfg.short)}</span>
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;font-size:13.5px">${shot?esc(shot.code):'?'} · ${step?esc(step.name):'?'}</div>
           <div style="font-size:12px;color:var(--muted)">${esc(c.status)}${m?` · ${esc(m.name)}`:''}${c.retakes?` · ${c.retakes} retake${c.retakes===1?'':'s'}`:''}</div>
@@ -4790,14 +4963,14 @@ function renderAnimSnapshot(){
   shots.forEach(s=> steps.forEach(st=>{
     const c = animCell(s.id, st.id);
     if(!c) return;
-    if(c.due_date && c.due_date < todayIso && c.status!=='Approved' && c.status!=='Omitted')
+    const beh = animStatusBehavior(c.status);
+    if(c.due_date && c.due_date < todayIso && beh!=='done' && beh!=='omitted')
       attn.push({ shot:s, step:st, c, type:'overdue' });
-    if(c.status==='Retakes') attn.push({ shot:s, step:st, c, type:'retakes' });
-    if(c.status==='Client review') attn.push({ shot:s, step:st, c, type:'waiting' });
+    if(beh==='retake') attn.push({ shot:s, step:st, c, type:'retakes' });
+    if(beh==='waiting') attn.push({ shot:s, step:st, c, type:'waiting' });
   }));
 
   const attnHtml = attn.length ? attn.map(a=>{
-    const cfg = ANIM_CELL_STATUSES[a.c.status]||ANIM_CELL_STATUSES['Not started'];
     const label = a.type==='overdue'?'⚠ Overdue': a.type==='retakes'?'↻ Retakes':'⏳ Client';
     const color = a.type==='overdue'?'#c9372c': a.type==='retakes'?'#E8623D':'#15AABF';
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
@@ -4839,9 +5012,11 @@ function renderAnimSnapshot(){
 
 /* ── Shared view-toggle tab bar (Pipeline / Timeline / Today's snapshot) ── */
 function animViewToggleHtml(tab){
+  const outstanding = state.animProjectId ? animOutstandingFeedback(state.animProjectId).length : 0;
   return `<div class="view-toggle" style="margin-bottom:20px">
     <button class="btn small ${!tab||tab==='grid'?'':'ghost'}" data-animtab="grid">Pipeline</button>
     <button class="btn small ${tab==='timeline'?'':'ghost'}" data-animtab="timeline">Timeline</button>
+    <button class="btn small ${tab==='feedback'?'':'ghost'}" data-animtab="feedback">Feedback${outstanding?` <span class="home-count">${outstanding}</span>`:''}</button>
     <button class="btn small ${tab==='snapshot'?'':'ghost'}" data-animtab="snapshot">Today's snapshot</button>
   </div>`;
 }
@@ -4864,19 +5039,20 @@ function openAnimCellModal(shotId, stepId){
 
   const fbHtml = feedback.length ? feedback.map(f=>{
     const author = f.author_id ? state.members.find(m=>m.id===f.author_id) : null;
-    return `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--line);${f.resolved?'opacity:.55':''}">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px">
         <span style="font-weight:600;font-size:12.5px">${author?esc(author.name):'Team'}</span>
         <span style="font-size:11px;color:var(--muted)">${fmtDate(new Date(f.created_at))}${f.version_at?` · v${String(f.version_at).padStart(3,'0')}`:''}</span>
       </div>
-      <div style="font-size:13px;color:var(--ink);white-space:pre-wrap">${esc(f.body)}</div>
+      <div style="font-size:13px;color:var(--ink);white-space:pre-wrap;${f.resolved?'text-decoration:line-through':''}">${esc(f.body)}</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);margin-top:6px"><input type="checkbox" data-fbresolve="${f.id}" ${f.resolved?'checked':''} style="width:auto"> Resolved</label>
     </div>`;
   }).join('') : `<div style="color:var(--muted);font-size:12.5px;padding:8px 0">No feedback yet.</div>`;
 
   showModal(`
     <h3>${esc(shot.code)} · ${esc(step.name)}</h3>
     <form class="log" style="max-width:none">
-      <div><label>Status</label><select id="ac_status">${Object.keys(ANIM_CELL_STATUSES).map(k=>`<option value="${k}" ${c.status===k?'selected':''}>${k}</option>`).join('')}</select></div>
+      <div><label>Status</label><select id="ac_status">${animStatusNames().map(k=>`<option value="${esc(k)}" ${c.status===k?'selected':''}>${esc(k)}</option>`).join('')}</select></div>
       <div><label>Assigned to</label><select id="ac_who"><option value="">— nobody —</option>${designers.map(m=>`<option value="${m.id}" ${c.assignee_id===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
       <div><label>Version</label><input type="number" min="0" id="ac_version" value="${c.version||0}"></div>
       <div><label>Retake rounds</label><input type="number" min="0" id="ac_retakes" value="${c.retakes||0}"></div>
@@ -4912,6 +5088,13 @@ function openAnimCellModal(shotId, stepId){
     toast('Note added'); await loadAll();
     openAnimCellModal(shotId, stepId);
   };
+
+  document.querySelectorAll('[data-fbresolve]').forEach(cb=>cb.addEventListener('change', async ()=>{
+    const { error } = await db.from('rs_anim_feedback').update({ resolved: cb.checked }).eq('id', cb.dataset.fbresolve);
+    if(error){ toast(error.code==='PGRST204' ? 'Run migration v20 to enable resolving feedback' : 'Could not save'); cb.checked = !cb.checked; return; }
+    await loadAll();
+    openAnimCellModal(shotId, stepId);
+  }));
 
   $('#ac_save').onclick = async ()=>{
     const fields = {

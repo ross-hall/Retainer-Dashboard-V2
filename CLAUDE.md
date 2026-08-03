@@ -3,13 +3,13 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.13.0**
+Current version: **v0.17.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
 - Anon key: `sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj`
 - RLS is fully open (anon key can read/write everything — known risk, flagged)
-- ⚠️ **Pending manual step:** `outputs/v19_add_animator.sql` has not been run yet — Animator assignments won't persist server-side until it is.
+- ⚠️ **Pending manual steps:** `outputs/v19_add_animator.sql` and `outputs/v20_anim_cell_statuses.sql` have not been run yet — Animator assignments won't persist server-side, pipeline cell statuses aren't editable, and feedback notes can't be marked resolved until they are.
 
 Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · Inter font · Notion + Linear + Arc-inspired visual system with a dark-mode variant. **The standalone "Retainers" nav page/dashboard is gone as of v0.13.0** — its content (allowance meter, remaining hours, renewal date) now lives directly on each retainer client's card on the All Projects page, and the client detail page merges what used to be two separate pages (to-do list / allowance history) into one page with a "To-do list" / "Monthly allowance" tab toggle. The old "Calendar view" for ad-hoc hour-logging (not tied to a task) was removed with it — hours are logged through the task modal (tick "counts toward retainer" + recorded hours) instead. See "What shipped in v0.13.0" below.
 
@@ -86,9 +86,10 @@ Public dashboard (no internal nav):
 | `rs_anim_shots` | v16 | Shots per animation project |
 | `rs_anim_steps` | v16 | Pipeline steps per animation project |
 | `rs_anim_cells` | v16 | Status per (shot, step) pair |
-| `rs_anim_feedback` | v17 | Timestamped feedback thread per cell |
+| `rs_anim_feedback` | v17, **v20** | Timestamped feedback thread per cell. v20 adds `resolved` (not yet run) |
 | `rs_anim_deps` | v17 | Shot dependency chains — **unused as of v0.16.0**, the Dependencies feature was removed from the app; table/rows left untouched in Supabase, nothing reads or writes it anymore |
 | `rs_proj_task_entries` | v18 | Per-person time entries on retainer tasks |
+| `rs_anim_cell_statuses` | **v20** | Editable pipeline cell statuses (name/color/short/behavior/position) — **not yet run**; until it is, `animStatusList()` falls back to the hardcoded `DEFAULT_ANIM_CELL_STATUSES` (the same 7 statuses the app always had) |
 
 ---
 
@@ -185,6 +186,11 @@ Font: Inter (unchanged from v0.9.0)
 - **Retainer client detail header simplified**: `clientRetainerHeaderHtml` now combines the name/badge/action-buttons card, the renewal line ("Renews in X days (date)") + allowance meter, and the Task list/Monthly allowance tab toggle into one card (no more separate `retainerTabsHtml`/`wireRetainerTabs` — that logic is inline in `clientRetainerHeaderHtml`/`wireClientRetainerHeader` now). To-do/Completed task groups on the Task list tab lost their outer border box.
 - **Animation page**: Dependencies tab/feature removed entirely (`renderAnimDeps`, `animDepsFor`/`animIsBlocked`/`animBlockedBy`/`animBlocks`, the "blocked" flag chip and per-shot badge, and the `rs_anim_deps` load query are all gone — the table itself is untouched in Supabase, just unused). "Grid" tab relabelled "Pipeline" (internal `data-animtab`/`state.animTab` value is still `'grid'`, only the button text changed). New **Timeline** tab (`renderAnimTimeline`) lays shots out by cumulative screen-time instead of by row — shots play back-to-back in their existing pipeline `position` order, each a bar sized by `duration_seconds`, coloured by one collapsed per-shot status (`animShotTimelineStatus`: Overdue > Needs retakes > Awaiting client > Approved > Not started > In progress). All three tabs (Pipeline/Timeline/Today's snapshot) now share one `animViewToggleHtml(tab)` helper instead of three separately-maintained copies of the button row.
 
+**What shipped in v0.17.0** (editable pipeline statuses + Feedback tab):
+- **Pipeline cell statuses are now editable** (Settings > "Pipeline cell statuses", mirrors the existing Task Statuses editor exactly — add/remove/reorder/recolour/rename). The old hardcoded `ANIM_CELL_STATUSES` object is gone; `rs_anim_cell_statuses` is the new source of truth via `animStatusList()`/`animStatusRecord()`/`animStatusBehavior()`, with `DEFAULT_ANIM_CELL_STATUSES` as the pre-migration fallback (same 7 statuses as before). Every place that used to check a hardcoded status name (progress-%, flag chips, overdue check, unassigned check) now checks the status's `behavior` field instead (`'wip'|'waiting'|'retake'|'done'|'omitted'|'none'`) so custom/renamed statuses keep the app's logic working. Cell background is still the status colour, but the text colour is now computed live via `contrastText()` instead of being a stored field.
+- **New Feedback tab** (`renderAnimFeedbackTab`) lists every outstanding (unresolved) feedback note across the project's shots, click-through to the cell modal, with a "Resolved" checkbox per note — resolved notes drop into a collapsed section below rather than disappearing. Needs `rs_anim_feedback.resolved` (v20 migration); the cell modal's feedback log also grew the same per-note "Resolved" checkbox.
+- Both the dead `renderAnimation`/`openAnimCellModal` stubs from v0.16.0's known-issues note are unaffected — still there, still never called.
+
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
 Prior versions recoverable via git history: v0.12.x/v0.11.x (Retainers page still present) are recent commits before this session; v0.10.0 (no dark mode/command palette/inline editing) and v0.9.0 (sharp 3px corners) are further back; v0.8.2 (original top nav, Rubik, 14px radius) is `5664307` or earlier for the pre-redesign baseline.
@@ -201,6 +207,7 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - Column widths (taskColWidths) reset on page refresh — session-only, no persistence yet.
 - RLS is fully open — flagged as risk now that client-facing dashboard URLs are live.
 - `outputs/v19_add_animator.sql` has not been run against the live Supabase DB yet — Animator picks in the UI don't persist until it is (app degrades gracefully in the meantime, treating every member as animator-eligible).
+- `outputs/v20_anim_cell_statuses.sql` has not been run yet — the new Settings > "Pipeline cell statuses" editor will show "run migration v20, then reload" until it is; the app degrades gracefully in the meantime by falling back to `DEFAULT_ANIM_CELL_STATUSES` (the original hardcoded 7 statuses), and the Feedback tab's "Resolved" checkbox will toast an error until `rs_anim_feedback.resolved` exists.
 
 ---
 
@@ -213,3 +220,4 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - v17: rs_anim_feedback + rs_anim_deps
 - v18: rs_proj_task_entries
 - v19: rs_members.can_animate + rs_proj_tasks.assigned_animator_ids — **not yet run**, do this in the Supabase SQL editor when convenient
+- v20: rs_anim_cell_statuses (editable pipeline cell statuses) + rs_anim_feedback.resolved — **not yet run**, do this in the Supabase SQL editor when convenient
