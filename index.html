@@ -362,13 +362,14 @@
   .week-chip .mc-time{font-weight:700;font-size:12px;color:var(--accent);margin-bottom:3px}
   .week-chip .mc1{color:var(--ink)}
   .week-chip .mc2,.week-chip .mc3{color:var(--muted)}
-  .priority-pill{font-size:12px;font-weight:600;padding:5px 12px;border-radius:99px;display:inline-block}
+  .priority-pill{font-size:12px;font-weight:600;padding:5px 12px;border-radius:99px;display:inline-flex;align-items:center;gap:5px}
   .priority-low{background:var(--track);color:var(--muted)}
   .priority-medium{background:var(--accent-soft);color:var(--accent)}
   .priority-high{background:var(--amber-bg);color:var(--amber)}
   .priority-urgent{background:var(--red-bg);color:var(--red)}
-  select.priority-select{border:none;-webkit-appearance:none;appearance:none;cursor:pointer;padding-right:26px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%237b7a77' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;transition:filter var(--fast) var(--ease)}
-  select.priority-select:hover{filter:brightness(.97)}
+  .pill-btn{border:none;cursor:pointer;font-family:inherit;transition:filter var(--fast) var(--ease),box-shadow var(--fast) var(--ease)}
+  .pill-btn:hover{filter:brightness(.88);box-shadow:0 0 0 1.5px var(--ink-light)}
+  .pill-chevron{flex:none;opacity:.9}
 
   .mini-datepicker{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow-pop);width:230px;animation:popIn var(--fast) var(--ease)}
   .mdp-head{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:8px}
@@ -412,8 +413,10 @@
   .status-complete{background:var(--green-bg);color:var(--green)}
   .status-pending{background:var(--track);color:var(--muted)}
   .status-active{background:var(--accent-soft);color:var(--accent)}
-  select.status-select{padding:5px 26px 5px 12px;font-size:12px;font-weight:600;border-radius:99px;border:none;width:auto;letter-spacing:0;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%237b7a77' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;transition:filter var(--fast) var(--ease)}
-  select.status-select:hover{filter:brightness(.97)}
+  .pill-popover{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:6px;box-shadow:var(--shadow-pop);min-width:180px;max-height:300px;overflow-y:auto;animation:popIn var(--fast) var(--ease);display:flex;flex-direction:column;gap:2px}
+  .pill-popover-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 6px;border-radius:8px;cursor:pointer;border:none;background:none;width:100%;text-align:left;font-family:inherit}
+  .pill-popover-item:hover{background:var(--track)}
+  .pill-popover-check{color:var(--accent);flex:none;display:flex}
 
   .brand{background:none;border:none;cursor:pointer;color:inherit}
   .brand:hover{opacity:.85}
@@ -578,7 +581,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.18.1</div>
+    <div id="versionBadge" class="version-badge">v0.18.3</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -863,6 +866,52 @@ function showModal(html, opts){
   $('#mbd').addEventListener('click', e=>{ if(e.target.id==='mbd') closeModal(); });
 }
 
+/* Bespoke status/priority popover — lists each option as its own coloured pill
+   (same chip used inline) so you see the name and the colour together, Notion/
+   Linear style, instead of a plain-text native <select> menu. */
+let _activePillPopover = null, _pillPopoverOutsideHandler = null;
+function closePillPopover(){
+  if(_activePillPopover){ _activePillPopover.remove(); _activePillPopover=null; }
+  if(_pillPopoverOutsideHandler){ document.removeEventListener('mousedown', _pillPopoverOutsideHandler); _pillPopoverOutsideHandler=null; }
+}
+function openPillPopover(anchorEl, options, currentValue, onSelect){
+  closePillPopover(); closeColDropdown(); closeColorPicker(); closeDatePicker();
+  const pop = document.createElement('div');
+  pop.className = 'pill-popover';
+  document.body.appendChild(pop);
+  _activePillPopover = pop;
+  const checkSvg = '<svg class="pill-popover-check" viewBox="0 0 16 16" width="13" height="13"><path d="M13.5 4.5l-7 7L3 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  pop.innerHTML = options.map(o=>`<button type="button" class="pill-popover-item" data-ppval="${esc(o.value)}">${o.html}${o.value===currentValue?checkSvg:''}</button>`).join('');
+  pop.querySelectorAll('[data-ppval]').forEach(b=>b.addEventListener('click', (e)=>{ e.stopPropagation(); onSelect(b.dataset.ppval); closePillPopover(); }));
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.position = 'fixed';
+  pop.style.top = Math.min(rect.bottom+6, window.innerHeight-300)+'px';
+  pop.style.left = Math.min(rect.left, window.innerWidth-200)+'px';
+  pop.style.zIndex = 300;
+  _pillPopoverOutsideHandler = e=>{ if(_activePillPopover && !_activePillPopover.contains(e.target) && e.target!==anchorEl && !anchorEl.contains(e.target)) closePillPopover(); };
+  setTimeout(()=> document.addEventListener('mousedown', _pillPopoverOutsideHandler), 0);
+}
+function openStatusPopover(anchorEl, taskId){
+  const task = state.projTasks.find(t=>t.id===taskId);
+  const current = task?.status || 'To do';
+  const options = taskStatusList().map(s=>({ value:s.name, html:`<span class="status-pill" style="background:${mutedBg(s.color)};color:${s.color}">${s.is_complete?'✓':'○'} ${esc(s.name)}</span>` }));
+  openPillPopover(anchorEl, options, current, async (val)=>{
+    const { error } = await db.from('rs_proj_tasks').update({ status: val }).eq('id', taskId);
+    if(error){ toast('Could not update status'); return; }
+    await refreshProjectView();
+  });
+}
+function openPriorityPopover(anchorEl, taskId){
+  const task = state.projTasks.find(t=>t.id===taskId);
+  const current = task?.priority || 'Medium';
+  const options = PRIORITIES.map(p=>({ value:p, html:`<span class="priority-pill priority-${p.toLowerCase()}">${esc(p)}</span>` }));
+  openPillPopover(anchorEl, options, current, async (val)=>{
+    const { error } = await db.from('rs_proj_tasks').update({ priority: val }).eq('id', taskId);
+    if(error){ toast('Could not update priority'); return; }
+    await refreshProjectView();
+  });
+}
+
 /* Small floating calendar popover for picking a single date without a full form */
 let _activeDatePicker = null, _dpOutsideHandler = null;
 function closeDatePicker(){
@@ -872,6 +921,7 @@ function closeDatePicker(){
 function openMiniDatePicker(anchorEl, currentValue, onSelect, opts){
   opts = opts || {};
   closeDatePicker();
+  closePillPopover();
   const base = currentValue ? new Date(currentValue+'T00:00') : new Date();
   let viewMonth = new Date(base.getFullYear(), base.getMonth(), 1);
   const pop = document.createElement('div');
@@ -944,6 +994,7 @@ function closeColDropdown(){
 }
 function openColumnDropdown(anchorEl){
   closeColDropdown();
+  closePillPopover();
   const pop = document.createElement('div');
   pop.className = 'col-dropdown';
   document.body.appendChild(pop);
@@ -966,6 +1017,7 @@ function openColumnDropdown(anchorEl){
 /* Generic multi-select checkbox dropdown, reused for client/type filters */
 function openCheckboxDropdown(anchorEl, items, isChecked, onToggle){
   closeColDropdown();
+  closePillPopover();
   const pop = document.createElement('div');
   pop.className = 'col-dropdown';
   document.body.appendChild(pop);
@@ -990,6 +1042,7 @@ function closeColorPicker(){
 }
 function openColorPicker(anchorEl, currentValue, onSelect, presets){
   closeColorPicker();
+  closePillPopover();
   const pop = document.createElement('div');
   pop.className = 'color-popover';
   document.body.appendChild(pop);
@@ -1445,9 +1498,9 @@ function homeTaskTableHtml(tasks, emptyLabel){
     ${tasks.map(t=>`<tr class="task-row" data-projtask="${t.id}">
       <td style="color:var(--muted);font-size:12.5px">${homeTaskContextHtml(t)}</td>
       <td><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></td>
-      <td><select class="status-select" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}" data-statusinline="${t.id}">${taskStatusNames().map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></td>
-      ${state.homeCols.has('priority')?`<td><select class="priority-pill priority-select priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></td>`:''}
-      ${state.homeCols.has('due')?`<td class="inline-editable" data-taskdue="${t.id}" title="Click to edit due date">${t.due_date? fmtDateNatural(t.due_date) : '—'}</td>`:''}
+      <td>${statusPillBtnHtml(t)}</td>
+      ${state.homeCols.has('priority')?`<td>${priorityPillBtnHtml(t)}</td>`:''}
+      ${state.homeCols.has('due')?`<td>${dueDateBtnHtml(t)}</td>`:''}
       <td><div style="display:flex;align-items:center;justify-content:flex-end;gap:6px"><button type="button" class="btn small ghost row-edit-btn" data-taskeditbtn="${t.id}">Edit</button>${miroIconBtnHtml(taskClient(t))}</div></td>
     </tr>`).join('')}
   </tbody></table>`;
@@ -1478,6 +1531,17 @@ function hoursStepperHtml(t){
 }
 function workDateBtnHtml(t){
   return `<button type="button" class="stage-date-btn" data-workdateinline="${t.id}" style="margin-top:0" onclick="event.stopPropagation()">${t.work_date? fmtDateNatural(t.work_date) : 'Set date'}</button>`;
+}
+function dueDateBtnHtml(t){
+  return `<button type="button" class="stage-date-btn" data-taskdue="${t.id}" style="margin-top:0">${t.due_date? fmtDateNatural(t.due_date) : 'Set date'}</button>`;
+}
+const PILL_CHEVRON_SVG = '<svg class="pill-chevron" viewBox="0 0 12 12" width="7" height="7"><path d="M2 4l4 4 4-4z" fill="currentColor"/></svg>';
+function statusPillBtnHtml(t){
+  const color = statusColor(t.status);
+  return `<button type="button" class="status-pill pill-btn" style="background:${mutedBg(color)};color:${color}" data-statusinline="${t.id}">${statusIcon(t.status)} ${esc(t.status||'To do')}${PILL_CHEVRON_SVG}</button>`;
+}
+function priorityPillBtnHtml(t){
+  return `<button type="button" class="priority-pill pill-btn priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${esc(t.priority||'Medium')}${PILL_CHEVRON_SVG}</button>`;
 }
 function wireHoursSteppers(root){
   root.querySelectorAll('[data-hourstep]').forEach(el=>el.addEventListener('click', async (e)=>{
@@ -1891,7 +1955,7 @@ async function loadRetainerAllowanceBody(c){
               : (pt.recorded_hours!=null? fmtH(pt.recorded_hours) : '—');
             return `<tr class="task-row" data-projtask="${pt.id}">
               <td><span class="status-dot" style="background:${statusColor(pt.status)}"></span><span class="inline-editable" data-taskname="${pt.id}" title="Click to rename">${esc(pt.title)}</span></td>
-              <td class="inline-editable" data-taskdue="${pt.id}" title="Click to edit due date">${dateStr? fmtDate(new Date(dateStr+'T00:00')) : '—'}</td>
+              <td><button type="button" class="stage-date-btn" data-taskdue="${pt.id}" style="margin-top:0">${dateStr? fmtDate(new Date(dateStr+'T00:00')) : 'Set date'}</button></td>
               <td>${avatarGroupHtml(pt.assigned_designer_ids)}</td>
               <td style="text-align:right">${hoursDisplay}</td>
               <td style="text-align:center">${tracked? '<span class="retainer-tick" title="Counted toward this cycle">✓ Tracked</span>' : '<span style="color:var(--amber);font-weight:600" title="Not counting toward retainer hours yet">⚠ Not tracked</span>'}</td>
@@ -2795,13 +2859,13 @@ function taskRowHtml(t, showAnimator){
   }
   return `<div class="task-grid-row task-row" draggable="true" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns(showAnimator)}">
     <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
-    ${state.taskCols.has('status')?`<div><select class="status-select" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}" data-statusinline="${t.id}">${taskStatusNames().map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></div>`:''}
-    ${state.taskCols.has('priority')?`<div><select class="priority-pill priority-select priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>`:''}
+    ${state.taskCols.has('status')?`<div>${statusPillBtnHtml(t)}</div>`:''}
+    ${state.taskCols.has('priority')?`<div>${priorityPillBtnHtml(t)}</div>`:''}
     ${state.taskCols.has('designer')?`<div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>`:''}
     ${state.taskCols.has('reviewer')?`<div class="inline-editable" data-assigninline="${t.id}:reviewer" title="Click to edit reviewers">${avatarGroupHtml(t.assigned_reviewer_ids)}</div>`:''}
     ${showAnimator?`<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`:''}
     ${state.taskCols.has('hours')?`<div class="inline-editable" style="text-align:right" data-taskhours="${t.id}" title="Click to edit hours">${taskEntriesFor(t.id).length? fmtH(taskHoursTotal(t.id)) : (t.recorded_hours!=null?fmtH(t.recorded_hours):'—')}</div>`:''}
-    ${state.taskCols.has('due')?`<div class="inline-editable" data-taskdue="${t.id}" title="Click to edit due date">${t.due_date? fmtDateNatural(t.due_date):'—'}</div>`:''}
+    ${state.taskCols.has('due')?`<div>${dueDateBtnHtml(t)}</div>`:''}
     ${state.taskCols.has('retainer')?`<div style="text-align:center" class="${retainerClickable?'inline-editable':''}" ${retainerClickable?`data-retainerinline="${t.id}" title="Click to toggle counting toward the retainer"`:''}>${retainerCell}</div>`:''}
     <div class="tg-actions">
       <button type="button" class="btn small ghost row-edit-btn" data-taskeditbtn="${t.id}">Edit</button>
@@ -2913,24 +2977,14 @@ function wireTaskRows(root){
       await refreshProjectView();
     });
   }));
-  root.querySelectorAll('[data-statusinline]').forEach(el=>{
-    el.addEventListener('click', e=> e.stopPropagation());
-    el.addEventListener('change', async e=>{
-      e.stopPropagation();
-      const { error } = await db.from('rs_proj_tasks').update({ status: el.value }).eq('id', el.dataset.statusinline);
-      if(error){ toast('Could not update status'); return; }
-      await refreshProjectView();
-    });
-  });
-  root.querySelectorAll('[data-priorityinline]').forEach(el=>{
-    el.addEventListener('click', e=> e.stopPropagation());
-    el.addEventListener('change', async e=>{
-      e.stopPropagation();
-      const { error } = await db.from('rs_proj_tasks').update({ priority: el.value }).eq('id', el.dataset.priorityinline);
-      if(error){ toast('Could not update priority'); return; }
-      await refreshProjectView();
-    });
-  });
+  root.querySelectorAll('[data-statusinline]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openStatusPopover(el, el.dataset.statusinline);
+  }));
+  root.querySelectorAll('[data-priorityinline]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openPriorityPopover(el, el.dataset.priorityinline);
+  }));
   root.querySelectorAll('[data-assigninline]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     const [taskId, role] = el.dataset.assigninline.split(':');
@@ -3004,11 +3058,11 @@ function tasksAheadColumns(){
 function tasksAheadRowHtml(t, projectName){
   const cols = tasksAheadColumns();
   return `<div class="task-grid-row task-row" data-projtask="${t.id}" style="grid-template-columns:${cols}">
-    <div class="inline-editable" data-taskdue="${t.id}" title="Click to edit due date">${t.due_date? fmtDateNatural(t.due_date):'—'}</div>
+    <div>${dueDateBtnHtml(t)}</div>
     <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
     <div style="color:var(--muted);font-size:12.5px">${projectName? esc(projectName) : '—'}</div>
-    <div><select class="status-select" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}" data-statusinline="${t.id}">${taskStatusNames().map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></div>
-    <div><select class="priority-pill priority-select priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
+    <div>${statusPillBtnHtml(t)}</div>
+    <div>${priorityPillBtnHtml(t)}</div>
     <div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>
     <div class="tg-actions">
       <button type="button" class="btn small ghost row-edit-btn" data-taskeditbtn="${t.id}">Edit</button>
@@ -3939,7 +3993,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.18.1';
+const APP_VERSION = '0.18.3';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
