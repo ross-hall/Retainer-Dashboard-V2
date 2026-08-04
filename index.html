@@ -29,6 +29,7 @@
     --green:#448361;
     --green-bg:#eaf4ee;
     --track:#f1f0ec;
+    --row-hover:#f6f5f1;
     --radius:12px;
     --radius-sm:8px;
     --shadow-sm:0 1px 2px rgba(20,18,15,.04);
@@ -57,6 +58,7 @@
     --green:#7cc79e;
     --green-bg:#1f3329;
     --track:#333230;
+    --row-hover:#302f2c;
     --shadow-sm:0 1px 2px rgba(0,0,0,.3);
     --shadow-card:0 1px 2px rgba(0,0,0,.25), 0 4px 14px rgba(0,0,0,.3);
     --shadow-pop:0 10px 30px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
@@ -232,8 +234,8 @@
   .col-resize-handle{position:absolute;top:0;right:-6px;width:10px;height:100%;cursor:col-resize;z-index:2}
   .col-resize-handle:hover, .col-resize-handle.resizing{background:linear-gradient(to right, transparent 5px, var(--accent) 5px, var(--accent) 6px, transparent 6px)}
   .tg-title{display:flex;align-items:center;gap:9px;overflow:hidden}
-  .inline-editable{border-radius:6px;padding:3px 6px;margin:-3px -6px;cursor:pointer;transition:background var(--fast) var(--ease)}
-  .inline-editable:hover{background:var(--accent-soft)}
+  .inline-editable{border-radius:6px;padding:3px 6px;margin:-3px -6px;cursor:pointer;transition:box-shadow var(--fast) var(--ease)}
+  .inline-editable:hover{box-shadow:0 0 0 1px var(--ink-light)}
   .tg-title .inline-editable{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .inline-rename-input{font:inherit;color:inherit;padding:2px 6px;border:1px solid var(--accent);border-radius:6px;background:var(--card);flex:1;min-width:60px;box-shadow:0 0 0 3px var(--accent-soft)}
   .tg-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
@@ -242,8 +244,7 @@
   th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);font-weight:600;padding:10px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:1}
   td{padding:11px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle;font-variant-numeric:tabular-nums}
   tr:last-child td{border-bottom:none}
-  .task-row{cursor:pointer}
-  .task-row:hover{background:var(--track)}
+  .task-row:hover{background:var(--row-hover)}
   td .chip{display:inline-flex;align-items:center;gap:6px}
   .note-dot{color:var(--amber);margin-left:4px}
 
@@ -361,12 +362,12 @@
   .week-chip .mc-time{font-weight:700;font-size:12px;color:var(--accent);margin-bottom:3px}
   .week-chip .mc1{color:var(--ink)}
   .week-chip .mc2,.week-chip .mc3{color:var(--muted)}
-  .priority-pill{font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;display:inline-block}
+  .priority-pill{font-size:12px;font-weight:600;padding:5px 12px;border-radius:99px;display:inline-block}
   .priority-low{background:var(--track);color:var(--muted)}
   .priority-medium{background:var(--accent-soft);color:var(--accent)}
   .priority-high{background:var(--amber-bg);color:var(--amber)}
   .priority-urgent{background:var(--red-bg);color:var(--red)}
-  select.priority-select{border:none;-webkit-appearance:none;appearance:none;cursor:pointer;padding-right:24px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%237b7a77' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;transition:filter var(--fast) var(--ease)}
+  select.priority-select{border:none;-webkit-appearance:none;appearance:none;cursor:pointer;padding-right:26px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%237b7a77' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;transition:filter var(--fast) var(--ease)}
   select.priority-select:hover{filter:brightness(.97)}
 
   .mini-datepicker{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow-pop);width:230px;animation:popIn var(--fast) var(--ease)}
@@ -577,7 +578,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.18.0</div>
+    <div id="versionBadge" class="version-badge">v0.18.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -1446,7 +1447,7 @@ function homeTaskTableHtml(tasks, emptyLabel){
       <td><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></td>
       <td><select class="status-select" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}" data-statusinline="${t.id}">${taskStatusNames().map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></td>
       ${state.homeCols.has('priority')?`<td><select class="priority-pill priority-select priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></td>`:''}
-      ${state.homeCols.has('due')?`<td>${t.due_date? fmtDateNatural(t.due_date) : '—'}</td>`:''}
+      ${state.homeCols.has('due')?`<td class="inline-editable" data-taskdue="${t.id}" title="Click to edit due date">${t.due_date? fmtDateNatural(t.due_date) : '—'}</td>`:''}
       <td><div style="display:flex;align-items:center;justify-content:flex-end;gap:6px"><button type="button" class="btn small ghost row-edit-btn" data-taskeditbtn="${t.id}">Edit</button>${miroIconBtnHtml(taskClient(t))}</div></td>
     </tr>`).join('')}
   </tbody></table>`;
@@ -1561,7 +1562,7 @@ function renderHome(){
     </div>
   </div>`;
   main.innerHTML = html;
-  wireTaskRows(main, { onRowClick: navigateToTaskContext });
+  wireTaskRows(main);
   wireHoursSteppers(main);
   $('#hoursCycleToggleBtn').onclick = ()=>{ state.homeHoursExpanded = !state.homeHoursExpanded; renderHome(); };
   $('#homeColDropdownBtn').onclick = (e)=>{
@@ -1785,7 +1786,7 @@ function wireRetainerTasksBody(c){
   if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
-  wireTaskRows(main, { simpleRetainerPopup:true });
+  wireTaskRows(main);
 }
 
 async function loadRetainerAllowanceBody(c){
@@ -1853,7 +1854,7 @@ async function loadRetainerAllowanceBody(c){
   if(undated.length){
     html += `<div class="banner"><div>🕓</div><div><strong>${undated.length} task${undated.length===1?'':'s'}</strong> ${undated.length===1?'has':'have'} no due date or work date yet, so ${undated.length===1?'it':'they'} can't be placed in a billing month.
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start">
-        ${undated.map(t=>`<button class="btn small ghost" data-projtask="${t.id}">${esc(t.title)}</button>`).join('')}
+        ${undated.map(t=>`<button class="btn small ghost" data-taskeditbtn="${t.id}">${esc(t.title)}</button>`).join('')}
       </div>
     </div></div>`;
   }
@@ -1889,8 +1890,8 @@ async function loadRetainerAllowanceBody(c){
                  <div style="font-size:11px;color:var(--muted)">${entries.map(e=>{ const m=state.members.find(mm=>mm.id===e.member_id); return `${esc(m?initials(m.name):'?')} ${fmtH(e.hours)}`; }).join(', ')}</div>`
               : (pt.recorded_hours!=null? fmtH(pt.recorded_hours) : '—');
             return `<tr class="task-row" data-projtask="${pt.id}">
-              <td><span class="status-dot" style="background:${statusColor(pt.status)}"></span>${esc(pt.title)}</td>
-              <td>${dateStr? fmtDate(new Date(dateStr+'T00:00')) : '—'}</td>
+              <td><span class="status-dot" style="background:${statusColor(pt.status)}"></span><span class="inline-editable" data-taskname="${pt.id}" title="Click to rename">${esc(pt.title)}</span></td>
+              <td class="inline-editable" data-taskdue="${pt.id}" title="Click to edit due date">${dateStr? fmtDate(new Date(dateStr+'T00:00')) : '—'}</td>
               <td>${avatarGroupHtml(pt.assigned_designer_ids)}</td>
               <td style="text-align:right">${hoursDisplay}</td>
               <td style="text-align:center">${tracked? '<span class="retainer-tick" title="Counted toward this cycle">✓ Tracked</span>' : '<span style="color:var(--amber);font-weight:600" title="Not counting toward retainer hours yet">⚠ Not tracked</span>'}</td>
@@ -1904,8 +1905,7 @@ async function loadRetainerAllowanceBody(c){
   const bodyEl = document.getElementById('retainerTabBody');
   if(!bodyEl) return;
   bodyEl.innerHTML = html;
-  bodyEl.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(el.dataset.projtask, {})));
-  bodyEl.querySelectorAll('[data-taskeditbtn]').forEach(el=>el.addEventListener('click', (e)=>{ e.stopPropagation(); openProjTaskModal(el.dataset.taskeditbtn, {}); }));
+  wireTaskRows(bodyEl);
   bodyEl.querySelectorAll('[data-pdf]').forEach(el=>el.addEventListener('click', ()=> generateClientPdf(c, groups[el.dataset.pdf])));
 }
 
@@ -2800,8 +2800,8 @@ function taskRowHtml(t, showAnimator){
     ${state.taskCols.has('designer')?`<div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>`:''}
     ${state.taskCols.has('reviewer')?`<div class="inline-editable" data-assigninline="${t.id}:reviewer" title="Click to edit reviewers">${avatarGroupHtml(t.assigned_reviewer_ids)}</div>`:''}
     ${showAnimator?`<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`:''}
-    ${state.taskCols.has('hours')?`<div style="text-align:right">${taskEntriesFor(t.id).length? fmtH(taskHoursTotal(t.id)) : (t.recorded_hours!=null?fmtH(t.recorded_hours):'—')}</div>`:''}
-    ${state.taskCols.has('due')?`<div>${t.due_date? fmtDateNatural(t.due_date):'—'}</div>`:''}
+    ${state.taskCols.has('hours')?`<div class="inline-editable" style="text-align:right" data-taskhours="${t.id}" title="Click to edit hours">${taskEntriesFor(t.id).length? fmtH(taskHoursTotal(t.id)) : (t.recorded_hours!=null?fmtH(t.recorded_hours):'—')}</div>`:''}
+    ${state.taskCols.has('due')?`<div class="inline-editable" data-taskdue="${t.id}" title="Click to edit due date">${t.due_date? fmtDateNatural(t.due_date):'—'}</div>`:''}
     ${state.taskCols.has('retainer')?`<div style="text-align:center" class="${retainerClickable?'inline-editable':''}" ${retainerClickable?`data-retainerinline="${t.id}" title="Click to toggle counting toward the retainer"`:''}>${retainerCell}</div>`:''}
     <div class="tg-actions">
       <button type="button" class="btn small ghost row-edit-btn" data-taskeditbtn="${t.id}">Edit</button>
@@ -2866,25 +2866,52 @@ async function deleteProjTaskQuick(taskId){
 const ASSIGN_ROLE_FIELD = { designer:'assigned_designer_ids', reviewer:'assigned_reviewer_ids', animator:'assigned_animator_ids' };
 const ASSIGN_ROLE_CAN = { designer:'can_design', reviewer:'can_review', animator:'can_animate' };
 
-function wireTaskRows(root, opts){
-  opts = opts || {};
-  const inlineSelectors = '[data-statusinline], [data-priorityinline], [data-taskmenu], [data-assigninline], [data-retainerinline], [data-taskname], [data-taskeditbtn]';
+function openInlineHoursEdit(el, taskId){
+  const task = state.projTasks.find(t=>t.id===taskId);
+  const original = task && task.recorded_hours!=null ? String(task.recorded_hours) : '';
+  const input = document.createElement('input');
+  input.type = 'number'; input.step = '0.25'; input.min = '0'; input.value = original;
+  input.className = 'inline-rename-input'; input.style.width = '64px'; input.style.textAlign = 'right';
+  el.replaceWith(input); input.focus(); input.select();
+  input.addEventListener('click', ev=> ev.stopPropagation());
+  input.addEventListener('keydown', ev=>{
+    if(ev.key==='Enter') input.blur();
+    if(ev.key==='Escape'){ input.dataset.cancel='1'; input.blur(); }
+  });
+  input.addEventListener('blur', async ()=>{
+    if(input.dataset.cancel){ input.replaceWith(el); return; }
+    const val = input.value.trim();
+    const hours = val==='' ? null : Math.max(0, +val);
+    if(hours===null && original===''){ input.replaceWith(el); return; }
+    const { error } = await db.from('rs_proj_tasks').update({ recorded_hours: hours }).eq('id', taskId);
+    if(error){ toast('Could not update hours'); input.replaceWith(el); return; }
+    await refreshProjectView();
+  }, { once:true });
+}
+
+function wireTaskRows(root){
   root.querySelectorAll('[data-taskeditbtn]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     openProjTaskModal(el.dataset.taskeditbtn, {});
   }));
-  root.querySelectorAll('[data-projtask]').forEach(el=>el.addEventListener('click', (e)=>{
-    if(e.target.closest(inlineSelectors)) return;
-    const taskId = el.dataset.projtask;
+  root.querySelectorAll('[data-taskhours]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const taskId = el.dataset.taskhours;
     const task = state.projTasks.find(t=>t.id===taskId);
     const client = taskClient(task);
-    if(opts.simpleRetainerPopup && task && !task.project_id && client?.is_retainer){
-      openRetainerTaskTimeModal(taskId);
-    } else if(opts.onRowClick){
-      opts.onRowClick(taskId);
-    } else {
-      openProjTaskModal(taskId, {});
-    }
+    if(task && !task.project_id && client?.is_retainer) openRetainerTaskTimeModal(taskId);
+    else openInlineHoursEdit(el, taskId);
+  }));
+  root.querySelectorAll('[data-taskdue]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const taskId = el.dataset.taskdue;
+    const task = state.projTasks.find(t=>t.id===taskId);
+    if(!task) return;
+    openMiniDatePicker(el, task.due_date, async (newDate)=>{
+      const { error } = await db.from('rs_proj_tasks').update({ due_date:newDate }).eq('id', taskId);
+      if(error){ toast('Could not save date'); return; }
+      await refreshProjectView();
+    });
   }));
   root.querySelectorAll('[data-statusinline]').forEach(el=>{
     el.addEventListener('click', e=> e.stopPropagation());
@@ -2977,12 +3004,12 @@ function tasksAheadColumns(){
 function tasksAheadRowHtml(t, projectName){
   const cols = tasksAheadColumns();
   return `<div class="task-grid-row task-row" data-projtask="${t.id}" style="grid-template-columns:${cols}">
-    <div>${t.due_date? fmtDateNatural(t.due_date):'—'}</div>
-    <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span>${esc(t.title)}</div>
+    <div class="inline-editable" data-taskdue="${t.id}" title="Click to edit due date">${t.due_date? fmtDateNatural(t.due_date):'—'}</div>
+    <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
     <div style="color:var(--muted);font-size:12.5px">${projectName? esc(projectName) : '—'}</div>
     <div><select class="status-select" style="background:${mutedBg(statusColor(t.status))};color:${statusColor(t.status)}" data-statusinline="${t.id}">${taskStatusNames().map(st=>`<option value="${st}" ${(t.status||'To do')===st?'selected':''}>${statusIcon(st)} ${st}</option>`).join('')}</select></div>
-    <div><span class="priority-pill priority-${(t.priority||'Medium').toLowerCase()}">${esc(t.priority||'Medium')}</span></div>
-    <div>${avatarGroupHtml(t.assigned_designer_ids)}</div>
+    <div><select class="priority-pill priority-select priority-${(t.priority||'Medium').toLowerCase()}" data-priorityinline="${t.id}">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
+    <div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>
     <div class="tg-actions">
       <button type="button" class="btn small ghost row-edit-btn" data-taskeditbtn="${t.id}">Edit</button>
       <button type="button" class="btn small ghost menu-dots" data-taskmenu="${t.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button>
@@ -3912,7 +3939,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.18.0';
+const APP_VERSION = '0.18.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
