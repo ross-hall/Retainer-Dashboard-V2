@@ -325,6 +325,8 @@
   .breadcrumb button:hover{text-decoration:underline}
   .breadcrumb .sep{color:var(--line)}
   .breadcrumb .current{color:var(--ink);font-weight:500}
+  .home-client-link{color:var(--ink);cursor:pointer;transition:color var(--fast) var(--ease)}
+  .home-client-link:hover{color:var(--accent);text-decoration:underline}
 
   .type-badge{display:inline-block;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:500;padding:3px 10px;border-radius:99px}
   .label-chip{display:inline-block;background:var(--amber-bg);color:var(--amber);font-size:12px;font-weight:500;padding:3px 10px;border-radius:99px;margin-left:7px}
@@ -354,8 +356,11 @@
   .stage-date-btn::after{content:'▾';font-size:9px;opacity:.6}
 
   .col-dropdown{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 14px;box-shadow:var(--shadow-pop);min-width:190px;animation:popIn var(--fast) var(--ease)}
-  .col-dropdown-item{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;cursor:pointer}
+  .col-dropdown-item{display:flex;align-items:center;gap:6px;font-size:13px;padding:5px 4px;border-radius:6px;cursor:default}
   .col-dropdown-item input{width:auto}
+  .col-dropdown-hint{font-size:11px;color:var(--muted);padding:0 4px 6px}
+  .col-drag-handle{cursor:grab;color:var(--ink-light);font-size:13px;flex:none;line-height:1}
+  .col-dropdown-item.drop-target-row{background:var(--track)}
 
   .drop-target-row{background:var(--track)}
   .task-row{cursor:grab}
@@ -600,19 +605,36 @@ const SUPABASE_ANON_KEY = "sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj";
 /* ================================ */
 
 let db = null;
-let state = { view:'home', clients:[], members:[], tasks:[],
-  projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null, retainerTab:'tasks',
-  taskCols:new Set(['status','designer','reviewer','hours','due','priority','retainer']),
-  milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
-  milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  homeCols:new Set(['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
-const $ = s => document.querySelector(s);
-const main = $('#main');
-
 const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 };
+/* Column visibility/order persistence — read once at startup, written back
+   any time the user toggles or reorders columns in the Columns popover. */
+const DEFAULT_TASK_COL_ORDER = ['status','priority','designer','reviewer','hours','due','retainer'];
+function loadStoredSet(key, fallback){
+  const raw = store.get(key);
+  if(!raw) return new Set(fallback);
+  try{ return new Set(JSON.parse(raw)); }catch(e){ return new Set(fallback); }
+}
+function loadStoredArray(key, fallback){
+  const raw = store.get(key);
+  if(!raw) return fallback.slice();
+  try{ const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : fallback.slice(); }catch(e){ return fallback.slice(); }
+}
+function saveTaskCols(){ store.set('rs_task_cols', JSON.stringify(Array.from(state.taskCols))); }
+function saveTaskColOrder(){ store.set('rs_task_col_order', JSON.stringify(state.taskColOrder)); }
+function saveHomeCols(){ store.set('rs_home_cols', JSON.stringify(Array.from(state.homeCols))); }
+
+let state = { view:'home', clients:[], members:[], tasks:[],
+  projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null, retainerTab:'tasks',
+  taskCols:loadStoredSet('rs_task_cols', ['status','designer','reviewer','hours','due','priority','retainer']),
+  taskColOrder:loadStoredArray('rs_task_col_order', DEFAULT_TASK_COL_ORDER),
+  milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
+  milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
+  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
+const $ = s => document.querySelector(s);
+const main = $('#main');
 function resolveTheme(){
   const stored = store.get('rs_theme');
   if(stored==='light' || stored==='dark') return stored;
@@ -981,6 +1003,46 @@ function wireDateField(id, placeholder){
   });
 }
 
+/* Same bespoke coloured-pill popover used inline in task rows, reused for the
+   Status/Priority fields inside the task edit modal — a hidden input carries
+   the value so $('#id').value keeps working at save time. */
+function statusFieldHtml(id, currentStatus){
+  const s = currentStatus || 'To do';
+  const color = statusColor(s);
+  return `<button type="button" class="status-pill pill-btn" id="${id}_btn" style="background:${mutedBg(color)};color:${color}">${statusIcon(s)} ${esc(s)}${PILL_CHEVRON_SVG}</button><input type="hidden" id="${id}" value="${esc(s)}">`;
+}
+function wireStatusField(id){
+  const btn = document.getElementById(id+'_btn');
+  const hidden = document.getElementById(id);
+  if(!btn || !hidden) return;
+  btn.addEventListener('click', ()=>{
+    const options = taskStatusList().map(st=>({ value:st.name, html:`<span class="status-pill" style="background:${mutedBg(st.color)};color:${st.color}">${st.is_complete?'✓':'○'} ${esc(st.name)}</span>` }));
+    openPillPopover(btn, options, hidden.value, (val)=>{
+      hidden.value = val;
+      const c = statusColor(val);
+      btn.style.background = mutedBg(c); btn.style.color = c;
+      btn.innerHTML = `${statusIcon(val)} ${esc(val)}${PILL_CHEVRON_SVG}`;
+    });
+  });
+}
+function priorityFieldHtml(id, currentPriority){
+  const p = currentPriority || 'Medium';
+  return `<button type="button" class="priority-pill pill-btn priority-${p.toLowerCase()}" id="${id}_btn">${esc(p)}${PILL_CHEVRON_SVG}</button><input type="hidden" id="${id}" value="${esc(p)}">`;
+}
+function wirePriorityField(id){
+  const btn = document.getElementById(id+'_btn');
+  const hidden = document.getElementById(id);
+  if(!btn || !hidden) return;
+  btn.addEventListener('click', ()=>{
+    const options = PRIORITIES.map(p=>({ value:p, html:`<span class="priority-pill priority-${p.toLowerCase()}">${esc(p)}</span>` }));
+    openPillPopover(btn, options, hidden.value, (val)=>{
+      hidden.value = val;
+      btn.className = `priority-pill pill-btn priority-${val.toLowerCase()}`;
+      btn.innerHTML = `${esc(val)}${PILL_CHEVRON_SVG}`;
+    });
+  });
+}
+
 function formatTime12(t){
   if(!t) return '';
   const [h,m] = t.split(':').map(Number);
@@ -1001,16 +1063,45 @@ function openColumnDropdown(anchorEl){
   pop.className = 'col-dropdown';
   document.body.appendChild(pop);
   _activeColPopover = pop;
-  pop.innerHTML = TASK_COLUMNS.map(([key,label])=>`<label class="col-dropdown-item"><input type="checkbox" data-colkey2="${key}" ${state.taskCols.has(key)?'checked':''}>${label}</label>`).join('');
-  pop.querySelectorAll('[data-colkey2]').forEach(cb=>cb.addEventListener('change', ()=>{
-    const k = cb.dataset.colkey2;
-    cb.checked ? state.taskCols.add(k) : state.taskCols.delete(k);
-    render();
-  }));
+  let dragKey = null;
+  function draw(){
+    pop.innerHTML = `<div class="col-dropdown-hint">Drag ⠿ to reorder</div>` + taskColumnOrder().map(key=>`
+      <div class="col-dropdown-item" draggable="true" data-colorderkey="${key}">
+        <span class="col-drag-handle" title="Drag to reorder">⠿</span>
+        <label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;margin:0">
+          <input type="checkbox" data-colkey2="${key}" ${state.taskCols.has(key)?'checked':''}>${TASK_COLUMN_DEFS[key].label}
+        </label>
+      </div>`).join('');
+    pop.querySelectorAll('[data-colkey2]').forEach(cb=>cb.addEventListener('change', ()=>{
+      const k = cb.dataset.colkey2;
+      cb.checked ? state.taskCols.add(k) : state.taskCols.delete(k);
+      saveTaskCols();
+      render();
+    }));
+    pop.querySelectorAll('[data-colorderkey]').forEach(row=>{
+      row.addEventListener('dragstart', e=>{ dragKey = row.dataset.colorderkey; e.dataTransfer.effectAllowed = 'move'; });
+      row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('drop-target-row'); });
+      row.addEventListener('dragleave', ()=> row.classList.remove('drop-target-row'));
+      row.addEventListener('drop', e=>{
+        e.preventDefault(); row.classList.remove('drop-target-row');
+        const targetKey = row.dataset.colorderkey;
+        if(!dragKey || dragKey===targetKey) return;
+        const order = taskColumnOrder();
+        const fromIdx = order.indexOf(dragKey), toIdx = order.indexOf(targetKey);
+        if(fromIdx<0 || toIdx<0) return;
+        order.splice(toIdx, 0, order.splice(fromIdx,1)[0]);
+        state.taskColOrder = order;
+        saveTaskColOrder();
+        draw();
+        render();
+      });
+    });
+  }
+  draw();
   const rect = anchorEl.getBoundingClientRect();
   pop.style.position = 'fixed';
-  pop.style.top = Math.min(rect.bottom+6, window.innerHeight-280)+'px';
-  pop.style.left = Math.min(rect.left, window.innerWidth-210)+'px';
+  pop.style.top = Math.min(rect.bottom+6, window.innerHeight-320)+'px';
+  pop.style.left = Math.min(rect.left, window.innerWidth-220)+'px';
   pop.style.zIndex = 300;
   _colOutsideHandler = e=>{ if(_activeColPopover && !_activeColPopover.contains(e.target) && e.target!==anchorEl) closeColDropdown(); };
   setTimeout(()=> document.addEventListener('mousedown', _colOutsideHandler), 0);
@@ -1484,10 +1575,10 @@ function homeTaskContextHtml(t){
   if(t.project_id){
     const proj = state.projects.find(p=>p.id===t.project_id);
     const cl = proj && state.clients.find(c=>c.id===proj.client_id);
-    return (cl && proj) ? `${esc(cl.name)} · ${esc(proj.name)}` : '—';
+    return (cl && proj) ? `<span class="home-client-link" data-clientlink="${cl.id}" title="Jump to ${esc(cl.name)}">${esc(cl.name)}</span> · ${esc(proj.name)}` : '—';
   }
   const cl = t.client_id ? state.clients.find(c=>c.id===t.client_id) : null;
-  return cl ? esc(cl.name) : '—';
+  return cl ? `<span class="home-client-link" data-clientlink="${cl.id}" title="Jump to ${esc(cl.name)}">${esc(cl.name)}</span>` : '—';
 }
 
 function homeTaskTableHtml(tasks, emptyLabel){
@@ -1638,6 +1729,7 @@ function renderHome(){
       {key:'due', label:'Due date'}
     ], key=>state.homeCols.has(key), (key,checked)=>{
       checked ? state.homeCols.add(key) : state.homeCols.delete(key);
+      saveHomeCols();
       renderHome();
     });
   };
@@ -2836,39 +2928,59 @@ function taskClient(t){
   return null;
 }
 
-function taskGridColumns(showAnimator){
+/* Cell/header renderers for each toggleable task column, keyed the same as
+   TASK_COLUMNS. Iterated in state.taskColOrder so the user's drag-reordering
+   in the Columns popover is reflected directly in the grid. */
+const TASK_COLUMN_DEFS = {
+  status:   { label:'Status',   cell:(t)=>`<div>${statusPillBtnHtml(t)}</div>` },
+  priority: { label:'Priority', cell:(t)=>`<div>${priorityPillBtnHtml(t)}</div>` },
+  designer: { label:'Designer', cell:(t)=>`<div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>` },
+  reviewer: { label:'Reviewer', cell:(t)=>`<div class="inline-editable" data-assigninline="${t.id}:reviewer" title="Click to edit reviewers">${avatarGroupHtml(t.assigned_reviewer_ids)}</div>` },
+  hours:    { label:'Hours',    cell:(t)=>`<div class="inline-editable" data-taskhours="${t.id}" title="Click to edit hours">${taskEntriesFor(t.id).length? fmtH(taskHoursTotal(t.id)) : (t.recorded_hours!=null?fmtH(t.recorded_hours):'—')}</div>` },
+  due:      { label:'Due',      cell:(t)=>`<div>${dueDateBtnHtml(t)}</div>` },
+  retainer: { label:'Retainer', headerAlign:'center', cell:(t)=>{
+    const client = taskClient(t);
+    const retainerClickable = !!client?.is_retainer;
+    let retainerCell = '—';
+    if(t.counts_toward_retainer){
+      retainerCell = taskEntriesFor(t.id).length
+        ? '<span class="retainer-tick">✓</span>'
+        : '<span style="color:var(--amber);font-weight:700" title="Ticked, but no time entries logged yet">⚠</span>';
+    }
+    return `<div style="text-align:center" class="${retainerClickable?'inline-editable':''}" ${retainerClickable?`data-retainerinline="${t.id}" title="Click to toggle counting toward the retainer"`:''}>${retainerCell}</div>`;
+  }}
+};
+function taskColumnOrder(){
+  const known = TASK_COLUMNS.map(([k])=>k);
+  const saved = (state.taskColOrder||[]).filter(k=>known.includes(k));
+  known.forEach(k=>{ if(!saved.includes(k)) saved.push(k); });
+  return saved;
+}
+function visibleTaskCols(showRetainer){
+  return taskColumnOrder().filter(k=> state.taskCols.has(k) && (k!=='retainer' || showRetainer!==false));
+}
+
+function taskGridColumns(showAnimator, showRetainer){
   const cols = ['minmax(160px,1fr)'];
-  if(state.taskCols.has('status')) cols.push(colWidth(state.taskColWidths,'status',TASK_COL_DEFAULTS));
-  if(state.taskCols.has('priority')) cols.push(colWidth(state.taskColWidths,'priority',TASK_COL_DEFAULTS));
-  if(state.taskCols.has('designer')) cols.push(colWidth(state.taskColWidths,'designer',TASK_COL_DEFAULTS));
-  if(state.taskCols.has('reviewer')) cols.push(colWidth(state.taskColWidths,'reviewer',TASK_COL_DEFAULTS));
-  if(showAnimator) cols.push(colWidth(state.taskColWidths,'animator',TASK_COL_DEFAULTS));
-  if(state.taskCols.has('hours')) cols.push(colWidth(state.taskColWidths,'hours',TASK_COL_DEFAULTS));
-  if(state.taskCols.has('due')) cols.push(colWidth(state.taskColWidths,'due',TASK_COL_DEFAULTS));
-  if(state.taskCols.has('retainer')) cols.push(colWidth(state.taskColWidths,'retainer',TASK_COL_DEFAULTS));
+  visibleTaskCols(showRetainer).forEach(k=>{
+    cols.push(colWidth(state.taskColWidths,k,TASK_COL_DEFAULTS));
+    if(k==='reviewer' && showAnimator) cols.push(colWidth(state.taskColWidths,'animator',TASK_COL_DEFAULTS));
+  });
   cols.push('34px');
   return cols.join(' ');
 }
 
-function taskRowHtml(t, showAnimator){
-  const client = taskClient(t);
-  const retainerClickable = !!client?.is_retainer;
-  let retainerCell = '—';
-  if(t.counts_toward_retainer){
-    retainerCell = taskEntriesFor(t.id).length
-      ? '<span class="retainer-tick">✓</span>'
-      : '<span style="color:var(--amber);font-weight:700" title="Ticked, but no time entries logged yet">⚠</span>';
-  }
-  return `<div class="task-grid-row task-row" draggable="true" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns(showAnimator)}">
+function taskRowHtml(t, showAnimator, showRetainer){
+  const cellsHtml = visibleTaskCols(showRetainer).map(k=>{
+    let html = TASK_COLUMN_DEFS[k].cell(t);
+    if(k==='reviewer' && showAnimator){
+      html += `<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`;
+    }
+    return html;
+  }).join('');
+  return `<div class="task-grid-row task-row" draggable="true" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns(showAnimator, showRetainer)}">
     <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
-    ${state.taskCols.has('status')?`<div>${statusPillBtnHtml(t)}</div>`:''}
-    ${state.taskCols.has('priority')?`<div>${priorityPillBtnHtml(t)}</div>`:''}
-    ${state.taskCols.has('designer')?`<div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>`:''}
-    ${state.taskCols.has('reviewer')?`<div class="inline-editable" data-assigninline="${t.id}:reviewer" title="Click to edit reviewers">${avatarGroupHtml(t.assigned_reviewer_ids)}</div>`:''}
-    ${showAnimator?`<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`:''}
-    ${state.taskCols.has('hours')?`<div class="inline-editable" data-taskhours="${t.id}" title="Click to edit hours">${taskEntriesFor(t.id).length? fmtH(taskHoursTotal(t.id)) : (t.recorded_hours!=null?fmtH(t.recorded_hours):'—')}</div>`:''}
-    ${state.taskCols.has('due')?`<div>${dueDateBtnHtml(t)}</div>`:''}
-    ${state.taskCols.has('retainer')?`<div style="text-align:center" class="${retainerClickable?'inline-editable':''}" ${retainerClickable?`data-retainerinline="${t.id}" title="Click to toggle counting toward the retainer"`:''}>${retainerCell}</div>`:''}
+    ${cellsHtml}
     <div class="tg-actions">
       <button type="button" class="btn small ghost row-edit-btn" data-taskeditbtn="${t.id}">Edit</button>
       <button type="button" class="btn small ghost menu-dots" data-taskmenu="${t.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button>
@@ -2880,22 +2992,21 @@ function resizeHandle(key, storeName){
   return `<span class="col-resize-handle" data-resizecol="${key}" data-widthstore="${storeName}"></span>`;
 }
 
-function taskTableHtml(tasks, visibleCount, emptyText, showAnimator){
+function taskTableHtml(tasks, visibleCount, emptyText, showAnimator, showRetainer){
   if(!tasks.length) return `<div class="task-grid">${emptyStateHtml({ icon:'tray', title: emptyText||'Nothing here yet.' })}</div>`;
-  const gridCols = taskGridColumns(showAnimator);
+  const gridCols = taskGridColumns(showAnimator, showRetainer);
+  const headerCells = visibleTaskCols(showRetainer).map(k=>{
+    const def = TASK_COLUMN_DEFS[k];
+    let html = `<div style="position:relative${def.headerAlign?`;text-align:${def.headerAlign}`:''}">${def.label}${resizeHandle(k,'task')}</div>`;
+    if(k==='reviewer' && showAnimator) html += `<div style="position:relative">Animator${resizeHandle('animator','task')}</div>`;
+    return html;
+  }).join('');
   const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${gridCols}">
       <div style="position:relative">Task</div>
-      ${state.taskCols.has('status')?`<div style="position:relative">Status${resizeHandle('status','task')}</div>`:''}
-      ${state.taskCols.has('priority')?`<div style="position:relative">Priority${resizeHandle('priority','task')}</div>`:''}
-      ${state.taskCols.has('designer')?`<div style="position:relative">Designer${resizeHandle('designer','task')}</div>`:''}
-      ${state.taskCols.has('reviewer')?`<div style="position:relative">Reviewer${resizeHandle('reviewer','task')}</div>`:''}
-      ${showAnimator?`<div style="position:relative">Animator${resizeHandle('animator','task')}</div>`:''}
-      ${state.taskCols.has('hours')?`<div style="position:relative">Hours${resizeHandle('hours','task')}</div>`:''}
-      ${state.taskCols.has('due')?`<div style="position:relative">Due${resizeHandle('due','task')}</div>`:''}
-      ${state.taskCols.has('retainer')?`<div style="position:relative;text-align:center">Retainer${resizeHandle('retainer','task')}</div>`:''}
+      ${headerCells}
       <div></div>
     </div>`;
-  const rows = tasks.map(t=>taskRowHtml(t, showAnimator)).join('');
+  const rows = tasks.map(t=>taskRowHtml(t, showAnimator, showRetainer)).join('');
   return `<div class="task-grid">${header}${rows}</div>`;
 }
 
@@ -2956,6 +3067,14 @@ function openInlineHoursEdit(el, taskId){
 }
 
 function wireTaskRows(root){
+  root.querySelectorAll('[data-clientlink]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const cl = state.clients.find(c=>c.id===el.dataset.clientlink);
+    if(!cl) return;
+    state.view='projects'; state.projClientId=cl.id; state.projProjectId=null;
+    state.projView = cl.is_retainer ? 'retainerTasks' : 'clientProjects'; state.retainerTab='tasks';
+    render();
+  }));
   root.querySelectorAll('[data-taskeditbtn]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     openProjTaskModal(el.dataset.taskeditbtn, {});
@@ -3138,13 +3257,17 @@ function openProjTaskModal(taskId, ctx){
   const animatorPool = state.members.filter(m=>m.active && m.can_animate!==false);
   const showAnimators = project?.project_type === 'Animations';
   showModal(`
-    <h3>${isNew?'New task':'Edit task'}</h3>
-    <div class="sub">${esc(project? project.name : client.name)}</div>
-    <form class="log" style="max-width:none">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+      <div>
+        <h3 style="margin:0 0 2px">${isNew?'New task':'Edit task'}</h3>
+        <div class="sub" style="margin:0">${esc(project? project.name : client.name)}</div>
+      </div>
+      ${priorityFieldHtml('pt_priority', t.priority)}
+    </div>
+    <form class="log" style="max-width:none;margin-top:18px">
       <div class="full"><label>Title</label><input type="text" id="pt_title" value="${esc(t.title)}" placeholder="Task name"></div>
       ${stages.length? `<div><label>Stage</label><select id="pt_stage">${stages.map(s=>`<option value="${s.id}" ${s.id===t.stage_id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>` : ''}
-      <div><label>Status</label><select id="pt_status">${taskStatusNames().map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${statusIcon(s)} ${s}</option>`).join('')}</select></div>
-      <div><label>Priority</label><select id="pt_priority">${PRIORITIES.map(pr=>`<option value="${pr}" ${(t.priority||'Medium')===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
+      <div><label>Status</label>${statusFieldHtml('pt_status', t.status)}</div>
 
       <div class="full modal-frame">
         <div class="modal-frame-label">Team</div>
@@ -3185,6 +3308,8 @@ function openProjTaskModal(taskId, ctx){
   document.querySelectorAll('#pt_designers [data-pillmember], #pt_reviewers [data-pillmember], #pt_animators [data-pillmember]').forEach(b=>{
     b.addEventListener('click', ()=> b.classList.toggle('selected'));
   });
+  wireStatusField('pt_status');
+  wirePriorityField('pt_priority');
   wireDateField('pt_due', 'Set due date');
   // Delegate edit-entry clicks inside the entries list (dynamic content)
   const modalRoot = document.getElementById('modalRoot');
@@ -3312,7 +3437,7 @@ function renderProjDetail(){
             ${idx>0 && s.due_date ? `<span style="font-size:11px;color:var(--muted)">${reviewWindowLabel(s.due_date, p.review_days)}</span>` : ''}
           </div>
         </div>
-        <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.', p.project_type==='Animations')}</div>
+        <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.', p.project_type==='Animations', c.is_retainer)}</div>
         <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
       </div>`;
     });
