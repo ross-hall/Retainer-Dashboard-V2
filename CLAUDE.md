@@ -3,13 +3,13 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.17.0**
+Current version: **v0.20.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
 - Anon key: `sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj`
 - RLS is fully open (anon key can read/write everything — known risk, flagged)
-- ⚠️ **Pending manual steps:** `outputs/v19_add_animator.sql` and `outputs/v20_anim_cell_statuses.sql` have not been run yet — Animator assignments won't persist server-side, pipeline cell statuses aren't editable, and feedback notes can't be marked resolved until they are.
+- ⚠️ **Pending manual steps:** `outputs/v19_add_animator.sql`, `outputs/v20_anim_cell_statuses.sql`, and `outputs/v21_internal_tasks.sql` have not been run yet — Animator assignments won't persist server-side, pipeline cell statuses aren't editable, feedback notes can't be marked resolved, and the Internal Tasks page / Settings > "Departments" editor will toast "run migration v21" until it is.
 
 Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · Inter font · Notion + Linear + Arc-inspired visual system with a dark-mode variant. **The standalone "Retainers" nav page/dashboard is gone as of v0.13.0** — its content (allowance meter, remaining hours, renewal date) now lives directly on each retainer client's card on the All Projects page, and the client detail page merges what used to be two separate pages (to-do list / allowance history) into one page with a "To-do list" / "Monthly allowance" tab toggle. The old "Calendar view" for ad-hoc hour-logging (not tied to a task) was removed with it — hours are logged through the task modal (tick "counts toward retainer" + recorded hours) instead. See "What shipped in v0.13.0" below.
 
@@ -58,6 +58,7 @@ Nav views (state.view) — 'dashboard' (Retainers) is gone as of v0.13.0:
   'animation'    → renderAnimation()  [Animation Beta]
   'tasksahead'   → renderTasksAhead() [Week Tasks]
   'milestones'   → renderMilestones()
+  'internal'     → renderInternalTasks()  [Internal Tasks — new in v0.20.0]
   'settings'     → renderSettings()
   'archived'     → renderArchived()
 
@@ -90,6 +91,8 @@ Public dashboard (no internal nav):
 | `rs_anim_deps` | v17 | Shot dependency chains — **unused as of v0.16.0**, the Dependencies feature was removed from the app; table/rows left untouched in Supabase, nothing reads or writes it anymore |
 | `rs_proj_task_entries` | v18 | Per-person time entries on retainer tasks |
 | `rs_anim_cell_statuses` | **v20** | Editable pipeline cell statuses (name/color/short/behavior/position) — **not yet run**; until it is, `animStatusList()` falls back to the hardcoded `DEFAULT_ANIM_CELL_STATUSES` (the same 7 statuses the app always had) |
+| `rs_departments` | **v21** | Editable label list for Internal Tasks (name/color/position) — same pattern as `rs_task_statuses`. **Not yet run** |
+| `rs_internal_tasks` | **v21** | Non-client tasks: title, assignee_id → `rs_members`, priority, due_date, department_id → `rs_departments`, is_done, position. **Not yet run** |
 
 ---
 
@@ -191,6 +194,15 @@ Font: Inter (unchanged from v0.9.0)
 - **New Feedback tab** (`renderAnimFeedbackTab`) lists every outstanding (unresolved) feedback note across the project's shots, click-through to the cell modal, with a "Resolved" checkbox per note — resolved notes drop into a collapsed section below rather than disappearing. Needs `rs_anim_feedback.resolved` (v20 migration); the cell modal's feedback log also grew the same per-note "Resolved" checkbox.
 - Both the dead `renderAnimation`/`openAnimCellModal` stubs from v0.16.0's known-issues note are unaffected — still there, still never called.
 
+**What shipped in v0.18.0–v0.20.0** (bespoke inline-edit popovers, column persistence/reorder, Internal Tasks page):
+- **Status/Priority are now a bespoke coloured-pill popover** (`openPillPopover`/`openStatusPopover`/`openPriorityPopover`), not a native `<select>` — every option renders as its own colour-coded pill so you see the name and colour together, Notion/Linear style. Reused inline in every task row (`statusPillBtnHtml`/`priorityPillBtnHtml`) **and** inside the task edit modal (`statusFieldHtml`/`priorityFieldHtml` + `wireStatusField`/`wirePriorityField`, a hidden input carries the value like `dateFieldHtml` does for dates); Priority sits top-right of the modal header next to the title.
+- **Row/cell hover reworked**: `.task-row:hover` is a flat `--row-hover` tint (not the old barely-visible blue), `.inline-editable`/`.pill-btn` hover is a `var(--ink-light)` outline ring. Whole-row clicks do nothing everywhere — only the specific inline-editable cell responds — via `wireTaskRows(root)`, the single shared wiring function for every task-row table in the app.
+- **Every task-row cell is inline-editable**: title (rename), status, priority, designer/reviewer/animator (popover multi-select), hours (`openInlineHoursEdit` for project tasks, the per-person time modal for retainer tasks), due date (`dueDateBtnHtml`/`openMiniDatePicker`, same pill-button styling as the existing "work date" field), retainer toggle.
+- **Task grid columns are now ordered + persisted**: `TASK_COLUMN_DEFS` + `state.taskColOrder` (defaults to `DEFAULT_TASK_COL_ORDER`) drive `taskGridColumns()`/`taskRowHtml()`/`taskTableHtml()`, which all take a `showRetainer` flag so **project (non-retainer) clients no longer show a Retainer column**. The Columns popover (`openColumnDropdown`) got drag handles (⠿) to reorder columns live; both visibility (`state.taskCols`) and order persist to `localStorage` (`rs_task_cols`/`rs_task_col_order`/`rs_home_cols`) via `saveTaskCols()`/`saveTaskColOrder()`/`saveHomeCols()`.
+- **Home page client names are clickable** (`data-clientlink`, wired in `wireTaskRows`) — jumps straight to that client's retainer/project page, with an accent-underline hover state (`.home-client-link`).
+- **Team member names are editable after creation** (Settings > Team members, `data-membername` input) — since every downstream display (`avatarHtml`, assignment pickers, etc.) looks the member up fresh from `state.members` by id, a rename cascades everywhere automatically on the next `loadAll()`. Caveat: `CURRENT_USER_NAME` (Home page personalization) is still a hardcoded name constant, not an id — renaming "Ross Hall" specifically breaks that link until the constant is updated too.
+- **New Internal Tasks page** (`renderInternalTasks`, nav item between Milestones and Settings) for non-client work — columns: Task (rename inline), Assignee (single-select member popover, `openAssigneePopover`), Priority, Due date, Department, plus a Done checkbox and drag-to-reorder. **Department is a new editable label list** (`rs_departments`, Settings > "Departments", mirrors the Task Statuses editor exactly) — you can also add a new department directly from the department popover on the Internal Tasks page itself (`openDepartmentPopover`'s "+ Add department" option) without going to Settings. Needs `outputs/v21_internal_tasks.sql` — see pending-step note at the top of this file.
+
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
 Prior versions recoverable via git history: v0.12.x/v0.11.x (Retainers page still present) are recent commits before this session; v0.10.0 (no dark mode/command palette/inline editing) and v0.9.0 (sharp 3px corners) are further back; v0.8.2 (original top nav, Rubik, 14px radius) is `5664307` or earlier for the pre-redesign baseline.
@@ -208,6 +220,7 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - RLS is fully open — flagged as risk now that client-facing dashboard URLs are live.
 - `outputs/v19_add_animator.sql` has not been run against the live Supabase DB yet — Animator picks in the UI don't persist until it is (app degrades gracefully in the meantime, treating every member as animator-eligible).
 - `outputs/v20_anim_cell_statuses.sql` has not been run yet — the new Settings > "Pipeline cell statuses" editor will show "run migration v20, then reload" until it is; the app degrades gracefully in the meantime by falling back to `DEFAULT_ANIM_CELL_STATUSES` (the original hardcoded 7 statuses), and the Feedback tab's "Resolved" checkbox will toast an error until `rs_anim_feedback.resolved` exists.
+- `outputs/v21_internal_tasks.sql` has not been run yet — the Internal Tasks page and Settings > "Departments" editor both degrade gracefully (empty state / toast "run migration v21") until `rs_departments`/`rs_internal_tasks` exist in Supabase.
 
 ---
 
@@ -221,3 +234,4 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - v18: rs_proj_task_entries
 - v19: rs_members.can_animate + rs_proj_tasks.assigned_animator_ids — **not yet run**, do this in the Supabase SQL editor when convenient
 - v20: rs_anim_cell_statuses (editable pipeline cell statuses) + rs_anim_feedback.resolved — **not yet run**, do this in the Supabase SQL editor when convenient
+- v21: rs_departments + rs_internal_tasks (Internal Tasks page) — **not yet run**, do this in the Supabase SQL editor when convenient
