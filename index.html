@@ -629,6 +629,10 @@ function loadStoredArray(key, fallback){
 function saveTaskCols(){ store.set('rs_task_cols', JSON.stringify(Array.from(state.taskCols))); }
 function saveTaskColOrder(){ store.set('rs_task_col_order', JSON.stringify(state.taskColOrder)); }
 function saveHomeCols(){ store.set('rs_home_cols', JSON.stringify(Array.from(state.homeCols))); }
+const DEFAULT_INTERNAL_COLS = ['assignee','priority','due','department'];
+function saveInternalCols(){ store.set('rs_internal_cols', JSON.stringify(Array.from(state.internalCols))); }
+function saveInternalSort(){ store.set('rs_internal_sort', state.internalSort); }
+function saveInternalGroup(){ store.set('rs_internal_group', state.internalGroupBy); }
 
 let state = { view:'home', clients:[], members:[], tasks:[],
   projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null, retainerTab:'tasks',
@@ -637,7 +641,10 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha',
-  departments:[], internalTasks:[] };
+  departments:[], internalTasks:[],
+  internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
+  internalSort: store.get('rs_internal_sort') || 'manual',
+  internalGroupBy: store.get('rs_internal_group') || 'none' };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 function resolveTheme(){
@@ -922,6 +929,39 @@ function openPillPopover(anchorEl, options, currentValue, onSelect){
   pop.style.top = Math.min(rect.bottom+6, window.innerHeight-300)+'px';
   pop.style.left = Math.min(rect.left, window.innerWidth-200)+'px';
   pop.style.zIndex = 300;
+  _pillPopoverOutsideHandler = e=>{ if(_activePillPopover && !_activePillPopover.contains(e.target) && e.target!==anchorEl && !anchorEl.contains(e.target)) closePillPopover(); };
+  setTimeout(()=> document.addEventListener('mousedown', _pillPopoverOutsideHandler), 0);
+}
+/* Multi-select variant of openPillPopover — same coloured-pill look and feel
+   (avatar + name rows, checkmark for selected), but stays open across clicks
+   so multiple people can be toggled in one go. Used for every people picker
+   in the app (designer/reviewer/animator on task rows, internal task
+   assignee) so they're all visually and behaviourally consistent. */
+function openMultiPillPopover(anchorEl, options, isChecked, onToggle){
+  closePillPopover(); closeColDropdown(); closeColorPicker(); closeDatePicker();
+  const pop = document.createElement('div');
+  pop.className = 'pill-popover';
+  document.body.appendChild(pop);
+  _activePillPopover = pop;
+  const checkSvg = '<svg class="pill-popover-check" viewBox="0 0 16 16" width="13" height="13"><path d="M13.5 4.5l-7 7L3 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function draw(){
+    pop.innerHTML = options.length
+      ? options.map(o=>`<button type="button" class="pill-popover-item" data-mpval="${esc(o.value)}">${o.html}${isChecked(o.value)?checkSvg:''}</button>`).join('')
+      : '<div class="empty" style="padding:6px 4px">Nothing to choose from</div>';
+    pop.querySelectorAll('[data-mpval]').forEach(b=>b.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      onToggle(b.dataset.mpval, !isChecked(b.dataset.mpval));
+      draw();
+    }));
+  }
+  draw();
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.position = 'fixed';
+  pop.style.top = Math.min(rect.bottom+6, window.innerHeight-320)+'px';
+  pop.style.left = Math.min(rect.left, window.innerWidth-220)+'px';
+  pop.style.zIndex = 300;
+  pop.style.maxHeight = '280px';
+  pop.style.overflowY = 'auto';
   _pillPopoverOutsideHandler = e=>{ if(_activePillPopover && !_activePillPopover.contains(e.target) && e.target!==anchorEl && !anchorEl.contains(e.target)) closePillPopover(); };
   setTimeout(()=> document.addEventListener('mousedown', _pillPopoverOutsideHandler), 0);
 }
@@ -3124,8 +3164,9 @@ function wireTaskRows(root){
     const field = ASSIGN_ROLE_FIELD[role];
     const pool = state.members.filter(m=>m.active && m[ASSIGN_ROLE_CAN[role]]!==false);
     const current = new Set(task[field]||[]);
-    openCheckboxDropdown(el, pool.map(m=>({key:m.id, label:m.name})), key=>current.has(key), async (key, checked)=>{
-      checked ? current.add(key) : current.delete(key);
+    const options = pool.map(m=>({ value:m.id, html:`<span style="display:inline-flex;align-items:center;gap:8px">${avatarHtml(m)}${esc(m.name)}</span>` }));
+    openMultiPillPopover(el, options, val=>current.has(val), async (val, checked)=>{
+      checked ? current.add(val) : current.delete(val);
       const { error } = await db.from('rs_proj_tasks').update({ [field]: Array.from(current) }).eq('id', taskId);
       if(error){ toast(error.code==='42703' ? 'Run migration v19 to enable animator assignments' : 'Could not update'); return; }
       await refreshProjectView();
@@ -3763,29 +3804,80 @@ function openDepartmentPopover(anchorEl, taskId){
     await refreshCurrentView();
   });
 }
-function internalTaskRowHtml(t, gridCols){
+const INTERNAL_COLUMNS = [['assignee','Assignee'],['priority','Priority'],['due','Due'],['department','Department']];
+const INTERNAL_COL_WIDTHS = { assignee:170, priority:110, due:110, department:160 };
+const INTERNAL_SORT_LABELS = { manual:'Manual', due:'Due date', priority:'Priority', title:'Task name', assignee:'Assignee', department:'Department' };
+const INTERNAL_GROUP_LABELS = { none:'None', department:'Department', assignee:'Assignee', priority:'Priority', status:'Status' };
+const INTERNAL_PRIORITY_RANK = { Urgent:0, High:1, Medium:2, Low:3 };
+function internalGridCols(){
+  const cols = ['28px','minmax(200px,1fr)'];
+  INTERNAL_COLUMNS.forEach(([key])=>{ if(state.internalCols.has(key)) cols.push(INTERNAL_COL_WIDTHS[key]+'px'); });
+  cols.push('40px');
+  return cols.join(' ');
+}
+function internalHeaderHtml(gridCols){
+  const cells = INTERNAL_COLUMNS.filter(([k])=>state.internalCols.has(k)).map(([,label])=>`<div>${label}</div>`).join('');
+  return `<div class="task-grid-row task-grid-header" style="grid-template-columns:${gridCols}"><div></div><div>Task</div>${cells}<div></div></div>`;
+}
+function sortInternalTasks(list){
+  const arr = list.slice();
+  const nameOf = (id, coll)=> id ? (coll.find(x=>x.id===id)?.name || '') : '￿';
+  if(state.internalSort==='due') arr.sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
+  else if(state.internalSort==='priority') arr.sort((a,b)=> (INTERNAL_PRIORITY_RANK[a.priority]??2) - (INTERNAL_PRIORITY_RANK[b.priority]??2));
+  else if(state.internalSort==='title') arr.sort((a,b)=> a.title.localeCompare(b.title));
+  else if(state.internalSort==='assignee') arr.sort((a,b)=> nameOf(a.assignee_id, state.members).localeCompare(nameOf(b.assignee_id, state.members)));
+  else if(state.internalSort==='department') arr.sort((a,b)=> nameOf(a.department_id, state.departments).localeCompare(nameOf(b.department_id, state.departments)));
+  else arr.sort((a,b)=>(a.position||0)-(b.position||0));
+  return arr;
+}
+function groupInternalTasks(list){
+  const groupBy = state.internalGroupBy || 'none';
+  if(groupBy==='department'){
+    const buckets = departmentList().map(d=>({ label:d.name, tasks:list.filter(t=>t.department_id===d.id) }));
+    buckets.push({ label:'No department', tasks:list.filter(t=>!t.department_id) });
+    return buckets.filter(g=>g.tasks.length);
+  }
+  if(groupBy==='assignee'){
+    const named = state.members.filter(m=>list.some(t=>t.assignee_id===m.id))
+      .map(m=>({ label:m.name, tasks:list.filter(t=>t.assignee_id===m.id) }))
+      .sort((a,b)=>a.label.localeCompare(b.label));
+    const unassigned = { label:'Unassigned', tasks:list.filter(t=>!t.assignee_id) };
+    return [...named, unassigned].filter(g=>g.tasks.length);
+  }
+  if(groupBy==='priority'){
+    return ['Urgent','High','Medium','Low'].map(p=>({ label:p, tasks:list.filter(t=>(t.priority||'Medium')===p) })).filter(g=>g.tasks.length);
+  }
+  if(groupBy==='status'){
+    return [{ label:'Not done', tasks:list.filter(t=>!t.is_done) }, { label:'Done', tasks:list.filter(t=>t.is_done) }].filter(g=>g.tasks.length);
+  }
+  return [{ label:null, tasks:list }];
+}
+function internalTaskRowHtml(t, gridCols, canDrag){
   const assignee = t.assignee_id ? state.members.find(m=>m.id===t.assignee_id) : null;
   const dept = t.department_id ? state.departments.find(d=>d.id===t.department_id) : null;
-  return `<div class="task-grid-row task-row" draggable="true" data-inttask="${t.id}" style="grid-template-columns:${gridCols}">
+  const cells = [];
+  if(state.internalCols.has('assignee')) cells.push(`<div class="inline-editable" data-intassignee="${t.id}" title="Click to assign">${assignee ? avatarWithName(assignee) : '<span style="color:var(--muted)">Unassigned</span>'}</div>`);
+  if(state.internalCols.has('priority')) cells.push(`<div><button type="button" class="priority-pill pill-btn priority-${(t.priority||'Medium').toLowerCase()}" data-intpriority="${t.id}">${esc(t.priority||'Medium')}${PILL_CHEVRON_SVG}</button></div>`);
+  if(state.internalCols.has('due')) cells.push(`<div><button type="button" class="stage-date-btn" data-intdue="${t.id}" style="margin-top:0">${t.due_date? fmtDateNatural(t.due_date):'Set date'}</button></div>`);
+  if(state.internalCols.has('department')) cells.push(`<div>${dept
+    ? `<button type="button" class="status-pill pill-btn" style="background:${mutedBg(dept.color)};color:${dept.color}" data-intdept="${t.id}">${esc(dept.name)}${PILL_CHEVRON_SVG}</button>`
+    : `<button type="button" class="status-pill pill-btn" style="background:var(--track);color:var(--muted)" data-intdept="${t.id}">Set department${PILL_CHEVRON_SVG}</button>`}</div>`);
+  return `<div class="task-grid-row task-row" draggable="${canDrag?'true':'false'}" data-inttask="${t.id}" style="grid-template-columns:${gridCols}">
     <div style="text-align:center"><input type="checkbox" data-intdone="${t.id}" ${t.is_done?'checked':''} style="width:auto" title="Mark done"></div>
     <div class="tg-title"><span class="inline-editable" data-intname="${t.id}" style="${t.is_done?'text-decoration:line-through;color:var(--muted)':''}" title="Click to rename">${esc(t.title)}</span></div>
-    <div class="inline-editable" data-intassignee="${t.id}" title="Click to assign">${assignee ? avatarWithName(assignee) : '<span style="color:var(--muted)">Unassigned</span>'}</div>
-    <div><button type="button" class="priority-pill pill-btn priority-${(t.priority||'Medium').toLowerCase()}" data-intpriority="${t.id}">${esc(t.priority||'Medium')}${PILL_CHEVRON_SVG}</button></div>
-    <div><button type="button" class="stage-date-btn" data-intdue="${t.id}" style="margin-top:0">${t.due_date? fmtDateNatural(t.due_date):'Set date'}</button></div>
-    <div>${dept
-      ? `<button type="button" class="status-pill pill-btn" style="background:${mutedBg(dept.color)};color:${dept.color}" data-intdept="${t.id}">${esc(dept.name)}${PILL_CHEVRON_SVG}</button>`
-      : `<button type="button" class="status-pill pill-btn" style="background:var(--track);color:var(--muted)" data-intdept="${t.id}">Set department${PILL_CHEVRON_SVG}</button>`}</div>
+    ${cells.join('')}
     <div class="tg-actions"><button type="button" class="btn small ghost menu-dots" data-intdelete="${t.id}" title="Delete task"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
   </div>`;
 }
 function renderInternalTasks(){
-  const gridCols = '28px minmax(200px,1fr) 170px 110px 110px 160px 40px';
-  const tasks = state.internalTasks.slice().sort((a,b)=>(a.position||0)-(b.position||0));
-  const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${gridCols}">
-      <div></div><div>Task</div><div>Assignee</div><div>Priority</div><div>Due</div><div>Department</div><div></div>
-    </div>`;
-  const body = tasks.length
-    ? `<div class="task-grid">${header}${tasks.map(t=>internalTaskRowHtml(t, gridCols)).join('')}</div>`
+  const gridCols = internalGridCols();
+  const canDrag = state.internalSort==='manual' && state.internalGroupBy==='none';
+  const groups = groupInternalTasks(sortInternalTasks(state.internalTasks));
+  const body = state.internalTasks.length
+    ? groups.map(g=>`
+      ${g.label!=null? `<h4 style="margin:18px 0 8px">${esc(g.label)} <span style="color:var(--muted);font-weight:400;font-size:12.5px">${g.tasks.length}</span></h4>`:''}
+      <div class="task-grid">${internalHeaderHtml(gridCols)}${g.tasks.map(t=>internalTaskRowHtml(t, gridCols, canDrag)).join('')}</div>
+    `).join('')
     : `<div class="card">${emptyStateHtml({ icon:'tray', title:'No internal tasks yet', subtitle:'Track non-client work — admin, R&D, team ops — here.' })}</div>`;
   main.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
@@ -3795,15 +3887,42 @@ function renderInternalTasks(){
         <button type="button" class="btn small ghost menu-dots" id="intMenuBtn" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button>
       </div>
     </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="btn small ghost" id="intSortBtn">Sort: ${INTERNAL_SORT_LABELS[state.internalSort]||'Manual'} ▾</button>
+      <button class="btn small ghost" id="intGroupBtn">Group: ${INTERNAL_GROUP_LABELS[state.internalGroupBy]||'None'} ▾</button>
+      <button class="btn small ghost" id="intColBtn">Columns ▾</button>
+    </div>
     ${body}`;
-  wireInternalTasks();
+  wireInternalTasks(canDrag);
 }
-function wireInternalTasks(){
+function wireInternalTasks(canDrag){
   $('#intMenuBtn').onclick = (e)=>{
     e.stopPropagation();
     openMenuPopover(e.currentTarget, [
       { label:'Import tasks (CSV/JSON)…', onClick: openInternalImportModal }
     ]);
+  };
+  $('#intSortBtn').onclick = (e)=>{
+    e.stopPropagation();
+    openMenuPopover(e.currentTarget, Object.entries(INTERNAL_SORT_LABELS).map(([key,label])=>({
+      label: (state.internalSort===key?'✓ ':'')+label,
+      onClick: ()=>{ state.internalSort = key; saveInternalSort(); renderInternalTasks(); }
+    })));
+  };
+  $('#intGroupBtn').onclick = (e)=>{
+    e.stopPropagation();
+    openMenuPopover(e.currentTarget, Object.entries(INTERNAL_GROUP_LABELS).map(([key,label])=>({
+      label: (state.internalGroupBy===key?'✓ ':'')+label,
+      onClick: ()=>{ state.internalGroupBy = key; saveInternalGroup(); renderInternalTasks(); }
+    })));
+  };
+  $('#intColBtn').onclick = (e)=>{
+    e.stopPropagation();
+    openCheckboxDropdown(e.currentTarget, INTERNAL_COLUMNS.map(([key,label])=>({key,label})), key=>state.internalCols.has(key), (key,checked)=>{
+      checked ? state.internalCols.add(key) : state.internalCols.delete(key);
+      saveInternalCols();
+      renderInternalTasks();
+    });
   };
   $('#newIntTaskBtn').onclick = async ()=>{
     const nextPos = state.internalTasks.length ? Math.max(...state.internalTasks.map(t=>t.position||0))+1 : 0;
