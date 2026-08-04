@@ -592,7 +592,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.20.0</div>
+    <div id="versionBadge" class="version-badge">v0.20.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -4374,7 +4374,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.20.0';
+const APP_VERSION = '0.20.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -4408,17 +4408,82 @@ function openDevSettingsModal(){
   };
 }
 
+/* Minimal RFC4180-ish CSV parser — handles quoted fields (incl. embedded
+   commas/newlines/escaped "") without pulling in a library. Returns an array
+   of row objects keyed by lower-cased header. */
+function parseCsv(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else if(c==='"'){ inQuotes = true; }
+    else if(c===','){ row.push(field); field=''; }
+    else if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+    else if(c==='\r'){ /* skip, \n handles the line break */ }
+    else field += c;
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  if(!rows.length) return [];
+  const headers = rows[0].map(h=>h.trim().toLowerCase());
+  return rows.slice(1).filter(r=>r.some(c=>(c||'').trim()!=='')).map(r=>{
+    const obj = {};
+    headers.forEach((h,i)=> obj[h] = (r[i]||'').trim());
+    return obj;
+  });
+}
+
+let _importFormat = 'json';
+const IMPORT_FORMATS = {
+  json: {
+    label:'JSON',
+    help:'Paste a JSON payload with clients / members / tasks. Matched by name — safe to re-run, existing rows won\'t be duplicated.',
+    placeholder:'{"clients":[{"name":"Client Name","is_retainer":true}],"members":[{"name":"Person Name"}],"tasks":[{"client_name":"Client Name","title":"Task title","status":"Complete","due_date":"2026-07-01","assignee_names":["Person Name"]}]}'
+  },
+  csv: {
+    label:'CSV',
+    help:'Paste or upload a CSV of tasks. Header row required: client_name, title, status, priority, due_date, assignees (semicolon-separated names for multiple). Matched by client + title — safe to re-run.',
+    placeholder:'client_name,title,status,priority,due_date,assignees\nAthernal Bio,Update slide master,To do,Medium,2026-08-10,Ross Hall;Louis Rush'
+  }
+};
+function setImportFormat(fmt){
+  _importFormat = fmt;
+  document.querySelectorAll('[data-impformat]').forEach(b=> b.classList.toggle('ghost', b.dataset.impformat!==fmt));
+  document.getElementById('imp_help').textContent = IMPORT_FORMATS[fmt].help;
+  document.getElementById('imp_text').placeholder = IMPORT_FORMATS[fmt].placeholder;
+}
 function openImportModal(){
   showModal(`
     <h3>Import data</h3>
-    <div class="sub">Paste a JSON payload (clients / members / tasks) and run it. Matched by name — safe to re-run, existing clients/members/tasks won't be duplicated.</div>
-    <textarea id="imp_json" style="min-height:240px;font-family:ui-monospace,monospace;font-size:11.5px" placeholder='{"clients":[{"name":"Client Name","is_retainer":true}],"members":[{"name":"Person Name"}],"tasks":[{"client_name":"Client Name","title":"Task title","status":"Complete","due_date":"2026-07-01","assignee_names":["Person Name"]}]}'></textarea>
+    <div class="sub" id="imp_help"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin:10px 0">
+      <button type="button" class="btn small" data-impformat="json">JSON</button>
+      <button type="button" class="btn small ghost" data-impformat="csv">CSV</button>
+      <input type="file" id="imp_file" accept=".json,.csv,.txt" style="font-size:12px;margin-left:auto">
+    </div>
+    <textarea id="imp_text" style="min-height:240px;font-family:ui-monospace,monospace;font-size:11.5px"></textarea>
     <div id="imp_log" style="margin-top:10px;font-size:12px;color:var(--muted);max-height:200px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,monospace"></div>
     <div class="modal-actions">
       <button class="btn ghost" id="imp_close">Close</button>
       <div class="right"><button class="btn" id="imp_run">Run import</button></div>
     </div>
   `);
+  setImportFormat('json');
+  document.querySelectorAll('[data-impformat]').forEach(b=> b.onclick = ()=> setImportFormat(b.dataset.impformat));
+  document.getElementById('imp_file').addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      document.getElementById('imp_text').value = reader.result;
+      const ext = file.name.toLowerCase().split('.').pop();
+      if(ext==='csv') setImportFormat('csv');
+      else if(ext==='json') setImportFormat('json');
+    };
+    reader.readAsText(file);
+  });
   $('#imp_close').onclick = closeModal;
   $('#imp_run').onclick = runImport;
 }
@@ -4427,8 +4492,22 @@ async function runImport(){
   const logEl = document.getElementById('imp_log');
   const append = (msg)=>{ logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; };
   let data;
-  try{ data = JSON.parse(document.getElementById('imp_json').value); }
-  catch(e){ append('❌ Invalid JSON: '+e.message); return; }
+  const rawText = document.getElementById('imp_text').value;
+  if(_importFormat==='csv'){
+    const rows = parseCsv(rawText);
+    if(!rows.length){ append('❌ No rows found — check the header row matches client_name, title, status, priority, due_date, assignees'); return; }
+    data = { tasks: rows.map(r=>({
+      client_name: r.client_name || r.client || '',
+      title: r.title || r.task || '',
+      status: r.status || '',
+      priority: r.priority || '',
+      due_date: r.due_date || r.due || '',
+      assignee_names: (r.assignees || r.assignee || '').split(/[;|]/).map(s=>s.trim()).filter(Boolean)
+    })) };
+  } else {
+    try{ data = JSON.parse(rawText); }
+    catch(e){ append('❌ Invalid JSON: '+e.message); return; }
+  }
 
   const runBtn = document.getElementById('imp_run');
   runBtn.disabled = true; runBtn.textContent = 'Importing…';
