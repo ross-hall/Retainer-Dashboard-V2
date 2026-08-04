@@ -34,3 +34,10 @@ create table if not exists rs_internal_tasks (
   position int not null default 0,
   created_at timestamptz not null default now()
 );
+
+-- Supabase now enables RLS by default on tables created via the SQL editor.
+-- Every other table in this app has RLS off (see CLAUDE.md's flagged "RLS is
+-- fully open" note) so the anon key the app runs on can read/write freely —
+-- match that here, otherwise the app's inserts/selects get silently blocked.
+alter table rs_departments disable row level security;
+alter table rs_internal_tasks disable row level security;

@@ -592,7 +592,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.20.1</div>
+    <div id="versionBadge" class="version-badge">v0.20.2</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -3790,12 +3790,21 @@ function renderInternalTasks(){
   main.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div><h2>Internal Tasks</h2><div class="sub" style="margin-bottom:0">Non-client work — admin, R&D, team ops</div></div>
-      <button class="btn small" id="newIntTaskBtn">+ Task</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn small" id="newIntTaskBtn">+ Task</button>
+        <button type="button" class="btn small ghost menu-dots" id="intMenuBtn" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button>
+      </div>
     </div>
     ${body}`;
   wireInternalTasks();
 }
 function wireInternalTasks(){
+  $('#intMenuBtn').onclick = (e)=>{
+    e.stopPropagation();
+    openMenuPopover(e.currentTarget, [
+      { label:'Import tasks (CSV/JSON)…', onClick: openInternalImportModal }
+    ]);
+  };
   $('#newIntTaskBtn').onclick = async ()=>{
     const nextPos = state.internalTasks.length ? Math.max(...state.internalTasks.map(t=>t.position||0))+1 : 0;
     const { error } = await db.from('rs_internal_tasks').insert({ title:'New task', priority:'Medium', position: nextPos });
@@ -3878,6 +3887,130 @@ function wireInternalTasks(){
       await refreshCurrentView();
     });
   });
+}
+
+let _intImportFormat = 'csv';
+const INTERNAL_IMPORT_FORMATS = {
+  csv: {
+    label:'CSV',
+    help:'Paste or upload a CSV of internal tasks. Header row required: title, assignee, priority, due_date, department. Matched by title — safe to re-run.',
+    placeholder:'title,assignee,priority,due_date,department\nRestock studio supplies,Ross Hall,Low,2026-08-15,Admin'
+  },
+  json: {
+    label:'JSON',
+    help:'Paste a JSON payload: {"tasks":[...]}. Matched by title — safe to re-run.',
+    placeholder:'{"tasks":[{"title":"Restock studio supplies","assignee_name":"Ross Hall","priority":"Low","due_date":"2026-08-15","department_name":"Admin"}]}'
+  }
+};
+function setInternalImportFormat(fmt){
+  _intImportFormat = fmt;
+  document.querySelectorAll('[data-intimpformat]').forEach(b=> b.classList.toggle('ghost', b.dataset.intimpformat!==fmt));
+  document.getElementById('intimp_help').textContent = INTERNAL_IMPORT_FORMATS[fmt].help;
+  document.getElementById('intimp_text').placeholder = INTERNAL_IMPORT_FORMATS[fmt].placeholder;
+}
+function openInternalImportModal(){
+  showModal(`
+    <h3>Import internal tasks</h3>
+    <div class="sub" id="intimp_help"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin:10px 0">
+      <button type="button" class="btn small" data-intimpformat="csv">CSV</button>
+      <button type="button" class="btn small ghost" data-intimpformat="json">JSON</button>
+      <input type="file" id="intimp_file" accept=".csv,.json,.txt" style="font-size:12px;margin-left:auto">
+    </div>
+    <textarea id="intimp_text" style="min-height:220px;font-family:ui-monospace,monospace;font-size:11.5px"></textarea>
+    <div id="intimp_log" style="margin-top:10px;font-size:12px;color:var(--muted);max-height:200px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,monospace"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="intimp_close">Close</button>
+      <div class="right"><button class="btn" id="intimp_run">Run import</button></div>
+    </div>
+  `);
+  setInternalImportFormat('csv');
+  document.querySelectorAll('[data-intimpformat]').forEach(b=> b.onclick = ()=> setInternalImportFormat(b.dataset.intimpformat));
+  document.getElementById('intimp_file').addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      document.getElementById('intimp_text').value = reader.result;
+      const ext = file.name.toLowerCase().split('.').pop();
+      if(ext==='json') setInternalImportFormat('json');
+      else if(ext==='csv') setInternalImportFormat('csv');
+    };
+    reader.readAsText(file);
+  });
+  $('#intimp_close').onclick = closeModal;
+  $('#intimp_run').onclick = runInternalImport;
+}
+async function runInternalImport(){
+  const logEl = document.getElementById('intimp_log');
+  const append = (msg)=>{ logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; };
+  const rawText = document.getElementById('intimp_text').value;
+  let rows;
+  if(_intImportFormat==='json'){
+    try{ rows = (JSON.parse(rawText).tasks)||[]; }
+    catch(e){ append('❌ Invalid JSON: '+e.message); return; }
+    rows = rows.map(t=>({ title:t.title||'', assignee:t.assignee_name||'', priority:t.priority||'', due_date:t.due_date||'', department:t.department_name||'', done:t.is_done?'yes':'' }));
+  } else {
+    rows = parseCsv(rawText).map(r=>({
+      title: r.title || r.task || '',
+      assignee: r.assignee || r.assignee_name || '',
+      priority: r.priority || '',
+      due_date: r.due_date || r.due || '',
+      department: r.department || r.department_name || '',
+      done: r.done || r.is_done || ''
+    }));
+    if(!rows.length){ append('❌ No rows found — check the header row matches title, assignee, priority, due_date, department'); return; }
+  }
+
+  const runBtn = document.getElementById('intimp_run');
+  runBtn.disabled = true; runBtn.textContent = 'Importing…';
+  logEl.textContent = '';
+
+  const memberByName = {};
+  state.members.forEach(m=> memberByName[m.name.trim().toLowerCase()] = m.id);
+  const deptByName = {};
+  state.departments.forEach(d=> deptByName[d.name.trim().toLowerCase()] = d);
+  const existingTitles = new Set(state.internalTasks.map(t=>t.title.trim().toLowerCase()));
+
+  let added=0, skipped=0, errors=0;
+  let nextPos = state.internalTasks.length ? Math.max(...state.internalTasks.map(t=>t.position||0))+1 : 0;
+  for(const r of rows){
+    const title = (r.title||'').trim();
+    if(!title) continue;
+    const titleKey = title.toLowerCase();
+    if(existingTitles.has(titleKey)){ skipped++; continue; }
+
+    let departmentId = null;
+    const deptName = (r.department||'').trim();
+    if(deptName){
+      const key = deptName.toLowerCase();
+      if(deptByName[key]) departmentId = deptByName[key].id;
+      else{
+        const pos = Object.keys(deptByName).length;
+        const { data: newDept, error: deErr } = await db.from('rs_departments').insert({ name:deptName, color:PALETTE[pos%PALETTE.length], position:pos }).select().single();
+        if(deErr){ append(`❌ Task "${title}": could not create department "${deptName}" — ${deErr.message}`); errors++; continue; }
+        deptByName[key] = newDept; departmentId = newDept.id;
+        append(`✓ Created department "${deptName}"`);
+      }
+    }
+
+    const assigneeName = (r.assignee||'').trim();
+    const assigneeId = assigneeName ? (memberByName[assigneeName.toLowerCase()] || null) : null;
+    if(assigneeName && !assigneeId) append(`⚠ Task "${title}": no team member named "${assigneeName}" — left unassigned`);
+
+    const priority = PRIORITIES.includes(r.priority) ? r.priority : 'Medium';
+    const is_done = /^(y|yes|true|1|done)$/i.test((r.done||'').trim());
+
+    const { error } = await db.from('rs_internal_tasks').insert({
+      title, assignee_id: assigneeId, priority, due_date: r.due_date || null,
+      department_id: departmentId, is_done, position: nextPos
+    });
+    if(error){ append(`❌ Task "${title}": ${error.message}`); errors++; continue; }
+    existingTitles.add(titleKey); nextPos++; added++;
+  }
+  append(`\nDone. ${added} task(s) imported${skipped?`, ${skipped} skipped (already existed)`:''}${errors?`, ${errors} error(s)`:''}.`);
+  runBtn.disabled = false; runBtn.textContent = 'Run import';
+  await refreshCurrentView();
 }
 
 function renderArchived(){
@@ -4374,7 +4507,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.20.1';
+const APP_VERSION = '0.20.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
