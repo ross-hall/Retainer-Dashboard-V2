@@ -575,6 +575,10 @@
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3v18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M6 4.5h11l-2.5 3.5 2.5 3.5H6" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
         <span class="nav-label">Milestones</span>
       </button>
+      <button data-view="internal" title="Internal Tasks">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 4.5h8a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.5 9h5M9.5 12.5h5M9.5 16h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span class="nav-label">Internal Tasks</span>
+      </button>
       <button data-view="settings" class="nav-icon-btn" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3.3"/>
@@ -588,7 +592,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.19.0</div>
+    <div id="versionBadge" class="version-badge">v0.20.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -632,7 +636,8 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   taskColOrder:loadStoredArray('rs_task_col_order', DEFAULT_TASK_COL_ORDER),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha' };
+  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha',
+  departments:[], internalTasks:[] };
 const $ = s => document.querySelector(s);
 const main = $('#main');
 function resolveTheme(){
@@ -851,7 +856,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -864,7 +869,9 @@ async function loadAll(){
     db.from('rs_anim_cells').select('*'),
     db.from('rs_anim_feedback').select('*').order('created_at'),
     db.from('rs_proj_task_entries').select('*').order('work_date',{ascending:false}),
-    db.from('rs_anim_cell_statuses').select('*').order('position')
+    db.from('rs_anim_cell_statuses').select('*').order('position'),
+    db.from('rs_departments').select('*').order('position'),
+    db.from('rs_internal_tasks').select('*').order('position')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -873,6 +880,9 @@ async function loadAll(){
   state.animFeedback = afb.data||[];
   state.animCellStatuses = (acs.data && acs.data.length) ? acs.data : [];
   state.projTaskEntries = pte.data||[];
+  state.departments = dep.data||[];
+  state.internalTasks = int.data||[];
+  if(dep.error) console.warn('Internal tasks tables not found — run retainer-tracker-migration-v21.sql', dep.error);
   if(pte.error) console.warn('Task time entries table not found — run retainer-tracker-migration-v18.sql', pte.error);
   if(ash.error) console.warn('Animation tables not found — run retainer-tracker-migration-v16.sql', ash.error);
   if(acs.error) console.warn('Animation cell statuses table not found — run retainer-tracker-migration-v20.sql', acs.error);
@@ -1548,7 +1558,7 @@ function render(){
     titleEl.textContent = activeLabel ? activeLabel.textContent : 'Reciprocal Space';
   }
   closeMobileNav();
-  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation}[state.view])();
+  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation, internal:renderInternalTasks}[state.view])();
   main.classList.remove('fade-in'); void main.offsetWidth; main.classList.add('fade-in');
 }
 
@@ -3705,6 +3715,171 @@ function openDiscordModal(projectId){
 }
 
 
+/* ================= Internal Tasks (non-client work) ================= */
+function departmentList(){ return state.departments.slice().sort((a,b)=>a.position-b.position); }
+function openAssigneePopover(anchorEl, taskId){
+  const task = state.internalTasks.find(t=>t.id===taskId);
+  const current = task?.assignee_id || '';
+  const pool = state.members.filter(m=>m.active);
+  const options = pool.map(m=>({ value:m.id, html:`<span style="display:inline-flex;align-items:center;gap:8px">${avatarHtml(m)}${esc(m.name)}</span>` }));
+  options.push({ value:'', html:`<span style="color:var(--muted)">Unassigned</span>` });
+  openPillPopover(anchorEl, options, current, async (val)=>{
+    const { error } = await db.from('rs_internal_tasks').update({ assignee_id: val || null }).eq('id', taskId);
+    if(error){ toast('Could not update assignee'); return; }
+    await refreshCurrentView();
+  });
+}
+function openInternalPriorityPopover(anchorEl, taskId){
+  const task = state.internalTasks.find(t=>t.id===taskId);
+  const current = task?.priority || 'Medium';
+  const options = PRIORITIES.map(p=>({ value:p, html:`<span class="priority-pill priority-${p.toLowerCase()}">${esc(p)}</span>` }));
+  openPillPopover(anchorEl, options, current, async (val)=>{
+    const { error } = await db.from('rs_internal_tasks').update({ priority: val }).eq('id', taskId);
+    if(error){ toast('Could not update priority'); return; }
+    await refreshCurrentView();
+  });
+}
+function openDepartmentPopover(anchorEl, taskId){
+  const task = state.internalTasks.find(t=>t.id===taskId);
+  const current = task?.department_id || '';
+  const depts = departmentList();
+  const options = depts.map(d=>({ value:d.id, html:`<span class="status-pill" style="background:${mutedBg(d.color)};color:${d.color}">${esc(d.name)}</span>` }));
+  options.push({ value:'', html:`<span style="color:var(--muted)">No department</span>` });
+  options.push({ value:'__add__', html:`<span style="color:var(--accent);font-weight:600">+ Add department</span>` });
+  openPillPopover(anchorEl, options, current, async (val)=>{
+    if(val==='__add__'){
+      const name = prompt('New department name');
+      if(!name || !name.trim()) return;
+      const nextPos = depts.length ? Math.max(...depts.map(d=>d.position))+1 : 0;
+      const { data, error } = await db.from('rs_departments').insert({ name:name.trim(), color:PALETTE[depts.length%PALETTE.length], position:nextPos }).select().single();
+      if(error){ toast(error.code==='PGRST205'?'Run migration v21 to enable departments':'Could not add department'); return; }
+      const { error: err2 } = await db.from('rs_internal_tasks').update({ department_id:data.id }).eq('id', taskId);
+      if(err2){ toast('Could not assign department'); return; }
+      toast('Department added'); await refreshCurrentView();
+      return;
+    }
+    const { error } = await db.from('rs_internal_tasks').update({ department_id: val || null }).eq('id', taskId);
+    if(error){ toast('Could not update department'); return; }
+    await refreshCurrentView();
+  });
+}
+function internalTaskRowHtml(t, gridCols){
+  const assignee = t.assignee_id ? state.members.find(m=>m.id===t.assignee_id) : null;
+  const dept = t.department_id ? state.departments.find(d=>d.id===t.department_id) : null;
+  return `<div class="task-grid-row task-row" draggable="true" data-inttask="${t.id}" style="grid-template-columns:${gridCols}">
+    <div style="text-align:center"><input type="checkbox" data-intdone="${t.id}" ${t.is_done?'checked':''} style="width:auto" title="Mark done"></div>
+    <div class="tg-title"><span class="inline-editable" data-intname="${t.id}" style="${t.is_done?'text-decoration:line-through;color:var(--muted)':''}" title="Click to rename">${esc(t.title)}</span></div>
+    <div class="inline-editable" data-intassignee="${t.id}" title="Click to assign">${assignee ? avatarWithName(assignee) : '<span style="color:var(--muted)">Unassigned</span>'}</div>
+    <div><button type="button" class="priority-pill pill-btn priority-${(t.priority||'Medium').toLowerCase()}" data-intpriority="${t.id}">${esc(t.priority||'Medium')}${PILL_CHEVRON_SVG}</button></div>
+    <div><button type="button" class="stage-date-btn" data-intdue="${t.id}" style="margin-top:0">${t.due_date? fmtDateNatural(t.due_date):'Set date'}</button></div>
+    <div>${dept
+      ? `<button type="button" class="status-pill pill-btn" style="background:${mutedBg(dept.color)};color:${dept.color}" data-intdept="${t.id}">${esc(dept.name)}${PILL_CHEVRON_SVG}</button>`
+      : `<button type="button" class="status-pill pill-btn" style="background:var(--track);color:var(--muted)" data-intdept="${t.id}">Set department${PILL_CHEVRON_SVG}</button>`}</div>
+    <div class="tg-actions"><button type="button" class="btn small ghost menu-dots" data-intdelete="${t.id}" title="Delete task"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+  </div>`;
+}
+function renderInternalTasks(){
+  const gridCols = '28px minmax(200px,1fr) 170px 110px 110px 160px 40px';
+  const tasks = state.internalTasks.slice().sort((a,b)=>(a.position||0)-(b.position||0));
+  const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${gridCols}">
+      <div></div><div>Task</div><div>Assignee</div><div>Priority</div><div>Due</div><div>Department</div><div></div>
+    </div>`;
+  const body = tasks.length
+    ? `<div class="task-grid">${header}${tasks.map(t=>internalTaskRowHtml(t, gridCols)).join('')}</div>`
+    : `<div class="card">${emptyStateHtml({ icon:'tray', title:'No internal tasks yet', subtitle:'Track non-client work — admin, R&D, team ops — here.' })}</div>`;
+  main.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div><h2>Internal Tasks</h2><div class="sub" style="margin-bottom:0">Non-client work — admin, R&D, team ops</div></div>
+      <button class="btn small" id="newIntTaskBtn">+ Task</button>
+    </div>
+    ${body}`;
+  wireInternalTasks();
+}
+function wireInternalTasks(){
+  $('#newIntTaskBtn').onclick = async ()=>{
+    const nextPos = state.internalTasks.length ? Math.max(...state.internalTasks.map(t=>t.position||0))+1 : 0;
+    const { error } = await db.from('rs_internal_tasks').insert({ title:'New task', priority:'Medium', position: nextPos });
+    if(error){ toast(error.code==='PGRST205'?'Run migration v21 to enable Internal Tasks':'Could not add task'); console.error(error); return; }
+    toast('Task added — click the title to rename'); await refreshCurrentView();
+  };
+  main.querySelectorAll('[data-intdone]').forEach(cb=>cb.addEventListener('change', async ()=>{
+    const { error } = await db.from('rs_internal_tasks').update({ is_done: cb.checked }).eq('id', cb.dataset.intdone);
+    if(error){ toast('Could not update'); return; }
+    await refreshCurrentView();
+  }));
+  main.querySelectorAll('[data-intname]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const taskId = el.dataset.intname;
+    const original = el.textContent;
+    const input = document.createElement('input');
+    input.type = 'text'; input.value = original; input.className = 'inline-rename-input';
+    el.replaceWith(input); input.focus(); input.select();
+    input.addEventListener('click', ev=> ev.stopPropagation());
+    input.addEventListener('keydown', ev=>{
+      if(ev.key==='Enter') input.blur();
+      if(ev.key==='Escape'){ input.dataset.cancel='1'; input.blur(); }
+    });
+    input.addEventListener('blur', async ()=>{
+      const val = input.value.trim();
+      if(input.dataset.cancel || !val || val===original){ input.replaceWith(el); return; }
+      const { error } = await db.from('rs_internal_tasks').update({ title: val }).eq('id', taskId);
+      if(error){ toast('Could not rename task'); input.replaceWith(el); return; }
+      await refreshCurrentView();
+    }, { once:true });
+  }));
+  main.querySelectorAll('[data-intassignee]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openAssigneePopover(el, el.dataset.intassignee);
+  }));
+  main.querySelectorAll('[data-intpriority]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openInternalPriorityPopover(el, el.dataset.intpriority);
+  }));
+  main.querySelectorAll('[data-intdue]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const taskId = el.dataset.intdue;
+    const task = state.internalTasks.find(t=>t.id===taskId);
+    openMiniDatePicker(el, task?.due_date, async (newDate)=>{
+      const { error } = await db.from('rs_internal_tasks').update({ due_date:newDate }).eq('id', taskId);
+      if(error){ toast('Could not save date'); return; }
+      await refreshCurrentView();
+    });
+  }));
+  main.querySelectorAll('[data-intdept]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openDepartmentPopover(el, el.dataset.intdept);
+  }));
+  main.querySelectorAll('[data-intdelete]').forEach(el=>el.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    const t = state.internalTasks.find(t=>t.id===el.dataset.intdelete);
+    if(!t) return;
+    if(!confirm(`Delete "${t.title}"? This cannot be undone.`)) return;
+    const { error } = await db.from('rs_internal_tasks').delete().eq('id', t.id);
+    if(error){ toast('Delete failed'); return; }
+    toast('Task deleted'); await refreshCurrentView();
+  }));
+  const ordered = state.internalTasks.slice().sort((a,b)=>(a.position||0)-(b.position||0));
+  main.querySelectorAll('.task-row[data-inttask]').forEach(row=>{
+    row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', row.dataset.inttask); e.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('drop-target-row'); });
+    row.addEventListener('dragleave', ()=> row.classList.remove('drop-target-row'));
+    row.addEventListener('drop', async e=>{
+      e.preventDefault(); row.classList.remove('drop-target-row');
+      const draggedId = e.dataTransfer.getData('text/plain');
+      const targetId = row.dataset.inttask;
+      if(!draggedId || draggedId===targetId) return;
+      const order = ordered.slice();
+      const fromIdx = order.findIndex(t=>t.id===draggedId);
+      const toIdx = order.findIndex(t=>t.id===targetId);
+      if(fromIdx<0 || toIdx<0) return;
+      const [moved] = order.splice(fromIdx,1);
+      order.splice(toIdx,0,moved);
+      await Promise.all(order.map((t,i)=> db.from('rs_internal_tasks').update({position:i}).eq('id',t.id)));
+      await refreshCurrentView();
+    });
+  });
+}
+
 function renderArchived(){
   const archivedClients = state.clients.filter(c=>!c.active);
   const archivedProjects = state.projects.filter(p=>!p.active).map(p=>({ p, client: state.clients.find(c=>c.id===p.client_id) }));
@@ -3812,7 +3987,7 @@ function renderSettings(){
         <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Team members</h3>
         <table><thead><tr><th>Name</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th></th></tr></thead><tbody>
         ${state.members.map(m=>`<tr style="${m.active?'':'opacity:.45'}">
-          <td>${esc(m.name)}</td>
+          <td><input type="text" data-membername="${m.id}" value="${esc(m.name)}" style="min-width:120px"></td>
           <td>×${m.weight}</td>
           <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_design" ${m.can_design!==false?'checked':''} style="width:auto"></td>
           <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_review" ${m.can_review!==false?'checked':''} style="width:auto"></td>
@@ -3863,6 +4038,21 @@ function renderSettings(){
         </div>`).join('') || '<div class="empty">No statuses yet.</div>'}
       </div>
       <button class="btn small" id="newStatusBtn">+ New status</button>
+    </div>
+
+    <div class="card" style="margin-top:22px">
+      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Departments</h3>
+      <div class="sub" style="margin-bottom:14px">Labels used on the Internal Tasks page (e.g. Animation, Graphics) — you can also add a new one directly from the department picker on that page.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="deptList">
+        ${departmentList().length ? departmentList().map((d,i,arr)=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px">
+          ${colorCircleHtml('dept_color_'+d.id, d.color)}
+          <input type="text" data-deptname="${d.id}" value="${esc(d.name)}" style="flex:1;min-width:120px">
+          <button class="btn small ghost" data-deptup="${d.id}" ${i===0?'disabled':''} title="Move up">↑</button>
+          <button class="btn small ghost" data-deptdown="${d.id}" ${i===arr.length-1?'disabled':''} title="Move down">↓</button>
+          <button class="btn small danger" data-deptdelete="${d.id}" title="Delete">Delete</button>
+        </div>`).join('') : '<div class="empty">No departments yet — run migration v21 (outputs/v21_internal_tasks.sql) in Supabase, then reload.</div>'}
+      </div>
+      <button class="btn small" id="newDeptBtn">+ New department</button>
     </div>
 
     <div class="card" style="margin-top:22px">
@@ -3953,6 +4143,15 @@ function renderSettings(){
     if(error){ toast('Could not save'); return; }
     await loadAll();
   }));
+  main.querySelectorAll('[data-membername]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const name = inp.value.trim();
+      if(!name){ toast('Member needs a name'); inp.value = state.members.find(m=>m.id===inp.dataset.membername).name; return; }
+      const { error } = await db.from('rs_members').update({ name }).eq('id', inp.dataset.membername);
+      if(error){ toast('Could not rename'); return; }
+      toast('Member renamed — updated everywhere they’re assigned'); await loadAll();
+    });
+  });
   $('#newTypeBtn').onclick = ()=> openProjectTypeModal(null);
   main.querySelectorAll('[data-ptyedit]').forEach(b=>b.onclick = ()=> openProjectTypeModal(b.dataset.ptyedit));
   main.querySelectorAll('[data-ptyactive]').forEach(b=>b.onclick = async ()=>{
@@ -4029,6 +4228,61 @@ function renderSettings(){
     const { error } = await db.from('rs_task_statuses').insert({ name:'New status', color:PALETTE[list.length%PALETTE.length], position:nextPos, is_complete:false });
     if(error){ toast('Could not add status'); console.error(error); return; }
     toast('Status added — rename it below'); await loadAll();
+  };
+
+  departmentList().forEach(d=>{
+    wireColorCircleCustom('dept_color_'+d.id, async (hex)=>{
+      const { error } = await db.from('rs_departments').update({ color:hex }).eq('id', d.id);
+      if(error){ toast('Could not save colour'); return; }
+      await loadAll();
+    });
+  });
+  main.querySelectorAll('[data-deptname]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const name = inp.value.trim();
+      if(!name){ toast('Department needs a name'); inp.value = departmentList().find(d=>d.id===inp.dataset.deptname).name; return; }
+      const { error } = await db.from('rs_departments').update({ name }).eq('id', inp.dataset.deptname);
+      if(error){ toast('Could not rename'); return; }
+      toast('Department renamed'); await loadAll();
+    });
+  });
+  main.querySelectorAll('[data-deptup]').forEach(b=>b.onclick = async ()=>{
+    const list = departmentList();
+    const i = list.findIndex(d=>d.id===b.dataset.deptup);
+    if(i<=0) return;
+    const a=list[i], p=list[i-1];
+    await Promise.all([
+      db.from('rs_departments').update({position:p.position}).eq('id',a.id),
+      db.from('rs_departments').update({position:a.position}).eq('id',p.id)
+    ]);
+    await loadAll();
+  });
+  main.querySelectorAll('[data-deptdown]').forEach(b=>b.onclick = async ()=>{
+    const list = departmentList();
+    const i = list.findIndex(d=>d.id===b.dataset.deptdown);
+    if(i<0 || i>=list.length-1) return;
+    const a=list[i], n=list[i+1];
+    await Promise.all([
+      db.from('rs_departments').update({position:n.position}).eq('id',a.id),
+      db.from('rs_departments').update({position:a.position}).eq('id',n.id)
+    ]);
+    await loadAll();
+  });
+  main.querySelectorAll('[data-deptdelete]').forEach(b=>b.onclick = async ()=>{
+    const d = departmentList().find(d=>d.id===b.dataset.deptdelete);
+    const inUse = state.internalTasks.some(t=>t.department_id===d.id);
+    if(inUse){ toast(`Can't delete "${d.name}" — tasks are still using it. Change their department first.`); return; }
+    if(!confirm(`Delete the "${d.name}" department? This can't be undone.`)) return;
+    const { error } = await db.from('rs_departments').delete().eq('id', d.id);
+    if(error){ toast('Delete failed'); return; }
+    toast('Department deleted'); await loadAll();
+  });
+  $('#newDeptBtn').onclick = async ()=>{
+    const list = departmentList();
+    const nextPos = list.length ? Math.max(...list.map(d=>d.position))+1 : 0;
+    const { error } = await db.from('rs_departments').insert({ name:'New department', color:PALETTE[list.length%PALETTE.length], position:nextPos });
+    if(error){ toast(error.code==='PGRST205'?'Run migration v21 to enable departments':'Could not add department'); console.error(error); return; }
+    toast('Department added — rename it below'); await loadAll();
   };
 
   state.animCellStatuses.forEach(st=>{
@@ -4120,7 +4374,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.19.0';
+const APP_VERSION = '0.20.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
