@@ -230,10 +230,12 @@
   .task-grid-row{display:grid;align-items:center;gap:10px;padding:12px 10px;border-bottom:1px solid var(--line-soft);transition:background var(--fast) var(--ease)}
   .task-grid-row:last-child{border-bottom:none}
   .task-grid-row > div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .task-grid-row > div.inline-editable,
+  .task-grid-row > div:has(.pill-btn, .stage-date-btn, .inline-editable){overflow:visible}
   .task-grid-header{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);font-weight:600;padding:9px 10px;position:sticky;top:0;background:var(--card);z-index:3}
   .col-resize-handle{position:absolute;top:0;right:-6px;width:10px;height:100%;cursor:col-resize;z-index:2}
   .col-resize-handle:hover, .col-resize-handle.resizing{background:linear-gradient(to right, transparent 5px, var(--accent) 5px, var(--accent) 6px, transparent 6px)}
-  .tg-title{display:flex;align-items:center;gap:9px;overflow:hidden}
+  .tg-title{display:flex;align-items:center;gap:9px;overflow:visible}
   .inline-editable{border-radius:6px;padding:3px 6px;margin:-3px -6px;cursor:pointer;transition:box-shadow var(--fast) var(--ease)}
   .inline-editable:hover{box-shadow:0 0 0 1px var(--ink-light)}
   .tg-title .inline-editable{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -581,7 +583,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.18.3</div>
+    <div id="versionBadge" class="version-badge">v0.18.4</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -1799,7 +1801,7 @@ function clientRetainerHeaderHtml(c, tab){
       <label class="switch-toggle" style="margin:18px 0 0">
         <input type="checkbox" id="allowanceTrackingToggle" ${tab==='allowance'?'checked':''}>
         <span class="switch-track"><span class="switch-knob"></span></span>
-        <span class="switch-label">Allowance Tracking</span>
+        <span class="switch-label">Allowance View</span>
       </label>
     </div>`;
 }
@@ -1943,7 +1945,7 @@ async function loadRetainerAllowanceBody(c){
           </span>
         </div>
         <div class="card" style="padding:8px 12px">
-          ${items.length? `<table><thead><tr><th>Task</th><th>Date</th><th>Assigned</th><th style="text-align:right">Hours (entries)</th><th style="text-align:center">Tracked</th><th></th></tr></thead>
+          ${items.length? `<table><thead><tr><th>Task</th><th>Date</th><th>Assigned</th><th>Hours (entries)</th><th style="text-align:center">Tracked</th><th></th></tr></thead>
           <tbody>${items.map(pt=>{
             const tracked = taskEntriesFor(pt.id).length>0;
             const dateStr = pt.work_date || pt.due_date;
@@ -1957,7 +1959,7 @@ async function loadRetainerAllowanceBody(c){
               <td><span class="status-dot" style="background:${statusColor(pt.status)}"></span><span class="inline-editable" data-taskname="${pt.id}" title="Click to rename">${esc(pt.title)}</span></td>
               <td><button type="button" class="stage-date-btn" data-taskdue="${pt.id}" style="margin-top:0">${dateStr? fmtDate(new Date(dateStr+'T00:00')) : 'Set date'}</button></td>
               <td>${avatarGroupHtml(pt.assigned_designer_ids)}</td>
-              <td style="text-align:right">${hoursDisplay}</td>
+              <td>${hoursDisplay}</td>
               <td style="text-align:center">${tracked? '<span class="retainer-tick" title="Counted toward this cycle">✓ Tracked</span>' : '<span style="color:var(--amber);font-weight:600" title="Not counting toward retainer hours yet">⚠ Not tracked</span>'}</td>
               <td style="text-align:right"><button type="button" class="btn small ghost row-edit-btn" data-taskeditbtn="${pt.id}">Edit</button></td>
             </tr>`;
@@ -2864,7 +2866,7 @@ function taskRowHtml(t, showAnimator){
     ${state.taskCols.has('designer')?`<div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>`:''}
     ${state.taskCols.has('reviewer')?`<div class="inline-editable" data-assigninline="${t.id}:reviewer" title="Click to edit reviewers">${avatarGroupHtml(t.assigned_reviewer_ids)}</div>`:''}
     ${showAnimator?`<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`:''}
-    ${state.taskCols.has('hours')?`<div class="inline-editable" style="text-align:right" data-taskhours="${t.id}" title="Click to edit hours">${taskEntriesFor(t.id).length? fmtH(taskHoursTotal(t.id)) : (t.recorded_hours!=null?fmtH(t.recorded_hours):'—')}</div>`:''}
+    ${state.taskCols.has('hours')?`<div class="inline-editable" data-taskhours="${t.id}" title="Click to edit hours">${taskEntriesFor(t.id).length? fmtH(taskHoursTotal(t.id)) : (t.recorded_hours!=null?fmtH(t.recorded_hours):'—')}</div>`:''}
     ${state.taskCols.has('due')?`<div>${dueDateBtnHtml(t)}</div>`:''}
     ${state.taskCols.has('retainer')?`<div style="text-align:center" class="${retainerClickable?'inline-editable':''}" ${retainerClickable?`data-retainerinline="${t.id}" title="Click to toggle counting toward the retainer"`:''}>${retainerCell}</div>`:''}
     <div class="tg-actions">
@@ -2888,7 +2890,7 @@ function taskTableHtml(tasks, visibleCount, emptyText, showAnimator){
       ${state.taskCols.has('designer')?`<div style="position:relative">Designer${resizeHandle('designer','task')}</div>`:''}
       ${state.taskCols.has('reviewer')?`<div style="position:relative">Reviewer${resizeHandle('reviewer','task')}</div>`:''}
       ${showAnimator?`<div style="position:relative">Animator${resizeHandle('animator','task')}</div>`:''}
-      ${state.taskCols.has('hours')?`<div style="position:relative;text-align:right">Hours${resizeHandle('hours','task')}</div>`:''}
+      ${state.taskCols.has('hours')?`<div style="position:relative">Hours${resizeHandle('hours','task')}</div>`:''}
       ${state.taskCols.has('due')?`<div style="position:relative">Due${resizeHandle('due','task')}</div>`:''}
       ${state.taskCols.has('retainer')?`<div style="position:relative;text-align:center">Retainer${resizeHandle('retainer','task')}</div>`:''}
       <div></div>
@@ -3993,7 +3995,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.18.3';
+const APP_VERSION = '0.18.4';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
