@@ -592,7 +592,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.20.2</div>
+    <div id="versionBadge" class="version-badge">v0.21.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -3986,26 +3986,28 @@ function wireInternalTasks(canDrag){
     if(error){ toast('Delete failed'); return; }
     toast('Task deleted'); await refreshCurrentView();
   }));
-  const ordered = state.internalTasks.slice().sort((a,b)=>(a.position||0)-(b.position||0));
-  main.querySelectorAll('.task-row[data-inttask]').forEach(row=>{
-    row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', row.dataset.inttask); e.dataTransfer.effectAllowed='move'; });
-    row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('drop-target-row'); });
-    row.addEventListener('dragleave', ()=> row.classList.remove('drop-target-row'));
-    row.addEventListener('drop', async e=>{
-      e.preventDefault(); row.classList.remove('drop-target-row');
-      const draggedId = e.dataTransfer.getData('text/plain');
-      const targetId = row.dataset.inttask;
-      if(!draggedId || draggedId===targetId) return;
-      const order = ordered.slice();
-      const fromIdx = order.findIndex(t=>t.id===draggedId);
-      const toIdx = order.findIndex(t=>t.id===targetId);
-      if(fromIdx<0 || toIdx<0) return;
-      const [moved] = order.splice(fromIdx,1);
-      order.splice(toIdx,0,moved);
-      await Promise.all(order.map((t,i)=> db.from('rs_internal_tasks').update({position:i}).eq('id',t.id)));
-      await refreshCurrentView();
+  if(canDrag){
+    const ordered = state.internalTasks.slice().sort((a,b)=>(a.position||0)-(b.position||0));
+    main.querySelectorAll('.task-row[data-inttask]').forEach(row=>{
+      row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', row.dataset.inttask); e.dataTransfer.effectAllowed='move'; });
+      row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('drop-target-row'); });
+      row.addEventListener('dragleave', ()=> row.classList.remove('drop-target-row'));
+      row.addEventListener('drop', async e=>{
+        e.preventDefault(); row.classList.remove('drop-target-row');
+        const draggedId = e.dataTransfer.getData('text/plain');
+        const targetId = row.dataset.inttask;
+        if(!draggedId || draggedId===targetId) return;
+        const order = ordered.slice();
+        const fromIdx = order.findIndex(t=>t.id===draggedId);
+        const toIdx = order.findIndex(t=>t.id===targetId);
+        if(fromIdx<0 || toIdx<0) return;
+        const [moved] = order.splice(fromIdx,1);
+        order.splice(toIdx,0,moved);
+        await Promise.all(order.map((t,i)=> db.from('rs_internal_tasks').update({position:i}).eq('id',t.id)));
+        await refreshCurrentView();
+      });
     });
-  });
+  }
 }
 
 let _intImportFormat = 'csv';
@@ -4626,7 +4628,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.20.2';
+const APP_VERSION = '0.21.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
