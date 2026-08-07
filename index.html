@@ -592,7 +592,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.21.0</div>
+    <div id="versionBadge" class="version-badge">v0.22.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -3536,12 +3536,17 @@ function renderProjDetail(){
   });
 }
 
+/* Project type names are user-editable (Settings > Project types), so the
+   seed name "Deck projects" isn't guaranteed to survive a rename (e.g. a
+   project type renamed to just "Deck") — match loosely on "deck" instead of
+   the exact seed string so this extra field keeps working after a rename. */
+function isDeckType(type){ return (type||'').toLowerCase().includes('deck'); }
 function projExtraFieldHtml(type, details){
   details = details || {};
   if(type==='Website') return `<div><label>Number of pages</label><input type="number" min="1" id="pj_extra_pages" value="${details.pages||''}"></div><div><label>Number of sections</label><input type="number" min="1" id="pj_extra_sections" value="${details.sections||''}"></div>`;
   if(type==='Branding') return `<div><label>Scope</label><select id="pj_extra">${BRANDING_SCOPES.map(s=>`<option value="${s}" ${details.scope===s?'selected':''}>${s}</option>`).join('')}</select></div>`;
   if(type==='Animations') return `<div><label>Length (seconds)</label><input type="number" min="1" id="pj_extra" value="${details.seconds||''}"></div>`;
-  if(type==='Deck projects') return `<div><label>Number of slides</label><input type="number" min="1" id="pj_extra" value="${details.slides||''}"></div>`;
+  if(isDeckType(type)) return `<div><label>Number of slides</label><input type="number" min="1" id="pj_extra" value="${details.slides||''}"></div>`;
   return '<div></div>';
 }
 function projExtraFieldValue(type){
@@ -3553,7 +3558,7 @@ function projExtraFieldValue(type){
   if(!el) return {};
   if(type==='Branding') return { scope: el.value || null };
   if(type==='Animations') return { seconds: el.value?+el.value:null };
-  if(type==='Deck projects') return { slides: el.value?+el.value:null };
+  if(isDeckType(type)) return { slides: el.value?+el.value:null };
   return {};
 }
 
@@ -3585,7 +3590,7 @@ function projectDetailsSummary(p){
   }
   if(p.project_type==='Branding') return d.scope ? `${d.scope} branding` : null;
   if(p.project_type==='Animations') return d.seconds ? `${d.seconds}s length` : null;
-  if(p.project_type==='Deck projects') return d.slides ? `${d.slides} slide${d.slides===1?'':'s'}` : null;
+  if(isDeckType(p.project_type)) return d.slides ? `${d.slides} slide${d.slides===1?'':'s'}` : null;
   return null;
 }
 
@@ -3712,7 +3717,7 @@ function buildDiscordCard(project){
   if(project.project_type==='Website' && (d.pages||d.sections)) typeLine += ` · ${[d.pages?d.pages+' pages':null, d.sections?d.sections+' sections':null].filter(Boolean).join(', ')}`;
   if(project.project_type==='Branding' && d.scope) typeLine += ` (${d.scope})`;
   if(project.project_type==='Animations' && d.seconds) typeLine += ` · ${d.seconds}s`;
-  if(project.project_type==='Deck projects' && d.slides) typeLine += ` · ${d.slides} slides`;
+  if(isDeckType(project.project_type) && d.slides) typeLine += ` · ${d.slides} slides`;
   if(project.label) typeLine += ` · 🏷️ ${project.label}`;
   lines.push(typeLine);
   lines.push(`📋 ${tasks.length} task${tasks.length===1?'':'s'} across ${stages.length} stage${stages.length===1?'':'s'}`);
@@ -3760,13 +3765,13 @@ function openDiscordModal(projectId){
 function departmentList(){ return state.departments.slice().sort((a,b)=>a.position-b.position); }
 function openAssigneePopover(anchorEl, taskId){
   const task = state.internalTasks.find(t=>t.id===taskId);
-  const current = task?.assignee_id || '';
+  const current = new Set(task?.assignee_ids||[]);
   const pool = state.members.filter(m=>m.active);
   const options = pool.map(m=>({ value:m.id, html:`<span style="display:inline-flex;align-items:center;gap:8px">${avatarHtml(m)}${esc(m.name)}</span>` }));
-  options.push({ value:'', html:`<span style="color:var(--muted)">Unassigned</span>` });
-  openPillPopover(anchorEl, options, current, async (val)=>{
-    const { error } = await db.from('rs_internal_tasks').update({ assignee_id: val || null }).eq('id', taskId);
-    if(error){ toast('Could not update assignee'); return; }
+  openMultiPillPopover(anchorEl, options, val=>current.has(val), async (val, checked)=>{
+    checked ? current.add(val) : current.delete(val);
+    const { error } = await db.from('rs_internal_tasks').update({ assignee_ids: Array.from(current) }).eq('id', taskId);
+    if(error){ toast(error.code==='PGRST204'?'Run migration v22 to enable multiple assignees':'Could not update assignee'); return; }
     await refreshCurrentView();
   });
 }
@@ -3825,7 +3830,7 @@ function sortInternalTasks(list){
   if(state.internalSort==='due') arr.sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
   else if(state.internalSort==='priority') arr.sort((a,b)=> (INTERNAL_PRIORITY_RANK[a.priority]??2) - (INTERNAL_PRIORITY_RANK[b.priority]??2));
   else if(state.internalSort==='title') arr.sort((a,b)=> a.title.localeCompare(b.title));
-  else if(state.internalSort==='assignee') arr.sort((a,b)=> nameOf(a.assignee_id, state.members).localeCompare(nameOf(b.assignee_id, state.members)));
+  else if(state.internalSort==='assignee') arr.sort((a,b)=> nameOf((a.assignee_ids||[])[0], state.members).localeCompare(nameOf((b.assignee_ids||[])[0], state.members)));
   else if(state.internalSort==='department') arr.sort((a,b)=> nameOf(a.department_id, state.departments).localeCompare(nameOf(b.department_id, state.departments)));
   else arr.sort((a,b)=>(a.position||0)-(b.position||0));
   return arr;
@@ -3838,10 +3843,10 @@ function groupInternalTasks(list){
     return buckets.filter(g=>g.tasks.length);
   }
   if(groupBy==='assignee'){
-    const named = state.members.filter(m=>list.some(t=>t.assignee_id===m.id))
-      .map(m=>({ label:m.name, tasks:list.filter(t=>t.assignee_id===m.id) }))
+    const named = state.members.filter(m=>list.some(t=>(t.assignee_ids||[]).includes(m.id)))
+      .map(m=>({ label:m.name, tasks:list.filter(t=>(t.assignee_ids||[]).includes(m.id)) }))
       .sort((a,b)=>a.label.localeCompare(b.label));
-    const unassigned = { label:'Unassigned', tasks:list.filter(t=>!t.assignee_id) };
+    const unassigned = { label:'Unassigned', tasks:list.filter(t=>!(t.assignee_ids||[]).length) };
     return [...named, unassigned].filter(g=>g.tasks.length);
   }
   if(groupBy==='priority'){
@@ -3853,10 +3858,9 @@ function groupInternalTasks(list){
   return [{ label:null, tasks:list }];
 }
 function internalTaskRowHtml(t, gridCols, canDrag){
-  const assignee = t.assignee_id ? state.members.find(m=>m.id===t.assignee_id) : null;
   const dept = t.department_id ? state.departments.find(d=>d.id===t.department_id) : null;
   const cells = [];
-  if(state.internalCols.has('assignee')) cells.push(`<div class="inline-editable" data-intassignee="${t.id}" title="Click to assign">${assignee ? avatarWithName(assignee) : '<span style="color:var(--muted)">Unassigned</span>'}</div>`);
+  if(state.internalCols.has('assignee')) cells.push(`<div class="inline-editable" data-intassignee="${t.id}" title="Click to assign">${avatarGroupHtml(t.assignee_ids)}</div>`);
   if(state.internalCols.has('priority')) cells.push(`<div><button type="button" class="priority-pill pill-btn priority-${(t.priority||'Medium').toLowerCase()}" data-intpriority="${t.id}">${esc(t.priority||'Medium')}${PILL_CHEVRON_SVG}</button></div>`);
   if(state.internalCols.has('due')) cells.push(`<div><button type="button" class="stage-date-btn" data-intdue="${t.id}" style="margin-top:0">${t.due_date? fmtDateNatural(t.due_date):'Set date'}</button></div>`);
   if(state.internalCols.has('department')) cells.push(`<div>${dept
@@ -4014,13 +4018,13 @@ let _intImportFormat = 'csv';
 const INTERNAL_IMPORT_FORMATS = {
   csv: {
     label:'CSV',
-    help:'Paste or upload a CSV of internal tasks. Header row required: title, assignee, priority, due_date, department. Matched by title — safe to re-run.',
-    placeholder:'title,assignee,priority,due_date,department\nRestock studio supplies,Ross Hall,Low,2026-08-15,Admin'
+    help:'Paste or upload a CSV of internal tasks. Header row required: title, assignee, priority, due_date, department. Semicolon-separate names in assignee for multiple people. Matched by title — safe to re-run.',
+    placeholder:'title,assignee,priority,due_date,department\nRestock studio supplies,Ross Hall;Louis Rush,Low,2026-08-15,Admin'
   },
   json: {
     label:'JSON',
-    help:'Paste a JSON payload: {"tasks":[...]}. Matched by title — safe to re-run.',
-    placeholder:'{"tasks":[{"title":"Restock studio supplies","assignee_name":"Ross Hall","priority":"Low","due_date":"2026-08-15","department_name":"Admin"}]}'
+    help:'Paste a JSON payload: {"tasks":[...]}. assignee_names is an array for multiple people. Matched by title — safe to re-run.',
+    placeholder:'{"tasks":[{"title":"Restock studio supplies","assignee_names":["Ross Hall","Louis Rush"],"priority":"Low","due_date":"2026-08-15","department_name":"Admin"}]}'
   }
 };
 function setInternalImportFormat(fmt){
@@ -4070,11 +4074,11 @@ async function runInternalImport(){
   if(_intImportFormat==='json'){
     try{ rows = (JSON.parse(rawText).tasks)||[]; }
     catch(e){ append('❌ Invalid JSON: '+e.message); return; }
-    rows = rows.map(t=>({ title:t.title||'', assignee:t.assignee_name||'', priority:t.priority||'', due_date:t.due_date||'', department:t.department_name||'', done:t.is_done?'yes':'' }));
+    rows = rows.map(t=>({ title:t.title||'', assignee:(t.assignee_names||(t.assignee_name?[t.assignee_name]:[])).join(';'), priority:t.priority||'', due_date:t.due_date||'', department:t.department_name||'', done:t.is_done?'yes':'' }));
   } else {
     rows = parseCsv(rawText).map(r=>({
       title: r.title || r.task || '',
-      assignee: r.assignee || r.assignee_name || '',
+      assignee: r.assignee || r.assignee_name || r.assignees || '',
       priority: r.priority || '',
       due_date: r.due_date || r.due || '',
       department: r.department || r.department_name || '',
@@ -4115,18 +4119,22 @@ async function runInternalImport(){
       }
     }
 
-    const assigneeName = (r.assignee||'').trim();
-    const assigneeId = assigneeName ? (memberByName[assigneeName.toLowerCase()] || null) : null;
-    if(assigneeName && !assigneeId) append(`⚠ Task "${title}": no team member named "${assigneeName}" — left unassigned`);
+    const assigneeNames = (r.assignee||'').split(/[;|]/).map(s=>s.trim()).filter(Boolean);
+    const assigneeIds = [];
+    assigneeNames.forEach(name=>{
+      const id = memberByName[name.toLowerCase()];
+      if(id) assigneeIds.push(id);
+      else append(`⚠ Task "${title}": no team member named "${name}" — skipped for this task`);
+    });
 
     const priority = PRIORITIES.includes(r.priority) ? r.priority : 'Medium';
     const is_done = /^(y|yes|true|1|done)$/i.test((r.done||'').trim());
 
     const { error } = await db.from('rs_internal_tasks').insert({
-      title, assignee_id: assigneeId, priority, due_date: r.due_date || null,
+      title, assignee_ids: assigneeIds, priority, due_date: r.due_date || null,
       department_id: departmentId, is_done, position: nextPos
     });
-    if(error){ append(`❌ Task "${title}": ${error.message}`); errors++; continue; }
+    if(error){ append(`❌ Task "${title}": ${error.code==='PGRST204'?'run migration v22 to enable multiple assignees':error.message}`); errors++; continue; }
     existingTitles.add(titleKey); nextPos++; added++;
   }
   append(`\nDone. ${added} task(s) imported${skipped?`, ${skipped} skipped (already existed)`:''}${errors?`, ${errors} error(s)`:''}.`);
@@ -4628,7 +4636,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.21.0';
+const APP_VERSION = '0.22.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
