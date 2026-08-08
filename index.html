@@ -592,7 +592,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.22.0</div>
+    <div id="versionBadge" class="version-badge">v0.24.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -641,7 +641,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha',
-  departments:[], internalTasks:[],
+  departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistId:null,
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -863,7 +863,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -878,7 +878,9 @@ async function loadAll(){
     db.from('rs_proj_task_entries').select('*').order('work_date',{ascending:false}),
     db.from('rs_anim_cell_statuses').select('*').order('position'),
     db.from('rs_departments').select('*').order('position'),
-    db.from('rs_internal_tasks').select('*').order('position')
+    db.from('rs_internal_tasks').select('*').order('position'),
+    db.from('rs_checklists').select('*').order('position'),
+    db.from('rs_checklist_items').select('*').order('position')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -889,6 +891,9 @@ async function loadAll(){
   state.projTaskEntries = pte.data||[];
   state.departments = dep.data||[];
   state.internalTasks = int.data||[];
+  state.checklists = cl.data||[];
+  state.checklistItems = cli.data||[];
+  if(cl.error) console.warn('Checklists tables not found — run outputs/v23_qa_checklist.sql', cl.error);
   if(dep.error) console.warn('Internal tasks tables not found — run retainer-tracker-migration-v21.sql', dep.error);
   if(pte.error) console.warn('Task time entries table not found — run retainer-tracker-migration-v18.sql', pte.error);
   if(ash.error) console.warn('Animation tables not found — run retainer-tracker-migration-v16.sql', ash.error);
@@ -2120,6 +2125,7 @@ async function loadRetainerAllowanceBody(c){
 /* ================= Project Overview ================= */
 function renderProjects(){
   if(state.projView==='project') renderProjDetail();
+  else if(state.projView==='checklist') renderChecklistDetail();
   else if(state.projView==='retainerTasks'){
     const c = state.clients.find(c=>c.id===state.projClientId);
     if(!c){ state.projView='clients'; render(); return; }
@@ -3438,6 +3444,272 @@ function openProjTaskModal(taskId, ctx){
   };
 }
 
+/* Checklists — a project can have any number of independently named
+   checklists (each its own page), created on demand via "+ New checklist".
+   Optionally seeded from a starter template at creation time (see
+   CHECKLIST_TEMPLATES below); after that each checklist is fully independent
+   — editing one never touches a template or any other project's checklists. */
+const TRASH_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/* Mined from the team's standalone QA checklist tool (separate Supabase
+   project) — its `templates` table was empty, so this hardcoded default was
+   the tool's real, in-use template. Flattened out of its 8 category groups. */
+const WEBSITE_CHECKLIST_TEMPLATE = [
+  { category:'Copy & Content', label:'All placeholder text removed', detail:'No Lorem Ipsum, TBD, [CLIENT NAME], or template copy' },
+  { category:'Copy & Content', label:'Headlines and body copy proofread', detail:'Spelling, grammar, punctuation checked' },
+  { category:'Copy & Content', label:'Client name and product names spelled correctly', detail:'Check every instance across all pages' },
+  { category:'Copy & Content', label:'All CTAs are correctly labelled', detail:'Button text makes sense in context' },
+  { category:'Copy & Content', label:'Meta title and description filled in', detail:'Every page has unique, accurate meta copy' },
+  { category:'Copy & Content', label:'Legal / compliance copy present', detail:'Privacy policy, cookie notice, disclaimers if required' },
+  { category:'Links & Navigation', label:'All navigation links work', detail:'Desktop and mobile nav tested end-to-end' },
+  { category:'Links & Navigation', label:'No broken internal links', detail:'Click through every page link' },
+  { category:'Links & Navigation', label:'External links open correctly', detail:'Check target (new tab where expected)' },
+  { category:'Links & Navigation', label:'Footer links all work', detail:'Including social links and legal pages' },
+  { category:'Links & Navigation', label:'Logo links to homepage', detail:'Standard expectation, easy to miss' },
+  { category:'Links & Navigation', label:'404 page is styled', detail:'Custom 404 or sensible fallback in place' },
+  { category:'Visual & Brand', label:'Brand colours match approved palette', detail:'No off-hex values slipping through' },
+  { category:'Visual & Brand', label:'Typography matches design spec', detail:'Fonts, weights, sizes, line-heights' },
+  { category:'Visual & Brand', label:'All images load correctly', detail:'No broken images, no placeholder images' },
+  { category:'Visual & Brand', label:'Images are appropriately sized and sharp', detail:'Retina images for 2x displays where needed' },
+  { category:'Visual & Brand', label:'Favicon is set', detail:'Browser tab icon is correct, not default' },
+  { category:'Visual & Brand', label:'Logo appears correctly across all pages', detail:'Correct file, correct sizing' },
+  { category:'Visual & Brand', label:'Spacing and alignment consistent', detail:'No rogue padding/margin from CMS or overrides' },
+  { category:'Visual & Brand', label:'Animations play correctly', detail:'Scroll animations, Lottie, video — tested on reload' },
+  { category:'Responsive & Cross-Browser', label:'Tested on mobile (iOS Safari)', detail:'Most common edge-case browser' },
+  { category:'Responsive & Cross-Browser', label:'Tested on mobile (Android Chrome)', detail:'' },
+  { category:'Responsive & Cross-Browser', label:'Tested on desktop Chrome', detail:'' },
+  { category:'Responsive & Cross-Browser', label:'Tested on desktop Safari', detail:'Especially for CSS features and fonts' },
+  { category:'Responsive & Cross-Browser', label:'Tested on desktop Firefox', detail:'' },
+  { category:'Responsive & Cross-Browser', label:'No horizontal scroll on mobile', detail:'Check at 320px, 375px, 390px viewports' },
+  { category:'Responsive & Cross-Browser', label:'Tap targets large enough on mobile', detail:'Min 44×44px for interactive elements' },
+  { category:'Responsive & Cross-Browser', label:'Hamburger / mobile nav works', detail:'Opens, closes, all links accessible' },
+  { category:'Forms & Interactions', label:'All forms submit correctly', detail:'Test with valid and invalid data' },
+  { category:'Forms & Interactions', label:'Form validation messages appear', detail:'Required fields, format validation' },
+  { category:'Forms & Interactions', label:'Success states show after submission', detail:'Confirmation message or redirect works' },
+  { category:'Forms & Interactions', label:'Form submissions reach the right inbox', detail:'Send a test submission and confirm receipt' },
+  { category:'Forms & Interactions', label:'reCAPTCHA or spam protection active', detail:'If applicable' },
+  { category:'Performance & Technical', label:'No console errors in DevTools', detail:'Open F12 → Console on all pages' },
+  { category:'Performance & Technical', label:'Page load feels fast', detail:'Run Lighthouse or PageSpeed Insights' },
+  { category:'Performance & Technical', label:'SSL certificate active (HTTPS)', detail:'Padlock shows in browser' },
+  { category:'Performance & Technical', label:'Redirects working correctly', detail:'www → non-www or vice versa, old URLs if migrated' },
+  { category:'Performance & Technical', label:'Analytics tracking confirmed', detail:'GA4, Mixpanel or similar firing correctly' },
+  { category:'Performance & Technical', label:'Cookie consent banner working', detail:'If required for region/client' },
+  { category:'Performance & Technical', label:'No staging/test domain references', detail:'Check OG tags, canonical tags, sitemaps' },
+  { category:'Accessibility Basics', label:'Images have alt text', detail:'Descriptive alt for content images, empty for decorative' },
+  { category:'Accessibility Basics', label:'Colour contrast is sufficient', detail:'Body text WCAG AA: min 4.5:1 ratio' },
+  { category:'Accessibility Basics', label:'Keyboard navigation works', detail:'Tab through the page — focus states visible' },
+  { category:'Accessibility Basics', label:'Page has a logical heading structure', detail:'One H1, logical H2/H3 hierarchy' },
+  { category:'Accessibility Basics', label:'Animations respect prefers-reduced-motion', detail:'Or a pause control is available' },
+  { category:'Client Handover', label:'CMS login details prepared', detail:'Or agreed handover method' },
+  { category:'Client Handover', label:'Domain / DNS notes documented', detail:'Any custom config the client needs to know' },
+  { category:'Client Handover', label:'Staging password removed', detail:"Client shouldn't hit a password wall" },
+  { category:'Client Handover', label:'Browser tab title correct on all pages', detail:'Not "Home | Framer" or similar default' },
+  { category:'Client Handover', label:'Social share image (OG image) set', detail:'Test with opengraph.xyz' }
+];
+const CHECKLIST_TEMPLATES = {
+  blank: { label:'Blank', items:[] },
+  website: { label:`Website Checklist (${WEBSITE_CHECKLIST_TEMPLATE.length} items)`, items:WEBSITE_CHECKLIST_TEMPLATE }
+};
+
+function openNewChecklistModal(projectId){
+  showModal(`
+    <h3>New checklist</h3>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Name</label><input type="text" id="ncl_name" placeholder="e.g. Website QA" value="Website Checklist"></div>
+      <div class="full"><label>Start from</label><select id="ncl_template">${Object.entries(CHECKLIST_TEMPLATES).map(([key,t])=>`<option value="${key}">${esc(t.label)}</option>`).join('')}</select></div>
+    </form>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="ncl_cancel">Cancel</button>
+        <button class="btn" id="ncl_create">Create</button>
+      </div>
+    </div>
+  `);
+  $('#ncl_cancel').onclick = closeModal;
+  $('#ncl_create').onclick = async ()=>{
+    const name = $('#ncl_name').value.trim();
+    if(!name){ toast('Give the checklist a name'); return; }
+    const template = CHECKLIST_TEMPLATES[$('#ncl_template').value] || CHECKLIST_TEMPLATES.blank;
+    const siblings = state.checklists.filter(c=>c.project_id===projectId);
+    const nextPos = siblings.length ? Math.max(...siblings.map(c=>c.position||0))+1 : 0;
+    const { data, error } = await db.from('rs_checklists').insert({ project_id:projectId, name, position:nextPos }).select().single();
+    if(error){ toast(error.code==='PGRST205'?'Run migration v23 to enable checklists':'Could not create checklist'); console.error(error); return; }
+    if(template.items.length){
+      const { error: itemsErr } = await db.from('rs_checklist_items').insert(template.items.map((it,i)=>({ checklist_id:data.id, category:it.category||null, label:it.label, detail:it.detail||null, position:i })));
+      if(itemsErr) console.warn('Could not seed checklist items', itemsErr);
+    }
+    closeModal();
+    state.projView = 'checklist'; state.checklistId = data.id;
+    await refreshCurrentView();
+  };
+}
+function renderChecklistsSection(projectId){
+  const checklists = state.checklists.filter(c=>c.project_id===projectId).sort((a,b)=>(a.position||0)-(b.position||0));
+  const rows = checklists.map(cl=>{
+    const items = state.checklistItems.filter(i=>i.checklist_id===cl.id);
+    const done = items.filter(i=>i.is_done).length;
+    return `<div class="task-row" data-checklistopen="${cl.id}" style="display:flex;align-items:center;justify-content:space-between;padding:10px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer">
+      <span style="font-weight:500">${esc(cl.name)}</span>
+      <span style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:12.5px;color:var(--muted)">${items.length? `${done}/${items.length} done` : 'No items'}</span>
+        <button type="button" class="btn small ghost menu-dots" data-checklistdelete="${cl.id}" title="Delete checklist">${TRASH_ICON_SVG}</button>
+      </span>
+    </div>`;
+  }).join('');
+  const body = checklists.length ? rows : emptyStateHtml({ icon:'check', title:'No checklists yet', subtitle:'Create a checklist to track QA, launch steps, or handoff items.' });
+  return `<div class="card" id="checklistsCard" style="margin-top:26px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <h4 style="margin:0">Checklists</h4>
+      <button class="btn small ghost" id="newChecklistBtn">+ New checklist</button>
+    </div>
+    ${body}
+  </div>`;
+}
+function wireChecklistsSection(projectId){
+  $('#newChecklistBtn').onclick = ()=> openNewChecklistModal(projectId);
+  main.querySelectorAll('[data-checklistopen]').forEach(row=>row.addEventListener('click', (e)=>{
+    if(e.target.closest('[data-checklistdelete]')) return;
+    state.projView = 'checklist'; state.checklistId = row.dataset.checklistopen;
+    render();
+  }));
+  main.querySelectorAll('[data-checklistdelete]').forEach(btn=>btn.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    if(!confirm('Delete this checklist and all its items?')) return;
+    const { error } = await db.from('rs_checklists').delete().eq('id', btn.dataset.checklistdelete);
+    if(error){ toast('Delete failed'); return; }
+    await refreshProjectView();
+  }));
+}
+
+function checklistItemRowHtml(item){
+  return `<div class="task-grid-row task-row" draggable="true" data-clitem="${item.id}" style="grid-template-columns:32px 1fr 32px">
+    <div style="text-align:center"><input type="checkbox" data-clidone="${item.id}" ${item.is_done?'checked':''} title="Mark done"></div>
+    <div class="tg-title" style="flex-direction:column;align-items:flex-start;gap:1px">
+      <span class="inline-editable" data-cliname="${item.id}" style="${item.is_done?'text-decoration:line-through;color:var(--muted)':''}" title="Click to rename">${esc(item.label)}</span>
+      ${item.detail? `<span style="font-size:11.5px;color:var(--muted)">${esc(item.detail)}</span>`:''}
+    </div>
+    <div class="tg-actions"><button type="button" class="btn small ghost menu-dots" data-clidelete="${item.id}" title="Delete item">${TRASH_ICON_SVG}</button></div>
+  </div>`;
+}
+function renderChecklistDetail(){
+  const cl = state.checklists.find(c=>c.id===state.checklistId);
+  if(!cl){ state.projView='project'; render(); return; }
+  const p = state.projects.find(p=>p.id===cl.project_id);
+  if(!p){ state.projView='clientProjects'; render(); return; }
+  const c = state.clients.find(c=>c.id===p.client_id);
+  const items = state.checklistItems.filter(i=>i.checklist_id===cl.id).sort((a,b)=>(a.position||0)-(b.position||0));
+  const doneCount = items.filter(i=>i.is_done).length;
+
+  const groups = [];
+  const byCat = {};
+  items.forEach(item=>{
+    const key = item.category || '';
+    if(!byCat[key]){ byCat[key] = { category:item.category||null, items:[] }; groups.push(byCat[key]); }
+    byCat[key].items.push(item);
+  });
+  const body = items.length
+    ? groups.map(g=> `${g.category? `<div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px">${esc(g.category)}</div>`:''}${g.items.map(checklistItemRowHtml).join('')}`).join('')
+    : emptyStateHtml({ icon:'check', title:'No items yet', subtitle:'Add items to build out this checklist.' });
+
+  main.innerHTML = `<div class="breadcrumb">
+      <button data-bc="clients">All Projects</button><span class="sep">/</span>
+      <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
+      <button data-bc="projback">${esc(p.name)}</button><span class="sep">/</span>
+      <span class="current">${esc(cl.name)}</span>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <h2 style="margin:0">${esc(cl.name)}</h2>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${items.length? `<span style="font-size:12.5px;color:var(--muted)">${doneCount}/${items.length} done</span>`:''}
+          <button class="btn small ghost" id="renameChecklistBtn">Rename</button>
+          <button class="btn small danger" id="deleteChecklistBtn">Delete</button>
+        </div>
+      </div>
+      ${body}
+      <div style="margin-top:10px"><button class="btn small ghost" id="clAddBtn">+ Add item</button></div>
+    </div>`;
+  wireChecklistDetail(cl.id, p.id);
+}
+function wireChecklistDetail(checklistId, projectId){
+  $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
+  $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
+  $('[data-bc="projback"]').onclick = ()=>{ state.projView='project'; state.projProjectId=projectId; render(); };
+  $('#renameChecklistBtn').onclick = async ()=>{
+    const cl = state.checklists.find(c=>c.id===checklistId);
+    const name = prompt('Checklist name', cl.name);
+    if(!name || !name.trim() || name.trim()===cl.name) return;
+    const { error } = await db.from('rs_checklists').update({ name:name.trim() }).eq('id', checklistId);
+    if(error){ toast('Could not rename'); return; }
+    await refreshProjectView();
+  };
+  $('#deleteChecklistBtn').onclick = async ()=>{
+    if(!confirm('Delete this checklist and all its items?')) return;
+    const { error } = await db.from('rs_checklists').delete().eq('id', checklistId);
+    if(error){ toast('Delete failed'); return; }
+    state.projView='project'; state.projProjectId=projectId;
+    await refreshProjectView();
+  };
+  $('#clAddBtn').onclick = async ()=>{
+    const items = state.checklistItems.filter(i=>i.checklist_id===checklistId);
+    const nextPos = items.length ? Math.max(...items.map(i=>i.position||0))+1 : 0;
+    const { error } = await db.from('rs_checklist_items').insert({ checklist_id:checklistId, label:'New item', position:nextPos });
+    if(error){ toast(error.code==='PGRST205'?'Run migration v23 to enable checklists':'Could not add item'); console.error(error); return; }
+    await refreshProjectView();
+  };
+  main.querySelectorAll('[data-clidone]').forEach(cb=>cb.addEventListener('change', async ()=>{
+    const { error } = await db.from('rs_checklist_items').update({ is_done: cb.checked }).eq('id', cb.dataset.clidone);
+    if(error){ toast('Could not update'); return; }
+    await refreshProjectView();
+  }));
+  main.querySelectorAll('[data-cliname]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const itemId = el.dataset.cliname;
+    const original = el.textContent;
+    const input = document.createElement('input');
+    input.type = 'text'; input.value = original; input.className = 'inline-rename-input';
+    el.replaceWith(input); input.focus(); input.select();
+    input.addEventListener('click', ev=> ev.stopPropagation());
+    input.addEventListener('keydown', ev=>{
+      if(ev.key==='Enter') input.blur();
+      if(ev.key==='Escape'){ input.dataset.cancel='1'; input.blur(); }
+    });
+    input.addEventListener('blur', async ()=>{
+      const val = input.value.trim();
+      if(input.dataset.cancel || !val || val===original){ input.replaceWith(el); return; }
+      const { error } = await db.from('rs_checklist_items').update({ label: val }).eq('id', itemId);
+      if(error){ toast('Could not rename item'); input.replaceWith(el); return; }
+      await refreshProjectView();
+    }, { once:true });
+  }));
+  main.querySelectorAll('[data-clidelete]').forEach(el=>el.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    const { error } = await db.from('rs_checklist_items').delete().eq('id', el.dataset.clidelete);
+    if(error){ toast('Delete failed'); return; }
+    await refreshProjectView();
+  }));
+  const ordered = state.checklistItems.filter(i=>i.checklist_id===checklistId).sort((a,b)=>(a.position||0)-(b.position||0));
+  main.querySelectorAll('[data-clitem]').forEach(row=>{
+    row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', row.dataset.clitem); e.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('drop-target-row'); });
+    row.addEventListener('dragleave', ()=> row.classList.remove('drop-target-row'));
+    row.addEventListener('drop', async e=>{
+      e.preventDefault(); row.classList.remove('drop-target-row');
+      const draggedId = e.dataTransfer.getData('text/plain');
+      const targetId = row.dataset.clitem;
+      if(!draggedId || draggedId===targetId) return;
+      const order = ordered.slice();
+      const fromIdx = order.findIndex(i=>i.id===draggedId);
+      const toIdx = order.findIndex(i=>i.id===targetId);
+      if(fromIdx<0 || toIdx<0) return;
+      const [moved] = order.splice(fromIdx,1);
+      order.splice(toIdx,0,moved);
+      await Promise.all(order.map((it,idx)=> db.from('rs_checklist_items').update({position:idx}).eq('id',it.id)));
+      await refreshProjectView();
+    });
+  });
+}
+
 function renderProjDetail(){
   const p = state.projects.find(p=>p.id===state.projProjectId);
   if(!p){ state.projView='clientProjects'; render(); return; }
@@ -3493,6 +3765,7 @@ function renderProjDetail(){
       </div>`;
     });
   }
+  html += renderChecklistsSection(p.id);
   main.innerHTML = html;
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
   $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
@@ -3534,6 +3807,7 @@ function renderProjDetail(){
       });
     });
   });
+  wireChecklistsSection(p.id);
 }
 
 /* Project type names are user-editable (Settings > Project types), so the
@@ -4636,7 +4910,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.22.0';
+const APP_VERSION = '0.24.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;

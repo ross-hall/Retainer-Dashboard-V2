@@ -3,13 +3,13 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.22.0**
+Current version: **v0.24.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
 - Anon key: `sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj`
 - RLS is fully open (anon key can read/write everything — known risk, flagged). **Caveat learned the hard way:** Supabase now enables RLS by default on tables created via the SQL editor, so every new migration must explicitly `alter table ... disable row level security;` to match — v21 initially shipped without this and silently blocked the anon key until a follow-up fix.
-- ⚠️ **Pending manual steps:** `outputs/v19_add_animator.sql`, `outputs/v20_anim_cell_statuses.sql`, and `outputs/v22_internal_task_multi_assignee.sql` have not been run yet — Animator assignments won't persist server-side, pipeline cell statuses aren't editable, and the Internal Tasks assignee picker won't let you select more than one person until v22 is run (it degrades gracefully — inserts/updates just toast "run migration v22" in the meantime). `outputs/v21_internal_tasks.sql` **has been run** — Internal Tasks and Departments are live.
+- ⚠️ **Pending manual steps:** `outputs/v19_add_animator.sql`, `outputs/v20_anim_cell_statuses.sql`, `outputs/v22_internal_task_multi_assignee.sql`, and `outputs/v23_qa_checklist.sql` have not been run yet — Animator assignments won't persist server-side, pipeline cell statuses aren't editable, the Internal Tasks assignee picker won't let you select more than one person, and the new Checklists feature (per-project, own page) degrades gracefully (toast "run migration v23") until each is run. `outputs/v21_internal_tasks.sql` **has been run** — Internal Tasks and Departments are live. Note: `outputs/v23_qa_checklist.sql` was rewritten mid-session before ever being run — it originally added a `qa_checklist` column to `rs_project_types` + a flat `rs_project_qa_items` table, but was replaced outright with the current `rs_checklists`/`rs_checklist_items` design once the user clarified they wanted standalone, multi-per-project checklists rather than one type-templated list. If you see references to `qa_checklist`/`rs_project_qa_items` anywhere stale, they're leftover from that abandoned draft.
 
 Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · Inter font · Notion + Linear + Arc-inspired visual system with a dark-mode variant. **The standalone "Retainers" nav page/dashboard is gone as of v0.13.0** — its content (allowance meter, remaining hours, renewal date) now lives directly on each retainer client's card on the All Projects page, and the client detail page merges what used to be two separate pages (to-do list / allowance history) into one page with a "To-do list" / "Monthly allowance" tab toggle. The old "Calendar view" for ad-hoc hour-logging (not tied to a task) was removed with it — hours are logged through the task modal (tick "counts toward retainer" + recorded hours) instead. See "What shipped in v0.13.0" below.
 
@@ -80,7 +80,7 @@ Public dashboard (no internal nav):
 | `rs_projects` | v4 | Projects. Has: review_days, anim_total_seconds |
 | `rs_project_stages` | v4 | Stages per project with due_date |
 | `rs_proj_tasks` | v4, **v19** | Tasks (retainer to-do + project stage tasks). v19 adds `assigned_animator_ids` (not yet run) |
-| `rs_project_types` | v4 | Editable project types with stage templates |
+| `rs_project_types` | v4, **v23** | Editable project types with stage templates. v23 adds `qa_checklist jsonb` (ordered list of QA item labels, same pattern as `stage_template`) — **not yet run** |
 | `rs_task_statuses` | v13 | Editable status names, colours, is_complete flag |
 | `rs_stage_categories` | v14+v15 | Asset link categories per stage or project |
 | `rs_stage_links` | v14 | Individual asset links within categories |
@@ -91,8 +91,9 @@ Public dashboard (no internal nav):
 | `rs_anim_deps` | v17 | Shot dependency chains — **unused as of v0.16.0**, the Dependencies feature was removed from the app; table/rows left untouched in Supabase, nothing reads or writes it anymore |
 | `rs_proj_task_entries` | v18 | Per-person time entries on retainer tasks |
 | `rs_anim_cell_statuses` | **v20** | Editable pipeline cell statuses (name/color/short/behavior/position) — **not yet run**; until it is, `animStatusList()` falls back to the hardcoded `DEFAULT_ANIM_CELL_STATUSES` (the same 7 statuses the app always had) |
-| `rs_departments` | **v21** | Editable label list for Internal Tasks (name/color/position) — same pattern as `rs_task_statuses`. **Not yet run** |
+| `rs_departments` | **v21** | Editable label list for Internal Tasks (name/color/position) — same pattern as `rs_task_statuses`. **Run** |
 | `rs_internal_tasks` | v21, **v22** | Non-client tasks: title, priority, due_date, department_id → `rs_departments`, is_done, position. v22 adds `assignee_ids uuid[]` (multi-select) alongside the original singular `assignee_id` (now unused by the app but left in place, non-destructive) — **v22 not yet run** |
+| `rs_project_qa_items` | **v23** | Per-project QA checklist items (label, is_done, position) — instantiated as an independent copy of the project's type's `qa_checklist` at project-creation time, same relationship `rs_project_stages` has to `stage_template`. **Not yet run** |
 
 ---
 
@@ -210,6 +211,11 @@ Font: Inter (unchanged from v0.9.0)
 - **Internal tasks can now have multiple assignees** (`rs_internal_tasks.assignee_ids uuid[]`, migration v22) — the original singular `assignee_id` column is left in place but unused by the app. `openAssigneePopover` now uses `openMultiPillPopover`; the row cell renders `avatarGroupHtml(t.assignee_ids)` (same avatar-stack component used for designer/reviewer on project tasks) instead of a single name. The CSV/JSON importer's `assignee`/`assignee_names` field accepts multiple semicolon-separated names (or a JSON array). Needs `outputs/v22_internal_task_multi_assignee.sql` — see pending-step note at the top of this file; degrades gracefully (toasts "run migration v22") until then.
 - **Fixed the Deck-projects "Number of slides" field not appearing**: `projExtraFieldHtml`/`projExtraFieldValue`/`projectDetailsSummary`/the project-detail type line all matched the project type name with an exact `===` against the hardcoded seed string `'Deck projects'`. Project type names are user-editable (Settings > Project types) and this project's actual type had been renamed to just `'Deck'`, so the field silently never rendered. Fixed via a new `isDeckType(type)` helper (`.toLowerCase().includes('deck')`) used at all four call sites — a lesson that any per-type-name branching needs to tolerate renames, not just match the v1 seed name.
 
+**What shipped in v0.23.0** (QA checklist):
+- **New QA Checklist card on every project's page** (`renderQaChecklistCard`/`wireQaChecklist`, bottom of `renderProjDetail()`, after all stage sections) — a lightweight add/rename/check-off/delete/drag-reorder list, same interaction pattern as the Internal Tasks page. Each project gets its **own copy** of checklist items, instantiated once at project-creation time (in `openProjectModal`'s save handler, same moment `rs_project_stages` rows get created from `stage_template`) — editing a project's checklist afterward never touches the shared template, and vice versa.
+- **Per-project-type checklist template**: `rs_project_types.qa_checklist` (JSONB string array), edited via a second mini-list editor in `openProjectTypeModal` (`tempChecklist`/`renderChecklist()`), sitting right next to the existing `stage_template` editor (`tempStages`/`renderList()`) — same add/up/down/remove shape, intentionally duplicated rather than abstracted since the two lists are conceptually separate and small.
+- Internal-only by design — `rs_project_qa_items` is never fetched on the public client-dashboard path (`bootPublicDashboard`/`renderPublicDashboard` run their own separate fetch sequence and don't go through `loadAll()`), so no extra guarding was needed to keep it off the client-facing page. Needs `outputs/v23_qa_checklist.sql` — see pending-step note at the top of this file; degrades gracefully (toasts "run migration v23") until then.
+
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
 Prior versions recoverable via git history: v0.12.x/v0.11.x (Retainers page still present) are recent commits before this session; v0.10.0 (no dark mode/command palette/inline editing) and v0.9.0 (sharp 3px corners) are further back; v0.8.2 (original top nav, Rubik, 14px radius) is `5664307` or earlier for the pre-redesign baseline.
@@ -228,6 +234,7 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - `outputs/v19_add_animator.sql` has not been run against the live Supabase DB yet — Animator picks in the UI don't persist until it is (app degrades gracefully in the meantime, treating every member as animator-eligible).
 - `outputs/v20_anim_cell_statuses.sql` has not been run yet — the new Settings > "Pipeline cell statuses" editor will show "run migration v20, then reload" until it is; the app degrades gracefully in the meantime by falling back to `DEFAULT_ANIM_CELL_STATUSES` (the original hardcoded 7 statuses), and the Feedback tab's "Resolved" checkbox will toast an error until `rs_anim_feedback.resolved` exists.
 - `outputs/v22_internal_task_multi_assignee.sql` has not been run yet — the Internal Tasks assignee picker degrades gracefully (toasts "run migration v22") until `rs_internal_tasks.assignee_ids` exists.
+- `outputs/v23_qa_checklist.sql` has not been run yet — the QA Checklist card on project pages and the Settings > Project types checklist editor both degrade gracefully (toasts "run migration v23") until `rs_project_types.qa_checklist`/`rs_project_qa_items` exist.
 
 ---
 
@@ -243,3 +250,4 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - v20: rs_anim_cell_statuses (editable pipeline cell statuses) + rs_anim_feedback.resolved — **not yet run**, do this in the Supabase SQL editor when convenient
 - v21: rs_departments + rs_internal_tasks (Internal Tasks page) — **run** (needed a follow-up RLS fix, see the RLS caveat above)
 - v22: rs_internal_tasks.assignee_ids uuid[] (multiple assignees per internal task) — **not yet run**, do this in the Supabase SQL editor when convenient
+- v23: rs_project_types.qa_checklist jsonb + rs_project_qa_items (QA checklist feature) — **not yet run**, do this in the Supabase SQL editor when convenient
