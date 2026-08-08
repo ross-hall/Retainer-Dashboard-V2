@@ -579,6 +579,10 @@
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 4.5h8a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.5 9h5M9.5 12.5h5M9.5 16h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
         <span class="nav-label">Internal Tasks</span>
       </button>
+      <button data-view="checklists" title="Checklists">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 6.5h9M9 12h9M9 17.5h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="m4 6.5 1 1 2-2M4 12l1 1 2-2M4 17.5l1 1 2-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="nav-label">Checklists</span>
+      </button>
       <button data-view="settings" class="nav-icon-btn" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3.3"/>
@@ -592,7 +596,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.24.0</div>
+    <div id="versionBadge" class="version-badge">v0.25.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -750,7 +754,7 @@ function miroInternal(client){ return (client && client.miro_link_internal) || n
 function miroButtonsHtml(client){
   const ext = miroExternal(client), intl = miroInternal(client);
   const style = "background:#FFD02F;color:#050038;border:1px solid #FFD02F;font-weight:600";
-  return `${ext? `<a class="btn small miro-btn" style="${style}" href="${esc(ext)}" target="_blank" rel="noopener">${MIRO_ICON}Miro (external) ↗</a>`:''}${intl? `<a class="btn small miro-btn" style="${style}" href="${esc(intl)}" target="_blank" rel="noopener">${MIRO_ICON}Miro (internal) ↗</a>`:''}`;
+  return `${ext? `<a class="btn small miro-btn" style="${style}" href="${esc(ext)}" target="_blank" rel="noopener">${MIRO_ICON}Miro (Ext) ↗</a>`:''}${intl? `<a class="btn small miro-btn" style="${style}" href="${esc(intl)}" target="_blank" rel="noopener">${MIRO_ICON}Miro (Int) ↗</a>`:''}`;
 }
 function miroIconBtnHtml(client){
   const link = miroExternal(client) || miroInternal(client);
@@ -1603,7 +1607,7 @@ function render(){
     titleEl.textContent = activeLabel ? activeLabel.textContent : 'Reciprocal Space';
   }
   closeMobileNav();
-  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation, internal:renderInternalTasks}[state.view])();
+  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation, internal:renderInternalTasks, checklists:renderChecklistsHub}[state.view])();
   main.classList.remove('fade-in'); void main.offsetWidth; main.classList.add('fade-in');
 }
 
@@ -2125,6 +2129,7 @@ async function loadRetainerAllowanceBody(c){
 /* ================= Project Overview ================= */
 function renderProjects(){
   if(state.projView==='project') renderProjDetail();
+  else if(state.projView==='checklists') renderProjectChecklists();
   else if(state.projView==='checklist') renderChecklistDetail();
   else if(state.projView==='retainerTasks'){
     const c = state.clients.find(c=>c.id===state.projClientId);
@@ -3543,8 +3548,11 @@ function openNewChecklistModal(projectId){
     await refreshCurrentView();
   };
 }
-function renderChecklistsSection(projectId){
-  const checklists = state.checklists.filter(c=>c.project_id===projectId).sort((a,b)=>(a.position||0)-(b.position||0));
+function renderProjectChecklists(){
+  const p = state.projects.find(p=>p.id===state.projProjectId);
+  if(!p){ state.projView='clientProjects'; render(); return; }
+  const c = state.clients.find(c=>c.id===p.client_id);
+  const checklists = state.checklists.filter(cl=>cl.project_id===p.id).sort((a,b)=>(a.position||0)-(b.position||0));
   const rows = checklists.map(cl=>{
     const items = state.checklistItems.filter(i=>i.checklist_id===cl.id);
     const done = items.filter(i=>i.is_done).length;
@@ -3557,15 +3565,25 @@ function renderChecklistsSection(projectId){
     </div>`;
   }).join('');
   const body = checklists.length ? rows : emptyStateHtml({ icon:'check', title:'No checklists yet', subtitle:'Create a checklist to track QA, launch steps, or handoff items.' });
-  return `<div class="card" id="checklistsCard" style="margin-top:26px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <h4 style="margin:0">Checklists</h4>
-      <button class="btn small ghost" id="newChecklistBtn">+ New checklist</button>
+  main.innerHTML = `<div class="breadcrumb">
+      <button data-bc="clients">All Projects</button><span class="sep">/</span>
+      <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
+      <button data-bc="projback">${esc(p.name)}</button><span class="sep">/</span>
+      <span class="current">Checklists</span>
     </div>
-    ${body}
-  </div>`;
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Checklists</h2>
+        <button class="btn small ghost" id="newChecklistBtn">+ New checklist</button>
+      </div>
+      ${body}
+    </div>`;
+  wireProjectChecklists(p.id);
 }
-function wireChecklistsSection(projectId){
+function wireProjectChecklists(projectId){
+  $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
+  $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
+  $('[data-bc="projback"]').onclick = ()=>{ state.projView='project'; render(); };
   $('#newChecklistBtn').onclick = ()=> openNewChecklistModal(projectId);
   main.querySelectorAll('[data-checklistopen]').forEach(row=>row.addEventListener('click', (e)=>{
     if(e.target.closest('[data-checklistdelete]')) return;
@@ -3615,6 +3633,7 @@ function renderChecklistDetail(){
       <button data-bc="clients">All Projects</button><span class="sep">/</span>
       <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
       <button data-bc="projback">${esc(p.name)}</button><span class="sep">/</span>
+      <button data-bc="checklists">Checklists</button><span class="sep">/</span>
       <span class="current">${esc(cl.name)}</span>
     </div>
     <div class="card">
@@ -3635,6 +3654,7 @@ function wireChecklistDetail(checklistId, projectId){
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
   $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('[data-bc="projback"]').onclick = ()=>{ state.projView='project'; state.projProjectId=projectId; render(); };
+  $('[data-bc="checklists"]').onclick = ()=>{ state.projView='checklists'; state.projProjectId=projectId; render(); };
   $('#renameChecklistBtn').onclick = async ()=>{
     const cl = state.checklists.find(c=>c.id===checklistId);
     const name = prompt('Checklist name', cl.name);
@@ -3647,7 +3667,7 @@ function wireChecklistDetail(checklistId, projectId){
     if(!confirm('Delete this checklist and all its items?')) return;
     const { error } = await db.from('rs_checklists').delete().eq('id', checklistId);
     if(error){ toast('Delete failed'); return; }
-    state.projView='project'; state.projProjectId=projectId;
+    state.projView='checklists'; state.projProjectId=projectId;
     await refreshProjectView();
   };
   $('#clAddBtn').onclick = async ()=>{
@@ -3710,6 +3730,41 @@ function wireChecklistDetail(checklistId, projectId){
   });
 }
 
+/* Global "Checklists" hub — quick access to every project that has at least
+   one checklist, without drilling into All Projects first. Reads straight
+   from state.checklists/state.checklistItems (the same data every project
+   page uses), so it's always in sync — no separate copy of anything. */
+function renderChecklistsHub(){
+  const projectsWithChecklists = state.projects.filter(p => state.checklists.some(cl=>cl.project_id===p.id));
+  const cardsHtml = projectsWithChecklists.map(p=>{
+    const c = state.clients.find(c=>c.id===p.client_id);
+    const checklists = state.checklists.filter(cl=>cl.project_id===p.id).sort((a,b)=>(a.position||0)-(b.position||0));
+    const rows = checklists.map(cl=>{
+      const items = state.checklistItems.filter(i=>i.checklist_id===cl.id);
+      const done = items.filter(i=>i.is_done).length;
+      return `<div class="inline-editable" data-hubchecklist="${cl.id}" style="display:flex;align-items:center;justify-content:space-between;padding:5px 0" title="Open checklist">
+        <span style="font-size:13px">${esc(cl.name)}</span>
+        <span style="font-size:11.5px;color:var(--muted)">${items.length? `${done}/${items.length}`:'—'}</span>
+      </div>`;
+    }).join('');
+    return `<div class="card">
+      <div style="font-weight:600">${esc(p.name)}</div>
+      <div class="sub" style="margin-bottom:8px">${esc(c?c.name:'')}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+  main.innerHTML = `
+    <h2>Checklists</h2>
+    <div class="sub">Every project with a checklist, one click away — synced live with each project's page</div>
+    ${projectsWithChecklists.length
+      ? `<div class="grid" style="margin-top:20px">${cardsHtml}</div>`
+      : emptyStateHtml({ icon:'check', title:'No checklists yet', subtitle:"Create one from any project's page — it'll show up here." })}`;
+  main.querySelectorAll('[data-hubchecklist]').forEach(el=>el.addEventListener('click', ()=>{
+    state.view='projects'; state.projView='checklist'; state.checklistId=el.dataset.hubchecklist;
+    render();
+  }));
+}
+
 function renderProjDetail(){
   const p = state.projects.find(p=>p.id===state.projProjectId);
   if(!p){ state.projView='clientProjects'; render(); return; }
@@ -3733,6 +3788,7 @@ function renderProjDetail(){
         <h2>${esc(p.name)}</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${miroButtonsHtml(c)}
+          <button class="btn small ghost" id="checklistsBtn">✓ Checklists${state.checklists.filter(cl=>cl.project_id===p.id).length? ` (${state.checklists.filter(cl=>cl.project_id===p.id).length})`:''}</button>
           <button class="btn small" style="background:#7289DA" id="discordBtn">Share to Discord</button>
           <button class="btn small ghost" id="editProjectBtn">Edit project</button>
         </div>
@@ -3765,12 +3821,12 @@ function renderProjDetail(){
       </div>`;
     });
   }
-  html += renderChecklistsSection(p.id);
   main.innerHTML = html;
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
   $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('#editProjectBtn').onclick = ()=> openProjectModal(p.id, p.client_id);
   $('#discordBtn').onclick = ()=> openDiscordModal(p.id);
+  $('#checklistsBtn').onclick = ()=>{ state.projView='checklists'; state.projProjectId=p.id; render(); };
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
   wireTaskRows(main);
@@ -3807,7 +3863,6 @@ function renderProjDetail(){
       });
     });
   });
-  wireChecklistsSection(p.id);
 }
 
 /* Project type names are user-editable (Settings > Project types), so the
@@ -4910,7 +4965,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.24.0';
+const APP_VERSION = '0.25.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
