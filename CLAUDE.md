@@ -249,7 +249,8 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - `outputs/v19_add_animator.sql` has not been run against the live Supabase DB yet — Animator picks in the UI don't persist until it is (app degrades gracefully in the meantime, treating every member as animator-eligible).
 - `outputs/v20_anim_cell_statuses.sql` has not been run yet — the new Settings > "Pipeline cell statuses" editor will show "run migration v20, then reload" until it is; the app degrades gracefully in the meantime by falling back to `DEFAULT_ANIM_CELL_STATUSES` (the original hardcoded 7 statuses), and the Feedback tab's "Resolved" checkbox will toast an error until `rs_anim_feedback.resolved` exists.
 - `outputs/v22_internal_task_multi_assignee.sql` has not been run yet — the Internal Tasks assignee picker degrades gracefully (toasts "run migration v22") until `rs_internal_tasks.assignee_ids` exists.
-- `outputs/v23_qa_checklist.sql` has not been run yet — the "Checklists" section on project pages, "+ New checklist", and each checklist's own page all degrade gracefully (toasts "run migration v23") until `rs_checklists`/`rs_checklist_items` exist.
+- `outputs/v23_qa_checklist.sql` has been run, but confirm `outputs/v23b_checklists_rls_fix.sql` has also been run — without it, checklist creation fails with a `42501` RLS error ("Could not create checklist").
+- `outputs/v24_tools.sql` has not been run yet — the new Tools page degrades gracefully (toasts "run migration v24") until `rs_tools` exists.
 
 ---
 
@@ -265,4 +266,6 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - v20: rs_anim_cell_statuses (editable pipeline cell statuses) + rs_anim_feedback.resolved — **not yet run**, do this in the Supabase SQL editor when convenient
 - v21: rs_departments + rs_internal_tasks (Internal Tasks page) — **run** (needed a follow-up RLS fix, see the RLS caveat above)
 - v22: rs_internal_tasks.assignee_ids uuid[] (multiple assignees per internal task) — **not yet run**, do this in the Supabase SQL editor when convenient
-- v23: rs_checklists + rs_checklist_items (standalone multi-per-project Checklists feature, each with its own page) — **not yet run**, do this in the Supabase SQL editor when convenient
+- v23: rs_checklists + rs_checklist_items (standalone multi-per-project Checklists feature, each with its own page) — **run**
+- v23b: RLS fix for v23 (Supabase enabled RLS by default on rs_checklists/rs_checklist_items despite the migration's own disable statement) — confirm this has been run if checklist creation ever throws a `42501` error
+- v24: rs_tools (global Tools nav page — external web-app launcher) — **not yet run**, do this in the Supabase SQL editor when convenient

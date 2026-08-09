@@ -3756,8 +3756,9 @@ function renderChecklistsHub(){
       </div>`;
     }).join('');
     return `<div class="card">
-      <div style="font-weight:600">${esc(p.name)}</div>
-      <div class="sub" style="margin-bottom:8px">${esc(c?c.name:'')}</div>
+      <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--muted)">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:''}</div>
+      <div style="font-weight:600;margin-top:2px">${esc(p.name)}</div>
+      <div style="margin-top:6px;margin-bottom:10px"><span class="type-badge">${esc(p.project_type||'')}</span></div>
       ${rows}
     </div>`;
   }).join('');
@@ -3789,7 +3790,7 @@ function toolCardHtml(t){
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.name)}</span>
       <span class="card-actions"><button class="btn small ghost menu-dots" data-toolmenu="${t.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
     </h3>
-    <div style="font-size:12px;color:var(--muted);font-family:ui-monospace,monospace;word-break:break-all">${esc(t.url)}</div>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);font-family:ui-monospace,monospace;word-break:break-all">${esc(t.url)}</div>
   </div>`;
 }
 function renderTools(){
