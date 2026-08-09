@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@phosphor-icons/web"></script>
 <style>
   :root{
     --navy:#040e6b;
@@ -583,6 +584,10 @@
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 6.5h9M9 12h9M9 17.5h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="m4 6.5 1 1 2-2M4 12l1 1 2-2M4 17.5l1 1 2-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="nav-label">Checklists</span>
       </button>
+      <button data-view="tools" title="Tools">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.7 6.3a3.5 3.5 0 0 0-4.6 4.2L4 16.6V20h3.4l6.1-6.1a3.5 3.5 0 0 0 4.2-4.6l-2.5 2.5-2-2 2.5-2.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+        <span class="nav-label">Tools</span>
+      </button>
       <button data-view="settings" class="nav-icon-btn" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3.3"/>
@@ -596,7 +601,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.25.0</div>
+    <div id="versionBadge" class="version-badge">v0.26.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -645,7 +650,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha',
-  departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistId:null,
+  departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistId:null, tools:[],
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -867,7 +872,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -884,7 +889,8 @@ async function loadAll(){
     db.from('rs_departments').select('*').order('position'),
     db.from('rs_internal_tasks').select('*').order('position'),
     db.from('rs_checklists').select('*').order('position'),
-    db.from('rs_checklist_items').select('*').order('position')
+    db.from('rs_checklist_items').select('*').order('position'),
+    db.from('rs_tools').select('*').order('position')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -897,6 +903,8 @@ async function loadAll(){
   state.internalTasks = int.data||[];
   state.checklists = cl.data||[];
   state.checklistItems = cli.data||[];
+  state.tools = tls.data||[];
+  if(tls.error) console.warn('Tools table not found — run outputs/v24_tools.sql', tls.error);
   if(cl.error) console.warn('Checklists tables not found — run outputs/v23_qa_checklist.sql', cl.error);
   if(dep.error) console.warn('Internal tasks tables not found — run retainer-tracker-migration-v21.sql', dep.error);
   if(pte.error) console.warn('Task time entries table not found — run retainer-tracker-migration-v18.sql', pte.error);
@@ -1607,7 +1615,7 @@ function render(){
     titleEl.textContent = activeLabel ? activeLabel.textContent : 'Reciprocal Space';
   }
   closeMobileNav();
-  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation, internal:renderInternalTasks, checklists:renderChecklistsHub}[state.view])();
+  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation, internal:renderInternalTasks, checklists:renderChecklistsHub, tools:renderTools}[state.view])();
   main.classList.remove('fade-in'); void main.offsetWidth; main.classList.add('fade-in');
 }
 
@@ -3765,6 +3773,96 @@ function renderChecklistsHub(){
   }));
 }
 
+/* ================= Tools (external web-app launcher) ================= */
+const TOOL_DEFAULT_ICON = 'app-window';
+function toolIconFieldHtml(id, value){
+  return `<div style="display:flex;align-items:center;gap:10px">
+    <input type="text" id="${id}" value="${esc(value||'')}" placeholder="e.g. wrench" style="flex:1" oninput="document.getElementById('${id}_preview').className='ph ph-'+(this.value.trim().toLowerCase().replace(/^ph-/,'')||'${TOOL_DEFAULT_ICON}')">
+    <span style="width:38px;height:38px;flex:none;border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--accent)"><i id="${id}_preview" class="ph ph-${esc(value||TOOL_DEFAULT_ICON)}"></i></span>
+  </div>
+  <div class="sub" style="margin-top:4px;margin-bottom:0">Any <a href="https://phosphoricons.com" target="_blank" rel="noopener">Phosphor icon</a> name — leave blank for the default.</div>`;
+}
+function toolCardHtml(t){
+  return `<div class="card" data-toolopen="${t.id}" style="cursor:pointer">
+    <h3 style="display:flex;align-items:center;gap:8px">
+      <i class="ph ph-${esc(t.icon||TOOL_DEFAULT_ICON)}" style="font-size:18px;color:var(--accent);flex:none"></i>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.name)}</span>
+      <span class="card-actions"><button class="btn small ghost menu-dots" data-toolmenu="${t.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
+    </h3>
+    <div style="font-size:12px;color:var(--muted);font-family:ui-monospace,monospace;word-break:break-all">${esc(t.url)}</div>
+  </div>`;
+}
+function renderTools(){
+  const tools = state.tools.slice().sort((a,b)=>(a.position||0)-(b.position||0));
+  main.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div><h2>Tools</h2><div class="sub" style="margin-bottom:0">Quick links to internal web apps and utilities</div></div>
+      <button class="btn small" id="newToolBtn">+ Add tool</button>
+    </div>
+    ${tools.length
+      ? `<div class="grid" style="margin-top:20px">${tools.map(toolCardHtml).join('')}</div>`
+      : `<div style="margin-top:20px">${emptyStateHtml({ icon:'tray', title:'No tools yet', subtitle:'Add links to internal web apps and utilities to launch them from here.' })}</div>`}`;
+  $('#newToolBtn').onclick = ()=> openToolModal(null);
+  main.querySelectorAll('[data-toolopen]').forEach(el=>el.addEventListener('click', ()=>{
+    const tool = state.tools.find(t=>t.id===el.dataset.toolopen);
+    if(tool) window.open(tool.url, '_blank', 'noopener');
+  }));
+  main.querySelectorAll('[data-toolmenu]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const tool = state.tools.find(t=>t.id===el.dataset.toolmenu);
+    openMenuPopover(e.currentTarget, [
+      { label:'Edit tool', onClick:()=> openToolModal(tool.id) },
+      { label:'Delete tool', danger:true, onClick: async ()=>{
+        if(!confirm(`Delete "${tool.name}"?`)) return;
+        const { error } = await db.from('rs_tools').delete().eq('id', tool.id);
+        if(error){ toast('Delete failed'); return; }
+        await loadAll();
+      }}
+    ]);
+  }));
+}
+function openToolModal(toolId){
+  const isNew = !toolId;
+  const t = isNew ? null : state.tools.find(x=>x.id===toolId);
+  showModal(`
+    <h3>${isNew?'Add tool':'Edit tool'}</h3>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Name</label><input type="text" id="tool_name" value="${esc(t?t.name:'')}" placeholder="My web tool"></div>
+      <div class="full"><label>URL</label><input type="url" id="tool_url" value="${esc(t?t.url:'')}" placeholder="https://example.com"></div>
+      <div class="full"><label>Icon <span style="color:var(--muted);font-weight:400">(optional)</span></label>${toolIconFieldHtml('tool_icon', t?t.icon:'')}</div>
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn danger" id="tool_delete">Delete tool</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="tool_cancel">Cancel</button>
+        <button class="btn" id="tool_save">${isNew?'Add tool':'Save changes'}</button>
+      </div>
+    </div>
+  `);
+  $('#tool_cancel').onclick = closeModal;
+  if(!isNew) $('#tool_delete').onclick = async ()=>{
+    if(!confirm(`Delete "${t.name}"?`)) return;
+    const { error } = await db.from('rs_tools').delete().eq('id', t.id);
+    if(error){ toast('Delete failed'); return; }
+    closeModal(); toast('Tool deleted'); await loadAll();
+  };
+  $('#tool_save').onclick = async ()=>{
+    const name = $('#tool_name').value.trim();
+    const url = $('#tool_url').value.trim();
+    if(!name || !url){ toast('Give the tool a name and URL'); return; }
+    const icon = $('#tool_icon').value.trim().toLowerCase().replace(/^ph-/,'') || null;
+    if(isNew){
+      const nextPos = state.tools.length ? Math.max(...state.tools.map(x=>x.position||0))+1 : 0;
+      const { error } = await db.from('rs_tools').insert({ name, url, icon, position:nextPos });
+      if(error){ toast(error.code==='PGRST205'?'Run migration v24 to enable Tools':'Could not save'); console.error(error); return; }
+    } else {
+      const { error } = await db.from('rs_tools').update({ name, url, icon }).eq('id', t.id);
+      if(error){ toast('Could not save'); console.error(error); return; }
+    }
+    closeModal(); toast(isNew?'Tool added':'Tool updated'); await loadAll();
+  };
+}
+
 function renderProjDetail(){
   const p = state.projects.find(p=>p.id===state.projProjectId);
   if(!p){ state.projView='clientProjects'; render(); return; }
@@ -4965,7 +5063,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.25.0';
+const APP_VERSION = '0.26.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;

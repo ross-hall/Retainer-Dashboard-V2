@@ -3,13 +3,13 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.25.0**
+Current version: **v0.26.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
 - Anon key: `sb_publishable_q6qhoNXd38nRDKhhXxBf7w_DD38UMaj`
 - RLS is fully open (anon key can read/write everything — known risk, flagged). **Caveat learned the hard way:** Supabase now enables RLS by default on tables created via the SQL editor, so every new migration must explicitly `alter table ... disable row level security;` to match — v21 initially shipped without this and silently blocked the anon key until a follow-up fix.
-- ⚠️ **Pending manual steps:** `outputs/v19_add_animator.sql`, `outputs/v20_anim_cell_statuses.sql`, `outputs/v22_internal_task_multi_assignee.sql`, and `outputs/v23_qa_checklist.sql` have not been run yet — Animator assignments won't persist server-side, pipeline cell statuses aren't editable, the Internal Tasks assignee picker won't let you select more than one person, and the new Checklists feature (per-project, own page) degrades gracefully (toast "run migration v23") until each is run. `outputs/v21_internal_tasks.sql` **has been run** — Internal Tasks and Departments are live. Note: `outputs/v23_qa_checklist.sql` was rewritten mid-session before ever being run — it originally added a `qa_checklist` column to `rs_project_types` + a flat `rs_project_qa_items` table, but was replaced outright with the current `rs_checklists`/`rs_checklist_items` design once the user clarified they wanted standalone, multi-per-project checklists rather than one type-templated list. If you see references to `qa_checklist`/`rs_project_qa_items` anywhere stale, they're leftover from that abandoned draft.
+- ⚠️ **Pending manual steps:** `outputs/v19_add_animator.sql`, `outputs/v20_anim_cell_statuses.sql`, `outputs/v22_internal_task_multi_assignee.sql`, and `outputs/v24_tools.sql` have not been run yet — Animator assignments won't persist server-side, pipeline cell statuses aren't editable, the Internal Tasks assignee picker won't let you select more than one person, and the new Tools page degrades gracefully (toast "run migration v24") until `rs_tools` exists. `outputs/v21_internal_tasks.sql` **has been run** — Internal Tasks and Departments are live. `outputs/v23_qa_checklist.sql` **has been run** (confirmed by a live `42501` RLS error on checklist creation, which only happens once the table already exists) but shipped with RLS still enabled; `outputs/v23b_checklists_rls_fix.sql` fixes that — **run this too if you haven't already**, otherwise checklist creation will keep failing with "Could not create checklist". Note: `outputs/v23_qa_checklist.sql` was rewritten mid-session before ever being run the first time — it originally added a `qa_checklist` column to `rs_project_types` + a flat `rs_project_qa_items` table, but was replaced outright with the current `rs_checklists`/`rs_checklist_items` design once the user clarified they wanted standalone, multi-per-project checklists rather than one type-templated list. If you see references to `qa_checklist`/`rs_project_qa_items` anywhere stale, they're leftover from that abandoned draft.
 
 Stack: Vanilla JS · No framework · No build step · Supabase JS v2 via CDN · Inter font · Notion + Linear + Arc-inspired visual system with a dark-mode variant. **The standalone "Retainers" nav page/dashboard is gone as of v0.13.0** — its content (allowance meter, remaining hours, renewal date) now lives directly on each retainer client's card on the All Projects page, and the client detail page merges what used to be two separate pages (to-do list / allowance history) into one page with a "To-do list" / "Monthly allowance" tab toggle. The old "Calendar view" for ad-hoc hour-logging (not tied to a task) was removed with it — hours are logged through the task modal (tick "counts toward retainer" + recorded hours) instead. See "What shipped in v0.13.0" below.
 
@@ -62,6 +62,7 @@ Nav views (state.view) — 'dashboard' (Retainers) is gone as of v0.13.0:
   'milestones'   → renderMilestones()
   'internal'     → renderInternalTasks()  [Internal Tasks — new in v0.20.0]
   'checklists'   → renderChecklistsHub()  [global Checklists nav item — new in v0.25.0; same name as the projView above but a different state field, no collision]
+  'tools'        → renderTools()  [global Tools nav item — new in v0.26.0, external web-app launcher]
   'settings'     → renderSettings()
   'archived'     → renderArchived()
 
@@ -98,6 +99,7 @@ Public dashboard (no internal nav):
 | `rs_internal_tasks` | v21, **v22** | Non-client tasks: title, priority, due_date, department_id → `rs_departments`, is_done, position. v22 adds `assignee_ids uuid[]` (multi-select) alongside the original singular `assignee_id` (now unused by the app but left in place, non-destructive) — **v22 not yet run** |
 | `rs_checklists` | **v23** | Named checklists, many per project, each with its own page (`renderChecklistDetail`). Created on demand via "+ New checklist" on the project page, not tied to project type. **Not yet run** |
 | `rs_checklist_items` | **v23** | Items within a checklist: category (optional grouping label), label, detail (optional helper text), is_done, position. Optionally seeded from a hardcoded starter template (`WEBSITE_CHECKLIST_TEMPLATE`) at checklist-creation time; independent after that. **Not yet run** |
+| `rs_tools` | **v24** | Global launcher list of external web tools/apps: name, url, icon (Phosphor icon name, optional — falls back to `TOOL_DEFAULT_ICON`), position. Rebuilt natively inside this app (own Supabase table) rather than embedding/linking the separate standalone tools-launcher site, per user's explicit choice. **Not yet run** |
 
 ---
 
