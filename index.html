@@ -459,6 +459,21 @@
   .mini-progress{height:6px;background:var(--track);border-radius:99px;overflow:hidden;margin-top:8px}
   .mini-progress .fill{height:100%;background:var(--green);border-radius:99px;transition:width .4s var(--ease)}
 
+  /* Mini-table checklist rows — used both inside a project's checklists
+     popover and on the global Checklists hub cards, so the two stay visually
+     identical. Extra specificity (button.checklist-row) beats the generic
+     .menu-popover button rule when nested inside that popover. */
+  .checklist-popover{width:280px;max-height:360px;overflow-y:auto}
+  button.checklist-row{display:block;width:100%;text-align:left;padding:8px 6px;border:none;border-top:1px solid var(--line-soft);background:none;border-radius:0;cursor:pointer;font-family:inherit;transition:background var(--fast) var(--ease)}
+  button.checklist-row:first-child{border-top:none}
+  button.checklist-row:hover{background:var(--row-hover)}
+  .chr-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .chr-name{font-size:13px;font-weight:500;color:var(--ink)}
+  .chr-count{font-size:12px;font-weight:500;color:var(--muted);flex:none}
+  .clpop-add{display:block;width:100%;text-align:left;padding:9px 6px;margin-top:2px;border:none;border-top:1px solid var(--line-soft);background:none;color:var(--accent);font-weight:600;font-size:13px;cursor:pointer;font-family:inherit}
+  .clpop-add:hover{background:var(--row-hover)}
+  .clpop-empty{padding:10px 6px;font-size:12.5px;color:var(--muted)}
+
   .view-toggle{display:flex;gap:6px;margin-bottom:14px}
   .switch-toggle{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
   .switch-toggle input{display:none}
@@ -601,7 +616,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.26.0</div>
+    <div id="versionBadge" class="version-badge">v0.28.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -650,7 +665,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha',
-  departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistId:null, tools:[],
+  departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[],
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -758,8 +773,22 @@ function miroExternal(client){ return (client && client.miro_link_external) || n
 function miroInternal(client){ return (client && client.miro_link_internal) || null; }
 function miroButtonsHtml(client){
   const ext = miroExternal(client), intl = miroInternal(client);
+  if(!ext && !intl) return '';
   const style = "background:#FFD02F;color:#050038;border:1px solid #FFD02F;font-weight:600";
-  return `${ext? `<a class="btn small miro-btn" style="${style}" href="${esc(ext)}" target="_blank" rel="noopener">${MIRO_ICON}Miro (Ext) ↗</a>`:''}${intl? `<a class="btn small miro-btn" style="${style}" href="${esc(intl)}" target="_blank" rel="noopener">${MIRO_ICON}Miro (Int) ↗</a>`:''}`;
+  if(ext && intl) return `<button type="button" class="btn small miro-btn" style="${style}" data-miromenu="${client.id}">${MIRO_ICON}Miro ▾</button>`;
+  const link = ext || intl;
+  return `<a class="btn small miro-btn" style="${style}" href="${esc(link)}" target="_blank" rel="noopener">${MIRO_ICON}Miro ↗</a>`;
+}
+function wireMiroButtons(root){
+  (root||document).querySelectorAll('[data-miromenu]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const client = state.clients.find(c=>c.id===el.dataset.miromenu);
+    if(!client) return;
+    const items = [];
+    if(miroExternal(client)) items.push({ label:'Open Miro (external) ↗', onClick:()=> window.open(miroExternal(client),'_blank','noopener') });
+    if(miroInternal(client)) items.push({ label:'Open Miro (internal) ↗', onClick:()=> window.open(miroInternal(client),'_blank','noopener') });
+    openMenuPopover(e.currentTarget, items);
+  }));
 }
 function miroIconBtnHtml(client){
   const link = miroExternal(client) || miroInternal(client);
@@ -872,7 +901,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -890,7 +919,9 @@ async function loadAll(){
     db.from('rs_internal_tasks').select('*').order('position'),
     db.from('rs_checklists').select('*').order('position'),
     db.from('rs_checklist_items').select('*').order('position'),
-    db.from('rs_tools').select('*').order('position')
+    db.from('rs_tools').select('*').order('position'),
+    db.from('rs_checklist_templates').select('*').order('position'),
+    db.from('rs_checklist_template_items').select('*').order('position')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -903,9 +934,12 @@ async function loadAll(){
   state.internalTasks = int.data||[];
   state.checklists = cl.data||[];
   state.checklistItems = cli.data||[];
+  state.checklistTemplates = clt.data||[];
+  state.checklistTemplateItems = clti.data||[];
   state.tools = tls.data||[];
   if(tls.error) console.warn('Tools table not found — run outputs/v24_tools.sql', tls.error);
   if(cl.error) console.warn('Checklists tables not found — run outputs/v23_qa_checklist.sql', cl.error);
+  if(clt.error) console.warn('Checklist templates tables not found — run outputs/v25_checklist_templates.sql', clt.error);
   if(dep.error) console.warn('Internal tasks tables not found — run retainer-tracker-migration-v21.sql', dep.error);
   if(pte.error) console.warn('Task time entries table not found — run retainer-tracker-migration-v18.sql', pte.error);
   if(ash.error) console.warn('Animation tables not found — run retainer-tracker-migration-v16.sql', ash.error);
@@ -1970,6 +2004,7 @@ function wireClientRetainerHeader(){
     state.retainerTab = e.target.checked ? 'allowance' : 'tasks';
     render();
   });
+  wireMiroButtons();
 }
 
 function renderClientTasksView(c){
@@ -2137,8 +2172,6 @@ async function loadRetainerAllowanceBody(c){
 /* ================= Project Overview ================= */
 function renderProjects(){
   if(state.projView==='project') renderProjDetail();
-  else if(state.projView==='checklists') renderProjectChecklists();
-  else if(state.projView==='checklist') renderChecklistDetail();
   else if(state.projView==='retainerTasks'){
     const c = state.clients.find(c=>c.id===state.projClientId);
     if(!c){ state.projView='clients'; render(); return; }
@@ -2776,6 +2809,7 @@ function renderProjClientProjects(){
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
   $('#newProjectBtn').onclick = ()=> openProjectModal(null, c.id);
   $('#editClientBtn2').onclick = ()=> openClientEditModal(c.id);
+  wireMiroButtons();
   main.querySelectorAll('[data-projdetail]').forEach(el=>el.addEventListener('click', ()=>{
     state.projProjectId = el.dataset.projdetail; state.projView='project'; render();
   }));
@@ -3459,77 +3493,31 @@ function openProjTaskModal(taskId, ctx){
 
 /* Checklists — a project can have any number of independently named
    checklists (each its own page), created on demand via "+ New checklist".
-   Optionally seeded from a starter template at creation time (see
-   CHECKLIST_TEMPLATES below); after that each checklist is fully independent
+   Optionally seeded from a starter template at creation time (editable
+   templates, see the Checklist templates section further down and Settings
+   > "Checklist templates"); after that each checklist is fully independent
    — editing one never touches a template or any other project's checklists. */
 const TRASH_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-/* Mined from the team's standalone QA checklist tool (separate Supabase
-   project) — its `templates` table was empty, so this hardcoded default was
-   the tool's real, in-use template. Flattened out of its 8 category groups. */
-const WEBSITE_CHECKLIST_TEMPLATE = [
-  { category:'Copy & Content', label:'All placeholder text removed', detail:'No Lorem Ipsum, TBD, [CLIENT NAME], or template copy' },
-  { category:'Copy & Content', label:'Headlines and body copy proofread', detail:'Spelling, grammar, punctuation checked' },
-  { category:'Copy & Content', label:'Client name and product names spelled correctly', detail:'Check every instance across all pages' },
-  { category:'Copy & Content', label:'All CTAs are correctly labelled', detail:'Button text makes sense in context' },
-  { category:'Copy & Content', label:'Meta title and description filled in', detail:'Every page has unique, accurate meta copy' },
-  { category:'Copy & Content', label:'Legal / compliance copy present', detail:'Privacy policy, cookie notice, disclaimers if required' },
-  { category:'Links & Navigation', label:'All navigation links work', detail:'Desktop and mobile nav tested end-to-end' },
-  { category:'Links & Navigation', label:'No broken internal links', detail:'Click through every page link' },
-  { category:'Links & Navigation', label:'External links open correctly', detail:'Check target (new tab where expected)' },
-  { category:'Links & Navigation', label:'Footer links all work', detail:'Including social links and legal pages' },
-  { category:'Links & Navigation', label:'Logo links to homepage', detail:'Standard expectation, easy to miss' },
-  { category:'Links & Navigation', label:'404 page is styled', detail:'Custom 404 or sensible fallback in place' },
-  { category:'Visual & Brand', label:'Brand colours match approved palette', detail:'No off-hex values slipping through' },
-  { category:'Visual & Brand', label:'Typography matches design spec', detail:'Fonts, weights, sizes, line-heights' },
-  { category:'Visual & Brand', label:'All images load correctly', detail:'No broken images, no placeholder images' },
-  { category:'Visual & Brand', label:'Images are appropriately sized and sharp', detail:'Retina images for 2x displays where needed' },
-  { category:'Visual & Brand', label:'Favicon is set', detail:'Browser tab icon is correct, not default' },
-  { category:'Visual & Brand', label:'Logo appears correctly across all pages', detail:'Correct file, correct sizing' },
-  { category:'Visual & Brand', label:'Spacing and alignment consistent', detail:'No rogue padding/margin from CMS or overrides' },
-  { category:'Visual & Brand', label:'Animations play correctly', detail:'Scroll animations, Lottie, video — tested on reload' },
-  { category:'Responsive & Cross-Browser', label:'Tested on mobile (iOS Safari)', detail:'Most common edge-case browser' },
-  { category:'Responsive & Cross-Browser', label:'Tested on mobile (Android Chrome)', detail:'' },
-  { category:'Responsive & Cross-Browser', label:'Tested on desktop Chrome', detail:'' },
-  { category:'Responsive & Cross-Browser', label:'Tested on desktop Safari', detail:'Especially for CSS features and fonts' },
-  { category:'Responsive & Cross-Browser', label:'Tested on desktop Firefox', detail:'' },
-  { category:'Responsive & Cross-Browser', label:'No horizontal scroll on mobile', detail:'Check at 320px, 375px, 390px viewports' },
-  { category:'Responsive & Cross-Browser', label:'Tap targets large enough on mobile', detail:'Min 44×44px for interactive elements' },
-  { category:'Responsive & Cross-Browser', label:'Hamburger / mobile nav works', detail:'Opens, closes, all links accessible' },
-  { category:'Forms & Interactions', label:'All forms submit correctly', detail:'Test with valid and invalid data' },
-  { category:'Forms & Interactions', label:'Form validation messages appear', detail:'Required fields, format validation' },
-  { category:'Forms & Interactions', label:'Success states show after submission', detail:'Confirmation message or redirect works' },
-  { category:'Forms & Interactions', label:'Form submissions reach the right inbox', detail:'Send a test submission and confirm receipt' },
-  { category:'Forms & Interactions', label:'reCAPTCHA or spam protection active', detail:'If applicable' },
-  { category:'Performance & Technical', label:'No console errors in DevTools', detail:'Open F12 → Console on all pages' },
-  { category:'Performance & Technical', label:'Page load feels fast', detail:'Run Lighthouse or PageSpeed Insights' },
-  { category:'Performance & Technical', label:'SSL certificate active (HTTPS)', detail:'Padlock shows in browser' },
-  { category:'Performance & Technical', label:'Redirects working correctly', detail:'www → non-www or vice versa, old URLs if migrated' },
-  { category:'Performance & Technical', label:'Analytics tracking confirmed', detail:'GA4, Mixpanel or similar firing correctly' },
-  { category:'Performance & Technical', label:'Cookie consent banner working', detail:'If required for region/client' },
-  { category:'Performance & Technical', label:'No staging/test domain references', detail:'Check OG tags, canonical tags, sitemaps' },
-  { category:'Accessibility Basics', label:'Images have alt text', detail:'Descriptive alt for content images, empty for decorative' },
-  { category:'Accessibility Basics', label:'Colour contrast is sufficient', detail:'Body text WCAG AA: min 4.5:1 ratio' },
-  { category:'Accessibility Basics', label:'Keyboard navigation works', detail:'Tab through the page — focus states visible' },
-  { category:'Accessibility Basics', label:'Page has a logical heading structure', detail:'One H1, logical H2/H3 hierarchy' },
-  { category:'Accessibility Basics', label:'Animations respect prefers-reduced-motion', detail:'Or a pause control is available' },
-  { category:'Client Handover', label:'CMS login details prepared', detail:'Or agreed handover method' },
-  { category:'Client Handover', label:'Domain / DNS notes documented', detail:'Any custom config the client needs to know' },
-  { category:'Client Handover', label:'Staging password removed', detail:"Client shouldn't hit a password wall" },
-  { category:'Client Handover', label:'Browser tab title correct on all pages', detail:'Not "Home | Framer" or similar default' },
-  { category:'Client Handover', label:'Social share image (OG image) set', detail:'Test with opengraph.xyz' }
-];
-const CHECKLIST_TEMPLATES = {
-  blank: { label:'Blank', items:[] },
-  website: { label:`Website Checklist (${WEBSITE_CHECKLIST_TEMPLATE.length} items)`, items:WEBSITE_CHECKLIST_TEMPLATE }
-};
+/* "Blank" plus every user-editable row in rs_checklist_templates (seeded
+   with Website/Branding/Animation/Deck starters by outputs/v25_checklist_
+   templates.sql). Read fresh each time a checklist is created so edits made
+   in Settings show up immediately. */
+function checklistTemplateOptions(){
+  const dbTemplates = state.checklistTemplates.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(t=>{
+    const items = state.checklistTemplateItems.filter(i=>i.template_id===t.id).sort((a,b)=>(a.position||0)-(b.position||0));
+    return { key:t.id, label:`${t.name} (${items.length} item${items.length===1?'':'s'})`, items };
+  });
+  return [{ key:'blank', label:'Blank', items:[] }, ...dbTemplates];
+}
 
 function openNewChecklistModal(projectId){
+  const options = checklistTemplateOptions();
   showModal(`
     <h3>New checklist</h3>
     <form class="log" style="max-width:none">
       <div class="full"><label>Name</label><input type="text" id="ncl_name" placeholder="e.g. Website QA" value="Website Checklist"></div>
-      <div class="full"><label>Start from</label><select id="ncl_template">${Object.entries(CHECKLIST_TEMPLATES).map(([key,t])=>`<option value="${key}">${esc(t.label)}</option>`).join('')}</select></div>
+      <div class="full"><label>Start from</label><select id="ncl_template">${options.map(o=>`<option value="${o.key}">${esc(o.label)}</option>`).join('')}</select></div>
     </form>
     <div class="modal-actions">
       <div class="right">
@@ -3542,7 +3530,7 @@ function openNewChecklistModal(projectId){
   $('#ncl_create').onclick = async ()=>{
     const name = $('#ncl_name').value.trim();
     if(!name){ toast('Give the checklist a name'); return; }
-    const template = CHECKLIST_TEMPLATES[$('#ncl_template').value] || CHECKLIST_TEMPLATES.blank;
+    const template = options.find(o=>o.key===$('#ncl_template').value) || options[0];
     const siblings = state.checklists.filter(c=>c.project_id===projectId);
     const nextPos = siblings.length ? Math.max(...siblings.map(c=>c.position||0))+1 : 0;
     const { data, error } = await db.from('rs_checklists').insert({ project_id:projectId, name, position:nextPos }).select().single();
@@ -3551,60 +3539,41 @@ function openNewChecklistModal(projectId){
       const { error: itemsErr } = await db.from('rs_checklist_items').insert(template.items.map((it,i)=>({ checklist_id:data.id, category:it.category||null, label:it.label, detail:it.detail||null, position:i })));
       if(itemsErr) console.warn('Could not seed checklist items', itemsErr);
     }
-    closeModal();
-    state.projView = 'checklist'; state.checklistId = data.id;
-    await refreshCurrentView();
+    await loadAll();
+    openChecklistModal(data.id);
   };
 }
-function renderProjectChecklists(){
-  const p = state.projects.find(p=>p.id===state.projProjectId);
-  if(!p){ state.projView='clientProjects'; render(); return; }
-  const c = state.clients.find(c=>c.id===p.client_id);
-  const checklists = state.checklists.filter(cl=>cl.project_id===p.id).sort((a,b)=>(a.position||0)-(b.position||0));
+
+/* Checklists dropdown — replaces the old full-page per-project checklist
+   list. Anchored off the project header's "Checklists" button; lists each
+   checklist with a progress bar, click to open it in the overlay below, or
+   "+ New checklist" to create one. Reuses the shared menu-popover chrome. */
+function openChecklistsPopover(anchorEl, projectId){
+  closeMenuPopover();
+  const pop = document.createElement('div');
+  pop.className = 'menu-popover checklist-popover';
+  document.body.appendChild(pop);
+  _activeMenuPopover = pop;
+  const checklists = state.checklists.filter(cl=>cl.project_id===projectId).sort((a,b)=>(a.position||0)-(b.position||0));
   const rows = checklists.map(cl=>{
     const items = state.checklistItems.filter(i=>i.checklist_id===cl.id);
     const done = items.filter(i=>i.is_done).length;
-    return `<div class="task-row" data-checklistopen="${cl.id}" style="display:flex;align-items:center;justify-content:space-between;padding:10px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer">
-      <span style="font-weight:500">${esc(cl.name)}</span>
-      <span style="display:flex;align-items:center;gap:12px">
-        <span style="font-size:12.5px;color:var(--muted)">${items.length? `${done}/${items.length} done` : 'No items'}</span>
-        <button type="button" class="btn small ghost menu-dots" data-checklistdelete="${cl.id}" title="Delete checklist">${TRASH_ICON_SVG}</button>
-      </span>
-    </div>`;
+    const pct = items.length ? Math.round(done/items.length*100) : 0;
+    return `<button type="button" class="checklist-row" data-clpopopen="${cl.id}">
+      <div class="chr-top"><span class="chr-name">${esc(cl.name)}</span><span class="chr-count">${items.length? `${done}/${items.length}`:'—'}</span></div>
+      ${items.length? `<div class="mini-progress"><div class="fill" style="width:${pct}%"></div></div>`:''}
+    </button>`;
   }).join('');
-  const body = checklists.length ? rows : emptyStateHtml({ icon:'check', title:'No checklists yet', subtitle:'Create a checklist to track QA, launch steps, or handoff items.' });
-  main.innerHTML = `<div class="breadcrumb">
-      <button data-bc="clients">All Projects</button><span class="sep">/</span>
-      <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
-      <button data-bc="projback">${esc(p.name)}</button><span class="sep">/</span>
-      <span class="current">Checklists</span>
-    </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <h2 style="margin:0">Checklists</h2>
-        <button class="btn small ghost" id="newChecklistBtn">+ New checklist</button>
-      </div>
-      ${body}
-    </div>`;
-  wireProjectChecklists(p.id);
-}
-function wireProjectChecklists(projectId){
-  $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
-  $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
-  $('[data-bc="projback"]').onclick = ()=>{ state.projView='project'; render(); };
-  $('#newChecklistBtn').onclick = ()=> openNewChecklistModal(projectId);
-  main.querySelectorAll('[data-checklistopen]').forEach(row=>row.addEventListener('click', (e)=>{
-    if(e.target.closest('[data-checklistdelete]')) return;
-    state.projView = 'checklist'; state.checklistId = row.dataset.checklistopen;
-    render();
-  }));
-  main.querySelectorAll('[data-checklistdelete]').forEach(btn=>btn.addEventListener('click', async (e)=>{
-    e.stopPropagation();
-    if(!confirm('Delete this checklist and all its items?')) return;
-    const { error } = await db.from('rs_checklists').delete().eq('id', btn.dataset.checklistdelete);
-    if(error){ toast('Delete failed'); return; }
-    await refreshProjectView();
-  }));
+  pop.innerHTML = `${rows || '<div class="clpop-empty">No checklists yet</div>'}<button type="button" class="clpop-add" data-clpopnew>+ New checklist</button>`;
+  pop.querySelectorAll('[data-clpopopen]').forEach(b=>b.onclick=()=>{ closeMenuPopover(); openChecklistModal(b.dataset.clpopopen); });
+  pop.querySelector('[data-clpopnew]').onclick = ()=>{ closeMenuPopover(); openNewChecklistModal(projectId); };
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.position = 'fixed';
+  pop.style.top = Math.min(rect.bottom+6, window.innerHeight-360)+'px';
+  pop.style.left = Math.max(8, Math.min(rect.right-280, window.innerWidth-290))+'px';
+  pop.style.zIndex = 300;
+  _menuOutsideHandler = e=>{ if(_activeMenuPopover && !_activeMenuPopover.contains(e.target) && e.target!==anchorEl) closeMenuPopover(); };
+  setTimeout(()=> document.addEventListener('mousedown', _menuOutsideHandler), 0);
 }
 
 function checklistItemRowHtml(item){
@@ -3617,14 +3586,19 @@ function checklistItemRowHtml(item){
     <div class="tg-actions"><button type="button" class="btn small ghost menu-dots" data-clidelete="${item.id}" title="Delete item">${TRASH_ICON_SVG}</button></div>
   </div>`;
 }
-function renderChecklistDetail(){
-  const cl = state.checklists.find(c=>c.id===state.checklistId);
-  if(!cl){ state.projView='project'; render(); return; }
+
+/* Individual checklist — a popup overlay (showModal) rather than its own
+   page, opened from openChecklistsPopover or straight from the global
+   Checklists hub. Every mutation reloads data then re-invokes this function
+   so the modal redraws with fresh content instead of closing, same pattern
+   as openAnimCellModal's feedback log. */
+function openChecklistModal(checklistId){
+  const cl = state.checklists.find(c=>c.id===checklistId);
+  if(!cl){ closeModal(); return; }
   const p = state.projects.find(p=>p.id===cl.project_id);
-  if(!p){ state.projView='clientProjects'; render(); return; }
-  const c = state.clients.find(c=>c.id===p.client_id);
   const items = state.checklistItems.filter(i=>i.checklist_id===cl.id).sort((a,b)=>(a.position||0)-(b.position||0));
   const doneCount = items.filter(i=>i.is_done).length;
+  const pct = items.length ? Math.round(doneCount/items.length*100) : 0;
 
   const groups = [];
   const byCat = {};
@@ -3637,60 +3611,52 @@ function renderChecklistDetail(){
     ? groups.map(g=> `${g.category? `<div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px">${esc(g.category)}</div>`:''}${g.items.map(checklistItemRowHtml).join('')}`).join('')
     : emptyStateHtml({ icon:'check', title:'No items yet', subtitle:'Add items to build out this checklist.' });
 
-  main.innerHTML = `<div class="breadcrumb">
-      <button data-bc="clients">All Projects</button><span class="sep">/</span>
-      <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
-      <button data-bc="projback">${esc(p.name)}</button><span class="sep">/</span>
-      <button data-bc="checklists">Checklists</button><span class="sep">/</span>
-      <span class="current">${esc(cl.name)}</span>
-    </div>
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-        <h2 style="margin:0">${esc(cl.name)}</h2>
-        <div style="display:flex;align-items:center;gap:10px">
-          ${items.length? `<span style="font-size:12.5px;color:var(--muted)">${doneCount}/${items.length} done</span>`:''}
-          <button class="btn small ghost" id="renameChecklistBtn">Rename</button>
-          <button class="btn small danger" id="deleteChecklistBtn">Delete</button>
-        </div>
+  showModal(`
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:2px">
+      <h3 style="margin:0">${esc(cl.name)}</h3>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn small ghost" id="renameChecklistBtn">Rename</button>
+        <button class="btn small danger" id="deleteChecklistBtn">Delete</button>
       </div>
-      ${body}
-      <div style="margin-top:10px"><button class="btn small ghost" id="clAddBtn">+ Add item</button></div>
-    </div>`;
-  wireChecklistDetail(cl.id, p.id);
-}
-function wireChecklistDetail(checklistId, projectId){
-  $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
-  $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
-  $('[data-bc="projback"]').onclick = ()=>{ state.projView='project'; state.projProjectId=projectId; render(); };
-  $('[data-bc="checklists"]').onclick = ()=>{ state.projView='checklists'; state.projProjectId=projectId; render(); };
+    </div>
+    ${p? `<div class="sub" style="margin-bottom:10px">${esc(p.name)}</div>`:''}
+    ${items.length? `<div style="margin-bottom:14px">
+      <div class="mini-progress"><div class="fill" style="width:${pct}%"></div></div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:6px">${doneCount} of ${items.length} completed</div>
+    </div>`:''}
+    <div style="max-height:50vh;overflow-y:auto">${body}</div>
+    <div class="modal-actions">
+      <button class="btn small ghost" id="clAddBtn">+ Add item</button>
+      <div class="right"><button class="btn ghost" id="cl_close">Close</button></div>
+    </div>
+  `, {wide:true});
+
+  $('#cl_close').onclick = closeModal;
   $('#renameChecklistBtn').onclick = async ()=>{
-    const cl = state.checklists.find(c=>c.id===checklistId);
     const name = prompt('Checklist name', cl.name);
     if(!name || !name.trim() || name.trim()===cl.name) return;
     const { error } = await db.from('rs_checklists').update({ name:name.trim() }).eq('id', checklistId);
     if(error){ toast('Could not rename'); return; }
-    await refreshProjectView();
+    await loadAll(); openChecklistModal(checklistId);
   };
   $('#deleteChecklistBtn').onclick = async ()=>{
     if(!confirm('Delete this checklist and all its items?')) return;
     const { error } = await db.from('rs_checklists').delete().eq('id', checklistId);
     if(error){ toast('Delete failed'); return; }
-    state.projView='checklists'; state.projProjectId=projectId;
-    await refreshProjectView();
+    closeModal(); toast('Checklist deleted'); await loadAll();
   };
   $('#clAddBtn').onclick = async ()=>{
-    const items = state.checklistItems.filter(i=>i.checklist_id===checklistId);
     const nextPos = items.length ? Math.max(...items.map(i=>i.position||0))+1 : 0;
     const { error } = await db.from('rs_checklist_items').insert({ checklist_id:checklistId, label:'New item', position:nextPos });
     if(error){ toast(error.code==='PGRST205'?'Run migration v23 to enable checklists':'Could not add item'); console.error(error); return; }
-    await refreshProjectView();
+    await loadAll(); openChecklistModal(checklistId);
   };
-  main.querySelectorAll('[data-clidone]').forEach(cb=>cb.addEventListener('change', async ()=>{
+  document.querySelectorAll('[data-clidone]').forEach(cb=>cb.addEventListener('change', async ()=>{
     const { error } = await db.from('rs_checklist_items').update({ is_done: cb.checked }).eq('id', cb.dataset.clidone);
     if(error){ toast('Could not update'); return; }
-    await refreshProjectView();
+    await loadAll(); openChecklistModal(checklistId);
   }));
-  main.querySelectorAll('[data-cliname]').forEach(el=>el.addEventListener('click', (e)=>{
+  document.querySelectorAll('[data-cliname]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     const itemId = el.dataset.cliname;
     const original = el.textContent;
@@ -3707,17 +3673,16 @@ function wireChecklistDetail(checklistId, projectId){
       if(input.dataset.cancel || !val || val===original){ input.replaceWith(el); return; }
       const { error } = await db.from('rs_checklist_items').update({ label: val }).eq('id', itemId);
       if(error){ toast('Could not rename item'); input.replaceWith(el); return; }
-      await refreshProjectView();
+      await loadAll(); openChecklistModal(checklistId);
     }, { once:true });
   }));
-  main.querySelectorAll('[data-clidelete]').forEach(el=>el.addEventListener('click', async (e)=>{
+  document.querySelectorAll('[data-clidelete]').forEach(el=>el.addEventListener('click', async (e)=>{
     e.stopPropagation();
     const { error } = await db.from('rs_checklist_items').delete().eq('id', el.dataset.clidelete);
     if(error){ toast('Delete failed'); return; }
-    await refreshProjectView();
+    await loadAll(); openChecklistModal(checklistId);
   }));
-  const ordered = state.checklistItems.filter(i=>i.checklist_id===checklistId).sort((a,b)=>(a.position||0)-(b.position||0));
-  main.querySelectorAll('[data-clitem]').forEach(row=>{
+  document.querySelectorAll('[data-clitem]').forEach(row=>{
     row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', row.dataset.clitem); e.dataTransfer.effectAllowed='move'; });
     row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('drop-target-row'); });
     row.addEventListener('dragleave', ()=> row.classList.remove('drop-target-row'));
@@ -3726,16 +3691,148 @@ function wireChecklistDetail(checklistId, projectId){
       const draggedId = e.dataTransfer.getData('text/plain');
       const targetId = row.dataset.clitem;
       if(!draggedId || draggedId===targetId) return;
-      const order = ordered.slice();
+      const order = items.slice();
       const fromIdx = order.findIndex(i=>i.id===draggedId);
       const toIdx = order.findIndex(i=>i.id===targetId);
       if(fromIdx<0 || toIdx<0) return;
       const [moved] = order.splice(fromIdx,1);
       order.splice(toIdx,0,moved);
       await Promise.all(order.map((it,idx)=> db.from('rs_checklist_items').update({position:idx}).eq('id',it.id)));
-      await refreshProjectView();
+      await loadAll(); openChecklistModal(checklistId);
     });
   });
+}
+
+/* Checklist templates — managed from Settings, not tied to any project.
+   Each template's tasks are edited via this overlay (Settings > "Checklist
+   templates" > "Edit tasks"), then offered as a "Start from" option in
+   openNewChecklistModal above. No is_done state here (templates aren't
+   checked off, only the checklists created from them are) — clicking a row
+   opens openTemplateItemModal to edit its category/label/detail instead of
+   the checkbox+inline-rename pattern real checklist items use. */
+function templateItemRowHtml(item){
+  return `<div class="task-grid-row task-row" draggable="true" data-tplitem="${item.id}" style="grid-template-columns:1fr 32px;cursor:pointer">
+    <div class="tg-title" style="flex-direction:column;align-items:flex-start;gap:1px" data-tplitemopen="${item.id}">
+      <span style="font-weight:500">${esc(item.label)}</span>
+      ${item.detail? `<span style="font-size:11.5px;color:var(--muted)">${esc(item.detail)}</span>`:''}
+    </div>
+    <div class="tg-actions"><button type="button" class="btn small ghost menu-dots" data-tpldelete="${item.id}" title="Delete item">${TRASH_ICON_SVG}</button></div>
+  </div>`;
+}
+function openChecklistTemplateModal(templateId){
+  const tpl = state.checklistTemplates.find(t=>t.id===templateId);
+  if(!tpl){ closeModal(); return; }
+  const items = state.checklistTemplateItems.filter(i=>i.template_id===templateId).sort((a,b)=>(a.position||0)-(b.position||0));
+
+  const groups = [];
+  const byCat = {};
+  items.forEach(item=>{
+    const key = item.category || '';
+    if(!byCat[key]){ byCat[key] = { category:item.category||null, items:[] }; groups.push(byCat[key]); }
+    byCat[key].items.push(item);
+  });
+  const body = items.length
+    ? groups.map(g=> `${g.category? `<div style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px">${esc(g.category)}</div>`:''}${g.items.map(templateItemRowHtml).join('')}`).join('')
+    : emptyStateHtml({ icon:'check', title:'No tasks yet', subtitle:'Add tasks to build out this template.' });
+
+  showModal(`
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:2px">
+      <h3 style="margin:0">${esc(tpl.name)}</h3>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn small ghost" id="renameTemplateBtn">Rename</button>
+        <button class="btn small danger" id="deleteTemplateBtn">Delete</button>
+      </div>
+    </div>
+    <div class="sub" style="margin-bottom:10px">${items.length} task${items.length===1?'':'s'} · offered as a starting point when creating a new checklist</div>
+    <div style="max-height:50vh;overflow-y:auto">${body}</div>
+    <div class="modal-actions">
+      <button class="btn small ghost" id="tplAddBtn">+ Add task</button>
+      <div class="right"><button class="btn ghost" id="tpl_close">Close</button></div>
+    </div>
+  `, {wide:true});
+
+  $('#tpl_close').onclick = closeModal;
+  $('#renameTemplateBtn').onclick = async ()=>{
+    const name = prompt('Template name', tpl.name);
+    if(!name || !name.trim() || name.trim()===tpl.name) return;
+    const { error } = await db.from('rs_checklist_templates').update({ name:name.trim() }).eq('id', templateId);
+    if(error){ toast('Could not rename'); return; }
+    await loadAll(); openChecklistTemplateModal(templateId);
+  };
+  $('#deleteTemplateBtn').onclick = async ()=>{
+    if(!confirm(`Delete "${tpl.name}" and all its tasks? Checklists already created from it are unaffected.`)) return;
+    const { error } = await db.from('rs_checklist_templates').delete().eq('id', templateId);
+    if(error){ toast('Delete failed'); return; }
+    closeModal(); toast('Template deleted'); await loadAll();
+  };
+  $('#tplAddBtn').onclick = ()=> openTemplateItemModal(templateId, null);
+  document.querySelectorAll('[data-tplitemopen]').forEach(el=>el.addEventListener('click', ()=> openTemplateItemModal(templateId, el.dataset.tplitemopen)));
+  document.querySelectorAll('[data-tpldelete]').forEach(el=>el.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    const { error } = await db.from('rs_checklist_template_items').delete().eq('id', el.dataset.tpldelete);
+    if(error){ toast('Delete failed'); return; }
+    await loadAll(); openChecklistTemplateModal(templateId);
+  }));
+  document.querySelectorAll('[data-tplitem]').forEach(row=>{
+    row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', row.dataset.tplitem); e.dataTransfer.effectAllowed='move'; });
+    row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('drop-target-row'); });
+    row.addEventListener('dragleave', ()=> row.classList.remove('drop-target-row'));
+    row.addEventListener('drop', async e=>{
+      e.preventDefault(); row.classList.remove('drop-target-row');
+      const draggedId = e.dataTransfer.getData('text/plain');
+      const targetId = row.dataset.tplitem;
+      if(!draggedId || draggedId===targetId) return;
+      const order = items.slice();
+      const fromIdx = order.findIndex(i=>i.id===draggedId);
+      const toIdx = order.findIndex(i=>i.id===targetId);
+      if(fromIdx<0 || toIdx<0) return;
+      const [moved] = order.splice(fromIdx,1);
+      order.splice(toIdx,0,moved);
+      await Promise.all(order.map((it,idx)=> db.from('rs_checklist_template_items').update({position:idx}).eq('id',it.id)));
+      await loadAll(); openChecklistTemplateModal(templateId);
+    });
+  });
+}
+function openTemplateItemModal(templateId, itemId){
+  const isNew = !itemId;
+  const item = isNew ? null : state.checklistTemplateItems.find(i=>i.id===itemId);
+  showModal(`
+    <h3>${isNew?'Add task':'Edit task'}</h3>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Category <span style="color:var(--muted);font-weight:400">(optional grouping label)</span></label><input type="text" id="tpli_category" value="${esc(item?item.category||'':'')}" placeholder="e.g. Visual & Brand"></div>
+      <div class="full"><label>Task</label><input type="text" id="tpli_label" value="${esc(item?item.label:'')}" placeholder="e.g. All links tested and working"></div>
+      <div class="full"><label>Detail <span style="color:var(--muted);font-weight:400">(optional helper text)</span></label><input type="text" id="tpli_detail" value="${esc(item?item.detail||'':'')}" placeholder="e.g. Check every nav link and CTA"></div>
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn danger" id="tpli_delete">Delete task</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="tpli_cancel">Cancel</button>
+        <button class="btn" id="tpli_save">${isNew?'Add task':'Save changes'}</button>
+      </div>
+    </div>
+  `);
+  $('#tpli_cancel').onclick = ()=> openChecklistTemplateModal(templateId);
+  if(!isNew) $('#tpli_delete').onclick = async ()=>{
+    const { error } = await db.from('rs_checklist_template_items').delete().eq('id', itemId);
+    if(error){ toast('Delete failed'); return; }
+    await loadAll(); openChecklistTemplateModal(templateId);
+  };
+  $('#tpli_save').onclick = async ()=>{
+    const label = $('#tpli_label').value.trim();
+    if(!label){ toast('Give the task a name'); return; }
+    const category = $('#tpli_category').value.trim() || null;
+    const detail = $('#tpli_detail').value.trim() || null;
+    if(isNew){
+      const siblings = state.checklistTemplateItems.filter(i=>i.template_id===templateId);
+      const nextPos = siblings.length ? Math.max(...siblings.map(i=>i.position||0))+1 : 0;
+      const { error } = await db.from('rs_checklist_template_items').insert({ template_id:templateId, category, label, detail, position:nextPos });
+      if(error){ toast(error.code==='PGRST205'?'Run migration v25 to enable checklist templates':'Could not add task'); return; }
+    } else {
+      const { error } = await db.from('rs_checklist_template_items').update({ category, label, detail }).eq('id', itemId);
+      if(error){ toast('Could not save'); return; }
+    }
+    await loadAll(); openChecklistTemplateModal(templateId);
+  };
 }
 
 /* Global "Checklists" hub — quick access to every project that has at least
@@ -3750,14 +3847,14 @@ function renderChecklistsHub(){
     const rows = checklists.map(cl=>{
       const items = state.checklistItems.filter(i=>i.checklist_id===cl.id);
       const done = items.filter(i=>i.is_done).length;
-      return `<div class="inline-editable" data-hubchecklist="${cl.id}" style="display:flex;align-items:center;justify-content:space-between;padding:5px 0" title="Open checklist">
-        <span style="font-size:13px">${esc(cl.name)}</span>
-        <span style="font-size:11.5px;color:var(--muted)">${items.length? `${done}/${items.length}`:'—'}</span>
-      </div>`;
+      const pct = items.length ? Math.round(done/items.length*100) : 0;
+      return `<button type="button" class="checklist-row" data-hubchecklist="${cl.id}" title="Open checklist">
+        <div class="chr-top"><span class="chr-name">${esc(cl.name)}</span><span class="chr-count">${items.length? `${done}/${items.length} done`:'No items'}</span></div>
+        ${items.length? `<div class="mini-progress"><div class="fill" style="width:${pct}%"></div></div>`:''}
+      </button>`;
     }).join('');
     return `<div class="card">
       <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--muted)">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:''}</div>
-      <div style="font-weight:600;margin-top:2px">${esc(p.name)}</div>
       <div style="margin-top:6px;margin-bottom:10px"><span class="type-badge">${esc(p.project_type||'')}</span></div>
       ${rows}
     </div>`;
@@ -3768,10 +3865,7 @@ function renderChecklistsHub(){
     ${projectsWithChecklists.length
       ? `<div class="grid" style="margin-top:20px">${cardsHtml}</div>`
       : emptyStateHtml({ icon:'check', title:'No checklists yet', subtitle:"Create one from any project's page — it'll show up here." })}`;
-  main.querySelectorAll('[data-hubchecklist]').forEach(el=>el.addEventListener('click', ()=>{
-    state.view='projects'; state.projView='checklist'; state.checklistId=el.dataset.hubchecklist;
-    render();
-  }));
+  main.querySelectorAll('[data-hubchecklist]').forEach(el=>el.addEventListener('click', ()=> openChecklistModal(el.dataset.hubchecklist)));
 }
 
 /* ================= Tools (external web-app launcher) ================= */
@@ -3925,7 +4019,8 @@ function renderProjDetail(){
   $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('#editProjectBtn').onclick = ()=> openProjectModal(p.id, p.client_id);
   $('#discordBtn').onclick = ()=> openDiscordModal(p.id);
-  $('#checklistsBtn').onclick = ()=>{ state.projView='checklists'; state.projProjectId=p.id; render(); };
+  $('#checklistsBtn').onclick = (e)=>{ e.stopPropagation(); openChecklistsPopover(e.currentTarget, p.id); };
+  wireMiroButtons();
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
   wireTaskRows(main);
@@ -4746,6 +4841,25 @@ function renderSettings(){
     </div>
 
     <div class="card" style="margin-top:22px">
+      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Checklist templates</h3>
+      <div class="sub" style="margin-bottom:14px">Starter checklists offered under "Start from" when creating a new checklist on a project. Edit a template's tasks here — checklists already created from it are unaffected.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="checklistTemplateList">
+        ${state.checklistTemplates.length ? state.checklistTemplates.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(t=>{
+          const count = state.checklistTemplateItems.filter(i=>i.template_id===t.id).length;
+          return `<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px">
+            <span style="font-weight:600;flex:1">${esc(t.name)}</span>
+            <span style="font-size:12.5px;color:var(--muted)">${count} task${count===1?'':'s'}</span>
+            <button class="btn small ghost" data-tpledit="${t.id}">Edit tasks</button>
+          </div>`;
+        }).join('') : '<div class="empty">No checklist templates yet — run migration v25 (outputs/v25_checklist_templates.sql) in Supabase, then reload.</div>'}
+      </div>
+      <div class="row-form">
+        <input id="tpl_name" placeholder="Template name (e.g. Social Media QA)" style="flex:1">
+        <button class="btn small" id="tpl_add">+ New template</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:22px">
       <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Pipeline cell statuses</h3>
       <div class="sub" style="margin-bottom:14px">The status options for each shot × pipeline-step cell on the Animation page. "Behaviour" is what the rest of the app keys off — progress %, the flag chips, and the overdue check all follow behaviour, not the name, so you can rename or recolour freely without breaking anything.</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="animStatusList">
@@ -4975,6 +5089,17 @@ function renderSettings(){
     toast('Department added — rename it below'); await loadAll();
   };
 
+  $('#tpl_add').onclick = async ()=>{
+    const name = $('#tpl_name').value.trim();
+    if(!name){ toast('Give the template a name'); return; }
+    const nextPos = state.checklistTemplates.length ? Math.max(...state.checklistTemplates.map(t=>t.position||0))+1 : 0;
+    const { data, error } = await db.from('rs_checklist_templates').insert({ name, position:nextPos }).select().single();
+    if(error){ toast(error.code==='PGRST205'?'Run migration v25 to enable checklist templates':'Could not create template'); console.error(error); return; }
+    toast('Template created'); await loadAll();
+    openChecklistTemplateModal(data.id);
+  };
+  main.querySelectorAll('[data-tpledit]').forEach(b=> b.onclick = ()=> openChecklistTemplateModal(b.dataset.tpledit));
+
   state.animCellStatuses.forEach(st=>{
     wireColorCircleCustom('as_color_'+st.id, async (hex)=>{
       const { error } = await db.from('rs_anim_cell_statuses').update({ color:hex }).eq('id', st.id);
@@ -5064,7 +5189,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.26.0';
+const APP_VERSION = '0.28.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
