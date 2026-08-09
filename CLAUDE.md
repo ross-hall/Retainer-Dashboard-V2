@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.24.0**
+Current version: **v0.25.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -55,10 +55,13 @@ Nav views (state.view) — 'dashboard' (Retainers) is gone as of v0.13.0:
   'home'         → renderHome()
   'projects'     → renderProjects() → dispatches on state.projView
                      'retainerTasks' → renderClientTasksView(c) — now internally tabs Tasks/Allowance via state.retainerTab
+                     'checklists'    → renderProjectChecklists(c) — one project's list of checklists [v0.25.0]
+                     'checklist'     → renderChecklistDetail() — a single checklist's items, keyed by state.checklistId [v0.24.0]
   'animation'    → renderAnimation()  [Animation Beta]
   'tasksahead'   → renderTasksAhead() [Week Tasks]
   'milestones'   → renderMilestones()
   'internal'     → renderInternalTasks()  [Internal Tasks — new in v0.20.0]
+  'checklists'   → renderChecklistsHub()  [global Checklists nav item — new in v0.25.0; same name as the projView above but a different state field, no collision]
   'settings'     → renderSettings()
   'archived'     → renderArchived()
 
@@ -212,10 +215,11 @@ Font: Inter (unchanged from v0.9.0)
 - **Internal tasks can now have multiple assignees** (`rs_internal_tasks.assignee_ids uuid[]`, migration v22) — the original singular `assignee_id` column is left in place but unused by the app. `openAssigneePopover` now uses `openMultiPillPopover`; the row cell renders `avatarGroupHtml(t.assignee_ids)` (same avatar-stack component used for designer/reviewer on project tasks) instead of a single name. The CSV/JSON importer's `assignee`/`assignee_names` field accepts multiple semicolon-separated names (or a JSON array). Needs `outputs/v22_internal_task_multi_assignee.sql` — see pending-step note at the top of this file; degrades gracefully (toasts "run migration v22") until then.
 - **Fixed the Deck-projects "Number of slides" field not appearing**: `projExtraFieldHtml`/`projExtraFieldValue`/`projectDetailsSummary`/the project-detail type line all matched the project type name with an exact `===` against the hardcoded seed string `'Deck projects'`. Project type names are user-editable (Settings > Project types) and this project's actual type had been renamed to just `'Deck'`, so the field silently never rendered. Fixed via a new `isDeckType(type)` helper (`.toLowerCase().includes('deck')`) used at all four call sites — a lesson that any per-type-name branching needs to tolerate renames, not just match the v1 seed name.
 
-**What shipped in v0.24.0** (Checklists — own page, multiple per project):
-- **Checklists are now a standalone, multi-per-project entity with their own page**, not a single embedded card. A "Checklists" section on `renderProjDetail()` (`renderChecklistsSection`/`wireChecklistsSection`) lists every checklist on the project with a done-count and a "+ New checklist" button (`openNewChecklistModal`); clicking one navigates into `renderChecklistDetail()` (routed via a new `state.projView==='checklist'` + `state.checklistId`, dispatched from `renderProjects()`), with a full breadcrumb back through client → project. This replaced an initial single-embedded-QA-checklist-card design from earlier in the same session, once the user clarified they wanted this instead — see the pending-migration note at the top of this file for what got superseded.
-- **Items support an optional `category` (section grouping label) and `detail` (muted helper subtext)**, rendered as grouped sections on the checklist page when present — richer than the flat label-only items used elsewhere (Internal Tasks, the old QA card), needed to faithfully carry over categorized starter templates.
+**What shipped in v0.24.0–v0.25.0** (Checklists — own page, multiple per project, global hub):
+- **Checklists are a standalone, multi-per-project entity, each with its own page** — not a single embedded card. Items support an optional `category` (section grouping label) and `detail` (muted helper subtext), rendered as grouped sections when present — richer than the flat label-only items used elsewhere (Internal Tasks), needed to faithfully carry over categorized starter templates.
 - **Starter templates at creation time**: `openNewChecklistModal` offers "Blank" or a named template (currently just `WEBSITE_CHECKLIST_TEMPLATE`, in `CHECKLIST_TEMPLATES`) — picking one bulk-inserts that template's items into the new checklist; after creation the checklist is fully independent (editing it never touches the template, and there's no live link back). `WEBSITE_CHECKLIST_TEMPLATE` (50 items across 8 categories: Copy & Content, Links & Navigation, Visual & Brand, Responsive & Cross-Browser, Forms & Interactions, Performance & Technical, Accessibility Basics, Client Handover) was mined from the team's separate standalone QA checklist tool (a different Supabase project) — its `templates` table was empty, so the tool's actual hardcoded `DEFAULT_TEMPLATE` fallback (read from that tool's own `index.html` source) was the real in-use content, transcribed here verbatim.
+- **Three-tier navigation** (v0.25.0, after the user saw the v0.24.0 bottom-of-page panel and asked for it to move): a **"✓ Checklists" button** in the project header next to the Miro buttons (`renderProjDetail`, `#checklistsBtn`, shows a count badge) opens **`renderProjectChecklists()`** — a full page (not a card) listing that project's checklists with "+ New checklist", breadcrumbed `All Projects > Client > Project > Checklists`. Clicking one of those goes to `renderChecklistDetail()` (`state.projView==='checklist'`), now breadcrumbed one level deeper through the Checklists list page. On top of that, a **global "Checklists" nav item** in the sidebar (`state.view==='checklists'` → `renderChecklistsHub()`) shows a card per project that has ≥1 checklist (project name, client, each checklist listed with a done-count), reading straight off `state.checklists`/`state.checklistItems` — clicking a checklist name jumps straight into its detail page, skipping the intermediate list. All three views share the exact same underlying data, so they're always in sync by construction, not by any explicit refresh logic.
+- **Miro button text shortened**: `miroButtonsHtml()` now reads "Miro (Ext) ↗" / "Miro (Int) ↗" instead of spelling out "external"/"internal" — the settings-form field labels (`miroFieldsHtml`) were deliberately left spelled out, since those are form labels, not buttons.
 - Internal-only by design — `rs_checklists`/`rs_checklist_items` are never fetched on the public client-dashboard path (`bootPublicDashboard`/`renderPublicDashboard` run their own separate fetch sequence and don't go through `loadAll()`), so no extra guarding was needed to keep checklists off the client-facing page. Needs `outputs/v23_qa_checklist.sql` — see pending-step note at the top of this file; degrades gracefully (toasts "run migration v23") until then.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
