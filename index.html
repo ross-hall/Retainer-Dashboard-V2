@@ -505,9 +505,12 @@
   .year-month h4{font-size:14px;font-weight:600;margin-bottom:8px}
   .year-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
 
-  .gantt-wrap{overflow-x:auto;padding-bottom:8px}
-  .gantt-header{display:grid;grid-template-columns:180px 1fr;position:relative;height:22px;margin-bottom:6px;min-width:640px}
+  .gantt-wrap{overflow-x:auto;padding-bottom:8px;position:relative}
+  .gantt-header{display:grid;grid-template-columns:180px 1fr;position:relative;height:34px;margin-bottom:6px;min-width:640px}
   .gantt-month-marker{position:absolute;top:0;font-size:11px;color:var(--muted);border-left:1px solid var(--line);padding-left:6px;white-space:nowrap}
+  .gantt-day-marker{position:absolute;top:0;font-size:9.5px;color:var(--muted);border-left:1px solid var(--line-soft);padding-left:4px;white-space:nowrap}
+  .gantt-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);z-index:3;pointer-events:none}
+  .gantt-today-label{position:absolute;top:16px;font-size:9.5px;font-weight:700;color:#fff;background:var(--accent);padding:1px 5px;border-radius:4px;white-space:nowrap;transform:translateX(-50%);z-index:4;pointer-events:none}
   .gantt-client-row{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;margin:18px 0 8px;color:var(--ink)}
   .gantt-row{display:grid;grid-template-columns:180px 1fr;align-items:center;min-height:38px;border-bottom:1px solid var(--line);min-width:640px}
   .gantt-label-col{font-size:12.5px;color:var(--muted);padding-right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -532,7 +535,7 @@
   .anim-timeline-shot:hover{filter:brightness(.93)}
   .anim-timeline-shot-code{font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .anim-timeline-remainder{background:repeating-linear-gradient(45deg,var(--track),var(--track) 6px,var(--line) 6px,var(--line) 12px);color:var(--muted);font-size:10.5px;cursor:default}
-  .pd-tabs{max-width:1280px;margin:0 auto;padding:0 24px;display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+  .pd-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto;margin-bottom:24px}
   .pd-tab{padding:10px 16px;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
   .pd-stage-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer}
   .pd-stage-row:hover{background:var(--track)}
@@ -631,7 +634,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.30.0</div>
+    <div id="versionBadge" class="version-badge">v0.31.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -2451,7 +2454,10 @@ function renderGanttBody(){
   minDate = new Date(minDate); minDate.setDate(minDate.getDate()-3);
   maxDate = new Date(maxDate); maxDate.setDate(maxDate.getDate()+3);
   const totalMs = maxDate - minDate;
+  const totalDays = Math.max(1, Math.round(totalMs/86400000));
   const pct = d => Math.max(0, Math.min(100, (d-minDate)/totalMs*100));
+  const LABEL_COL = 180;
+  const trackLeft = p => `calc(${LABEL_COL}px + (100% - ${LABEL_COL}px) * ${(p/100).toFixed(4)})`;
 
   const monthMarkers = [];
   let cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
@@ -2460,13 +2466,33 @@ function renderGanttBody(){
     cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
   }
 
+  // Day-level ticks on the X axis, spaced out depending on the total span so
+  // labels stay readable — the wrap scrolls horizontally (and widens via the
+  // min-width below) rather than cramming every date into a fixed width.
+  const stepDays = totalDays<=21 ? 1 : totalDays<=60 ? 3 : totalDays<=120 ? 7 : 14;
+  const today = new Date(iso(new Date())+'T00:00');
+  const showToday = today>=minDate && today<=maxDate;
+  const todayLeft = showToday ? trackLeft(pct(today)) : null;
+  const dayMarkers = [];
+  let dcursor = new Date(minDate);
+  while(dcursor<=maxDate){
+    // Skip a tick that would sit right under the "Today" pill — avoids the
+    // two labels overlapping when today happens to fall near a tick.
+    if(!showToday || Math.abs(dcursor-today)/86400000 > 1.5){
+      dayMarkers.push({ label:dcursor.toLocaleDateString('en-GB',{day:'numeric',month:'short'}), left:pct(dcursor) });
+    }
+    dcursor.setDate(dcursor.getDate()+stepDays);
+  }
+  const minWidthPx = Math.max(640, LABEL_COL + dayMarkers.length*64);
+
   const byClient = {};
   rows.forEach(r=>{ (byClient[r.client.id] = byClient[r.client.id] || { client:r.client, items:[] }).items.push(r); });
 
   let html = `<div class="gantt-wrap">
-    <div class="gantt-header">
+    <div class="gantt-header" style="min-width:${minWidthPx}px">
       <div class="gantt-label-col"></div>
       <div class="gantt-track-col" style="background:none">${monthMarkers.map(m=>`<div class="gantt-month-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
+      <div class="gantt-track-col" style="background:none;position:absolute;top:16px;left:${LABEL_COL}px;right:0;height:16px">${dayMarkers.map(m=>`<div class="gantt-day-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
     </div>`;
 
   Object.values(byClient).forEach(group=>{
@@ -2487,9 +2513,14 @@ function renderGanttBody(){
         }
         prevDate = d;
       });
-      html += `<div class="gantt-row"><div class="gantt-label-col">${esc(p.name)}</div><div class="gantt-track-col">${segs}</div></div>`;
+      html += `<div class="gantt-row" style="min-width:${minWidthPx}px"><div class="gantt-label-col">${esc(p.name)}</div><div class="gantt-track-col">${segs}</div></div>`;
     });
   });
+
+  if(showToday){
+    html += `<div class="gantt-today-line" style="left:${todayLeft}"></div>
+      <div class="gantt-today-label" style="left:${todayLeft}">Today</div>`;
+  }
 
   html += `</div>`;
   return html;
@@ -5269,7 +5300,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.30.0';
+const APP_VERSION = '0.31.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5987,7 +6018,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>
       <div class="pd-cal-grid">${dowLabels.map(d=>`<div class="pd-cal-dow">${d}</div>`).join('')}${cells}</div>`;
     }
-    const retainerSectionHtml = client.is_retainer ? `<div style="max-width:1280px;margin:0 auto;padding:0 24px 24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdRetainerGrid">
+    const retainerSectionHtml = client.is_retainer ? `<div style="margin-bottom:24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdRetainerGrid">
       <div class="card">
         <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Tasks</div>
         <div style="display:flex;flex-direction:column;gap:2px">${tasksListHtml}</div>
@@ -6007,7 +6038,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
     const generalCats = proj ? projectCatsFor(proj.id) : [];
     const generalBody = generalCats.map(categoryBlockHtml).join('');
-    const generalAssetsHtml = (generalBody || isAdmin) ? `<div class="card" style="max-width:1280px;margin:0 auto 20px">
+    const generalAssetsHtml = (generalBody || isAdmin) ? `<div class="card" style="margin-bottom:20px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">General assets</div>
         ${isAdmin && proj ? `<button class="btn small ghost" data-addprojcat="${proj.id}">+ Category</button>` : ''}
@@ -6017,43 +6048,45 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
     document.body.innerHTML = `
       <div style="min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink)">
-        ${isAdmin? `<div style="background:${accent};color:#fff;text-align:center;padding:8px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px">
+        ${isAdmin? `<div style="background:var(--accent-soft);color:var(--accent);border-bottom:1px solid var(--line);text-align:center;padding:10px 20px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
           <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
-          <button class="btn small" style="background:#fff;color:${accent}" id="pdCopyClient">Copy client link</button>
+          <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
-        <div style="max-width:1280px;margin:0 auto;padding:40px 24px 20px">
-          <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px">
-            <div style="width:60px;height:60px;border-radius:14px;flex-shrink:0;background:${client.dash_logo_url?'var(--track)':accent};display:flex;align-items:center;justify-content:center;overflow:hidden">
-              ${client.dash_logo_url? `<img src="${esc(client.dash_logo_url)}" style="width:100%;height:100%;object-fit:contain">` : `<span style="color:#fff;font-size:24px;font-weight:700">${initials}</span>`}
+        <div style="max-width:1280px;margin:0 auto;padding:32px 24px 40px">
+          <div class="card" style="margin-bottom:24px">
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+              <div style="width:44px;height:44px;border-radius:var(--radius-sm);flex-shrink:0;background:${client.dash_logo_url?'var(--track)':accent};display:flex;align-items:center;justify-content:center;overflow:hidden">
+                ${client.dash_logo_url? `<img src="${esc(client.dash_logo_url)}" style="width:100%;height:100%;object-fit:contain">` : `<span style="color:#fff;font-size:16px;font-weight:700">${initials}</span>`}
+              </div>
+              <div style="flex:1;min-width:0">
+                <h2 style="margin-bottom:0">${esc(client.name)}</h2>
+                ${client.dash_logo_text? `<div class="sub" style="margin:2px 0 0">${esc(client.dash_logo_text)}</div>`:''}
+              </div>
+              <div style="display:flex;gap:8px">
+                ${client.dash_contact_email? `<a class="btn small ghost" href="mailto:${esc(client.dash_contact_email)}">Contact us</a>`:''}
+                <a class="btn small ghost" href="${esc(client.dash_website_url||'https://reciprocal.space')}" target="_blank" rel="noopener">Reciprocal Space</a>
+              </div>
             </div>
-            <div style="flex:1;min-width:0">
-              <h1 style="font-size:32px;font-weight:700;letter-spacing:-.01em;margin-bottom:2px">${esc(client.name)}</h1>
-              ${client.dash_logo_text? `<div style="font-size:14px;color:var(--muted)">${esc(client.dash_logo_text)}</div>`:''}
-            </div>
-            <div style="display:flex;gap:8px">
-              ${client.dash_contact_email? `<a class="btn small ghost" href="mailto:${esc(client.dash_contact_email)}">Contact us</a>`:''}
-              <a class="btn small ghost" href="${esc(client.dash_website_url||'https://reciprocal.space')}" target="_blank" rel="noopener">Reciprocal Space</a>
-            </div>
+            ${client.dash_greeting? `<p class="sub" style="margin:14px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
           </div>
-          ${client.dash_greeting? `<p style="font-size:14px;color:var(--muted);line-height:1.6;max-width:640px;margin-bottom:8px">${esc(client.dash_greeting)}</p>`:''}
+          ${retainerSectionHtml}
+          ${projects.length ? `
+          ${tabsHtml}
+          ${generalAssetsHtml}
+          <div style="display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdGrid">
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+                <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Stage progress</div>
+                <div style="font-size:13px;font-weight:700;color:${accent}">${pct}%</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px">${stagesHtml}</div>
+            </div>
+            <div class="card">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">${viewedStage? esc(viewedStage.name) : 'Files & links'}</div>
+              ${assetsHtml}
+            </div>
+          </div>` : ''}
         </div>
-        ${retainerSectionHtml}
-        ${projects.length ? `
-        ${tabsHtml}
-        <div style="max-width:1280px;margin:0 auto;padding:24px 24px 0">${generalAssetsHtml}</div>
-        <div style="max-width:1280px;margin:0 auto;padding:0 24px 24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdGrid">
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
-              <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Stage progress</div>
-              <div style="font-size:13px;font-weight:700;color:${accent}">${pct}%</div>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:2px">${stagesHtml}</div>
-          </div>
-          <div class="card">
-            <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">${viewedStage? esc(viewedStage.name) : 'Files & links'}</div>
-            ${assetsHtml}
-          </div>
-        </div>` : ''}
         <div style="display:flex;align-items:center;justify-content:center;padding:20px;opacity:.5;font-size:12px;color:var(--muted)">Reciprocal Space</div>
       </div>
       <div id="modalRoot"></div>
