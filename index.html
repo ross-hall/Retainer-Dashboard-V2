@@ -536,7 +536,16 @@
   .pd-cat-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
   .pd-link-card{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;background:var(--paper);border:1px solid var(--line);border-radius:10px;text-decoration:none;transition:border-color .15s}
   .pd-link-card:hover{border-color:var(--accent)}
-  @media(max-width:760px){ #pdGrid{grid-template-columns:1fr !important} }
+  .pd-cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .pd-cal-navbtn{background:none;border:1px solid var(--line);border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;font-family:inherit}
+  .pd-cal-navbtn:hover{background:var(--track)}
+  .pd-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .pd-cal-dow{font-size:10px;font-weight:600;text-transform:uppercase;color:var(--muted);text-align:center;padding-bottom:4px}
+  .pd-cal-day{min-height:62px;border-radius:8px;padding:5px;border:1px solid var(--line-soft)}
+  .pd-cal-daynum{font-size:11px;font-weight:600;color:var(--ink);margin-bottom:3px}
+  .pd-cal-chip{font-size:9.5px;padding:2px 5px;border-radius:5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--track);color:var(--ink)}
+  .pd-cal-more{font-size:10px;color:var(--muted)}
+  @media(max-width:760px){ #pdGrid{grid-template-columns:1fr !important} #pdRetainerGrid{grid-template-columns:1fr !important} .pd-cal-chip{display:none} }
   .year-row:last-child{border-bottom:none}
 </style>
 </head>
@@ -616,7 +625,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.28.0</div>
+    <div id="versionBadge" class="version-badge">v0.29.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -5189,7 +5198,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.28.0';
+const APP_VERSION = '0.29.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5775,19 +5784,24 @@ async function bootPublicDashboard(slug, isAdmin){
   // state — populate just enough of it here since the public path skips loadAll().
   // openStageCategoryModal/openStageLinkModal (used in admin mode) also read
   // state.stageCategories/stageLinks to work out new-item positions.
-  const [tasksRes, statusesRes] = await Promise.all([
+  const [tasksRes, statusesRes, retainerTasksRes] = await Promise.all([
     stageIds.length ? db.from('rs_proj_tasks').select('*').in('stage_id', stageIds) : { data: [] },
-    db.from('rs_task_statuses').select('*').order('position')
+    db.from('rs_task_statuses').select('*').order('position'),
+    client.is_retainer
+      ? db.from('rs_proj_tasks').select('*').eq('client_id', client.id).is('project_id', null).not('due_date','is',null)
+      : { data: [] }
   ]);
   state.projTasks = tasksRes.data||[];
   state.taskStatuses = (statusesRes.data && statusesRes.data.length) ? statusesRes.data : DEFAULT_TASK_STATUSES;
   state.stageCategories = categories;
   state.stageLinks = links;
-  renderPublicDashboard(client, projects||[], stages, categories, links, !!isAdmin);
+  renderPublicDashboard(client, projects||[], stages, categories, links, !!isAdmin, retainerTasksRes.data||[]);
 }
 
-function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin){
-  const pub = { projectId: projects[0]?.id || null, viewedStageId: null };
+function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks){
+  retainerTasks = retainerTasks || [];
+  const now = new Date();
+  const pub = { projectId: projects[0]?.id || null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
   const accent = client.dash_accent_color || '#2383e2';
   const initials = (client.name||'?').charAt(0).toUpperCase();
   async function reload(){ await bootPublicDashboard(client.slug, true); }
@@ -5844,12 +5858,74 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     const stagesHtml = stages.length ? stages.map((s,i)=>{
       const done = stageStatus(s.id)==='Complete';
       const viewed = s.id===pub.viewedStageId;
+      const hidden = !!s.hide_due_date_from_client;
+      const dateLabel = hidden ? (isAdmin? '<span style="font-style:italic">Hidden</span>' : '') : (s.due_date? fmtDate(new Date(s.due_date+'T00:00')) : '');
       return `<div class="pd-stage-row ${viewed?'viewed':''}" data-pdstage="${s.id}" style="${viewed?`background:${accent}14`:''}">
         <div class="pd-stage-dot" style="${done||viewed?`background:${accent};color:#fff`:''}">${done?'✓':i+1}</div>
         <div class="pd-stage-label" style="${viewed?`color:${accent};font-weight:600`:''}">${esc(s.name)}</div>
-        ${s.due_date? `<div class="pd-stage-date">${fmtDate(new Date(s.due_date+'T00:00'))}</div>`:''}
+        ${s.due_date? `<div class="pd-stage-date">${dateLabel}</div>`:''}
+        ${isAdmin && s.due_date? `<button type="button" class="btn small ghost" data-toggledate="${s.id}" style="padding:2px 8px;font-size:11px" title="${hidden?'Show this date to the client':'Hide this date from the client'}">${hidden?'Show':'Hide'}</button>`:''}
       </div>`;
     }).join('') : `<div class="empty" style="padding:20px 0">No stages yet.</div>`;
+
+    // Retainer clients aren't organized into stages — show a chronological
+    // task list (previous / upcoming) plus a read-only monthly calendar of
+    // target dates instead. Both are display-only: this data is expected to
+    // eventually sync from a separate PM tool, not be edited here.
+    const todayIso = iso(new Date());
+    const sortedRTasks = retainerTasks.slice().sort((a,b)=> a.due_date.localeCompare(b.due_date));
+    const upcomingTasks = sortedRTasks.filter(t=> t.due_date>=todayIso && !isCompleteStatus(t.status));
+    const previousTasks = sortedRTasks.filter(t=> t.due_date<todayIso || isCompleteStatus(t.status)).reverse();
+    function taskRowHtmlPd(t){
+      const done = isCompleteStatus(t.status);
+      return `<div class="pd-stage-row" style="cursor:default">
+        <div class="pd-stage-dot" style="${done?`background:${accent};color:#fff`:''}">${done?'✓':'•'}</div>
+        <div class="pd-stage-label">${esc(t.title)}</div>
+        <div class="pd-stage-date">${fmtDate(new Date(t.due_date+'T00:00'))}</div>
+      </div>`;
+    }
+    const tasksListHtml = sortedRTasks.length ? `
+      ${previousTasks.length? `<div class="pd-cat-label">Previous</div>${previousTasks.slice(0,8).map(taskRowHtmlPd).join('')}`:''}
+      ${upcomingTasks.length? `<div class="pd-cat-label" style="margin-top:${previousTasks.length?'16px':'0'}">Upcoming</div>${upcomingTasks.map(taskRowHtmlPd).join('')}`:''}
+    ` : `<div class="empty" style="padding:20px 0">No scheduled tasks yet.</div>`;
+
+    const tasksByDate = {};
+    retainerTasks.forEach(t=>{ (tasksByDate[t.due_date] = tasksByDate[t.due_date]||[]).push(t); });
+    function calendarHtmlPd(y, m){
+      const first = new Date(y, m, 1);
+      const startOffset = first.getDay();
+      const daysInMonth = new Date(y, m+1, 0).getDate();
+      const monthLabel = first.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+      const dowLabels = ['S','M','T','W','T','F','S'];
+      let cells = '';
+      for(let i=0;i<startOffset;i++) cells += `<div></div>`;
+      for(let d=1; d<=daysInMonth; d++){
+        const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const dayTasks = tasksByDate[dateStr] || [];
+        const isToday = dateStr===todayIso;
+        cells += `<div class="pd-cal-day" style="${isToday?`border-color:${accent};border-width:2px`:''}">
+          <div class="pd-cal-daynum" style="${isToday?`color:${accent}`:''}">${d}</div>
+          ${dayTasks.slice(0,2).map(t=>`<div class="pd-cal-chip" title="${esc(t.title)}">${esc(t.title)}</div>`).join('')}
+          ${dayTasks.length>2? `<div class="pd-cal-more">+${dayTasks.length-2} more</div>`:''}
+        </div>`;
+      }
+      return `<div class="pd-cal-nav">
+        <button type="button" class="pd-cal-navbtn" data-calnav="-1">‹</button>
+        <div style="font-size:13px;font-weight:600">${monthLabel}</div>
+        <button type="button" class="pd-cal-navbtn" data-calnav="1">›</button>
+      </div>
+      <div class="pd-cal-grid">${dowLabels.map(d=>`<div class="pd-cal-dow">${d}</div>`).join('')}${cells}</div>`;
+    }
+    const retainerSectionHtml = client.is_retainer ? `<div style="max-width:1000px;margin:0 auto;padding:0 24px 24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdRetainerGrid">
+      <div class="card">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Tasks</div>
+        <div style="display:flex;flex-direction:column;gap:2px">${tasksListHtml}</div>
+      </div>
+      <div class="card">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Calendar</div>
+        ${calendarHtmlPd(pub.calY, pub.calM)}
+      </div>
+    </div>` : '';
 
     const stageCatsList = viewedStage ? catsFor(viewedStage.id) : [];
     const assetsBody = stageCatsList.map(categoryBlockHtml).join('');
@@ -5890,6 +5966,8 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           </div>
           ${client.dash_greeting? `<p style="font-size:14px;color:var(--muted);line-height:1.6;max-width:640px;margin-bottom:8px">${esc(client.dash_greeting)}</p>`:''}
         </div>
+        ${retainerSectionHtml}
+        ${projects.length ? `
         ${tabsHtml}
         <div style="max-width:1000px;margin:0 auto;padding:24px 24px 0">${generalAssetsHtml}</div>
         <div style="max-width:1000px;margin:0 auto;padding:0 24px 24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdGrid">
@@ -5904,7 +5982,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
             <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">${viewedStage? esc(viewedStage.name) : 'Files & links'}</div>
             ${assetsHtml}
           </div>
-        </div>
+        </div>` : ''}
         <div style="display:flex;align-items:center;justify-content:center;padding:20px;opacity:.5;font-size:12px;color:var(--muted)">Reciprocal Space</div>
       </div>
       <div id="modalRoot"></div>
@@ -5912,6 +5990,13 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
     document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; paint(); }));
     document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; paint(); }));
+    document.querySelectorAll('[data-calnav]').forEach(el=>el.addEventListener('click', ()=>{
+      let m = pub.calM + (+el.dataset.calnav);
+      let y = pub.calY;
+      if(m<0){ m=11; y--; } else if(m>11){ m=0; y++; }
+      pub.calM = m; pub.calY = y;
+      paint();
+    }));
 
     if(isAdmin){
       const copyBtn = document.getElementById('pdCopyClient');
@@ -5932,6 +6017,13 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         const link = allLinks.find(l=>l.id===el.dataset.editlink);
         el.addEventListener('click', ()=> openStageLinkModal(link.category_id, link.id, reload));
       });
+      document.querySelectorAll('[data-toggledate]').forEach(el=>el.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const s = allStages.find(s=>s.id===el.dataset.toggledate);
+        const { error } = await db.from('rs_project_stages').update({ hide_due_date_from_client: !s.hide_due_date_from_client }).eq('id', s.id);
+        if(error){ toast(error.code==='PGRST204'?'Run migration v26 to enable hiding dates':'Could not update'); return; }
+        toast(s.hide_due_date_from_client? 'Date is now visible to the client' : 'Date hidden from the client'); await reload();
+      }));
     }
   }
   paint();
