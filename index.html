@@ -269,7 +269,13 @@
   .task-chip{border-radius:6px;padding:4px 7px;color:#fff;margin-bottom:5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
   .renew-chip{border:1px dashed var(--accent);color:var(--accent);background:var(--card);border-radius:6px;padding:2px 6px;font-size:10.5px;margin-bottom:3px;cursor:pointer;font-weight:500}
 
-  .settings-cols{display:flex;flex-direction:column;gap:24px}
+  .settings-shell{display:flex;gap:28px;align-items:flex-start}
+  .settings-nav{flex:0 0 190px;display:flex;flex-direction:column;gap:2px;position:sticky;top:20px}
+  .settings-nav-item{display:block;width:100%;text-align:left;padding:9px 12px;border:none;background:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:500;color:var(--muted);transition:background var(--fast) var(--ease)}
+  .settings-nav-item:hover{background:var(--track);color:var(--ink)}
+  .settings-nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .settings-panel{flex:1;min-width:0}
+  @media(max-width:800px){ .settings-shell{flex-direction:column} .settings-nav{flex-direction:row;flex-wrap:wrap;position:static;width:100%} }
   @media(max-width:800px){form.log{grid-template-columns:1fr}}
   .row-form{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
   .row-form input,.row-form select{width:auto;flex:1;min-width:80px}
@@ -526,7 +532,7 @@
   .anim-timeline-shot:hover{filter:brightness(.93)}
   .anim-timeline-shot-code{font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .anim-timeline-remainder{background:repeating-linear-gradient(45deg,var(--track),var(--track) 6px,var(--line) 6px,var(--line) 12px);color:var(--muted);font-size:10.5px;cursor:default}
-  .pd-tabs{max-width:1000px;margin:0 auto;padding:0 24px;display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+  .pd-tabs{max-width:1280px;margin:0 auto;padding:0 24px;display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
   .pd-tab{padding:10px 16px;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
   .pd-stage-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer}
   .pd-stage-row:hover{background:var(--track)}
@@ -625,7 +631,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.29.0</div>
+    <div id="versionBadge" class="version-badge">v0.30.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -673,7 +679,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   taskColOrder:loadStoredArray('rs_task_col_order', DEFAULT_TASK_COL_ORDER),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha',
+  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[],
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
@@ -4729,178 +4735,60 @@ function renderArchived(){
   }));
 }
 
-function renderSettings(){
-  main.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div><h2>Settings</h2><div class="sub" style="margin-bottom:0">Clients, retainers and team weighting</div></div>
-      <button class="btn small ghost" id="viewArchivedBtn">View archived</button>
-    </div><div style="margin-bottom:20px"></div>
-    <div class="settings-cols">
-      <div class="card">
-        <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Clients</h3>
-        <table><thead><tr><th></th><th>Name</th><th>Retainer</th><th>Renews on</th><th></th></tr></thead><tbody>
-        ${state.clients.map(c=>`<tr style="${c.active?'':'opacity:.45'}">
-          <td><span class="swatch" style="background:${colorFor(c)}"></span></td>
-          <td>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}</td>
-          <td>${c.is_retainer? fmtH(c.retainer_hours) : '<span style="color:var(--muted)">—</span>'}</td>
-          <td>${c.is_retainer? ordinal(c.renewal_day) : '<span style="color:var(--muted)">—</span>'}</td>
-          <td class="action-cell">
-            <button class="btn small ghost" data-cedit="${c.id}">Edit</button>
-            <button class="btn small ghost" data-cactive="${c.id}">${c.active?'Archive':'Restore'}</button>
-            ${!c.active? `<button class="btn small danger" data-cdelete="${c.id}">Delete</button>`:''}
-          </td>
-        </tr>`).join('') || '<tr><td colspan="5" class="empty">No clients yet.</td></tr>'}
-        </tbody></table>
-        <div class="row-form">
-          ${colorCircleHtml('c_color', CLIENT_PALETTE[state.clients.length%CLIENT_PALETTE.length])}
-          <input id="c_name" placeholder="Client name" style="flex:2">
-          <input type="url" id="c_miro_ext" placeholder="Miro (external)" style="flex:1 1 130px">
-          <input type="url" id="c_miro_int" placeholder="Miro (internal)" style="flex:1 1 130px">
-          <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;white-space:nowrap"><input type="checkbox" id="c_isretainer" checked style="width:auto">On retainer</label>
-          <span id="c_retainer_fields" style="display:flex;gap:8px;flex:1 1 260px">
-          <select id="c_days">
-            <optgroup label="Per month">
-              <option value="8">1 day/mo (8h)</option>
-              <option value="16">2 days/mo (16h)</option>
-              <option value="24">3 days/mo (24h)</option>
-              <option value="32">4 days/mo (32h)</option>
-            </optgroup>
-            <optgroup label="Per week">
-              <option value="34.7">1 day/week (~34.7h/mo)</option>
-              <option value="69.3">2 days/week (~69.3h/mo)</option>
-              <option value="104">3 days/week (~104h/mo)</option>
-            </optgroup>
-          </select>
-          <select id="c_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}">Renews ${i+1}</option>`).join('')}</select>
-          </span>
-          <button class="btn small" id="c_add">Add</button>
-        </div>
-      </div>
+const SETTINGS_SECTIONS = [
+  { key:'clients', label:'Clients' },
+  { key:'team', label:'Team members' },
+  { key:'types', label:'Project types' },
+  { key:'statuses', label:'Task statuses' },
+  { key:'departments', label:'Departments' },
+  { key:'checklists', label:'Checklist templates' },
+  { key:'pipeline', label:'Pipeline statuses' },
+  { key:'data', label:'Data & backups' },
+];
 
-      <div class="card">
-        <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Team members</h3>
-        <table><thead><tr><th>Name</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th></th></tr></thead><tbody>
-        ${state.members.map(m=>`<tr style="${m.active?'':'opacity:.45'}">
-          <td><input type="text" data-membername="${m.id}" value="${esc(m.name)}" style="min-width:120px"></td>
-          <td>×${m.weight}</td>
-          <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_design" ${m.can_design!==false?'checked':''} style="width:auto"></td>
-          <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_review" ${m.can_review!==false?'checked':''} style="width:auto"></td>
-          <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_animate" ${m.can_animate!==false?'checked':''} style="width:auto"></td>
-          <td class="action-cell">
-            <button class="btn small ghost" data-mweight="${m.id}">Change factor</button>
-            <button class="btn small ghost" data-mactive="${m.id}">${m.active?'Archive':'Restore'}</button>
-            ${!m.active? `<button class="btn small danger" data-mdelete="${m.id}">Delete</button>`:''}
-          </td>
-        </tr>`).join('') || '<tr><td colspan="6" class="empty">No team members yet.</td></tr>'}
-        </tbody></table>
-        <div class="row-form">
-          <input id="m_name" placeholder="Name" style="flex:2">
-          <input id="m_weight" type="number" step="0.25" min="0.25" value="1" title="Weighting factor">
-          <button class="btn small" id="m_add">Add</button>
-        </div>
-        <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Designer/Reviewer/Animator checkboxes control who shows up in those pickers on project tasks. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
-      </div>
+function settingsClientsHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Clients</h3>
+    <table><thead><tr><th></th><th>Name</th><th>Retainer</th><th>Renews on</th><th></th></tr></thead><tbody>
+    ${state.clients.map(c=>`<tr style="${c.active?'':'opacity:.45'}">
+      <td><span class="swatch" style="background:${colorFor(c)}"></span></td>
+      <td>${esc(c.name)}${c.is_retainer?'<span class="retainer-badge">Retainer</span>':''}</td>
+      <td>${c.is_retainer? fmtH(c.retainer_hours) : '<span style="color:var(--muted)">—</span>'}</td>
+      <td>${c.is_retainer? ordinal(c.renewal_day) : '<span style="color:var(--muted)">—</span>'}</td>
+      <td class="action-cell">
+        <button class="btn small ghost" data-cedit="${c.id}">Edit</button>
+        <button class="btn small ghost" data-cactive="${c.id}">${c.active?'Archive':'Restore'}</button>
+        ${!c.active? `<button class="btn small danger" data-cdelete="${c.id}">Delete</button>`:''}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">No clients yet.</td></tr>'}
+    </tbody></table>
+    <div class="row-form">
+      ${colorCircleHtml('c_color', CLIENT_PALETTE[state.clients.length%CLIENT_PALETTE.length])}
+      <input id="c_name" placeholder="Client name" style="flex:2">
+      <input type="url" id="c_miro_ext" placeholder="Miro (external)" style="flex:1 1 130px">
+      <input type="url" id="c_miro_int" placeholder="Miro (internal)" style="flex:1 1 130px">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12.5px;white-space:nowrap"><input type="checkbox" id="c_isretainer" checked style="width:auto">On retainer</label>
+      <span id="c_retainer_fields" style="display:flex;gap:8px;flex:1 1 260px">
+      <select id="c_days">
+        <optgroup label="Per month">
+          <option value="8">1 day/mo (8h)</option>
+          <option value="16">2 days/mo (16h)</option>
+          <option value="24">3 days/mo (24h)</option>
+          <option value="32">4 days/mo (32h)</option>
+        </optgroup>
+        <optgroup label="Per week">
+          <option value="34.7">1 day/week (~34.7h/mo)</option>
+          <option value="69.3">2 days/week (~69.3h/mo)</option>
+          <option value="104">3 days/week (~104h/mo)</option>
+        </optgroup>
+      </select>
+      <select id="c_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}">Renews ${i+1}</option>`).join('')}</select>
+      </span>
+      <button class="btn small" id="c_add">Add</button>
     </div>
-
-    <div class="card" style="margin-top:22px">
-      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Project types & stage templates</h3>
-      <div class="sub" style="margin-bottom:14px">Used when starting a new project — pick the default stages and order here rather than reordering per-project.</div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
-        ${state.projectTypes.map(pt=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px;${pt.active?'':'opacity:.45'}">
-          <span style="font-size:18px">${esc(pt.icon)}</span>
-          <span style="font-weight:600;flex:0 0 140px">${esc(pt.name)}</span>
-          <span style="color:var(--muted);font-size:12.5px;flex:1">${(pt.stage_template||[]).join(' → ')}</span>
-          <button class="btn small ghost" data-ptyedit="${pt.id}">Edit</button>
-          <button class="btn small ghost" data-ptyactive="${pt.id}">${pt.active?'Archive':'Restore'}</button>
-          ${!pt.active? `<button class="btn small danger" data-ptydelete="${pt.id}">Delete</button>`:''}
-        </div>`).join('') || '<div class="empty">No project types yet.</div>'}
-      </div>
-      <button class="btn small" id="newTypeBtn">+ New project type</button>
-    </div>
-
-    <div class="card" style="margin-top:22px">
-      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Task statuses</h3>
-      <div class="sub" style="margin-bottom:14px">Names and colours used across every task list. Exactly the statuses marked "Counts as complete" decide what shows as done throughout the app.</div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="statusList">
-        ${taskStatusList().map((st,i,arr)=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px">
-          ${colorCircleHtml('ts_color_'+st.id, st.color)}
-          <input type="text" data-statusname="${st.id}" value="${esc(st.name)}" style="flex:1;min-width:120px">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);white-space:nowrap"><input type="checkbox" data-statuscomplete="${st.id}" ${st.is_complete?'checked':''} style="width:auto"> Counts as complete</label>
-          <button class="btn small ghost" data-statusup="${st.id}" ${i===0?'disabled':''} title="Move up">↑</button>
-          <button class="btn small ghost" data-statusdown="${st.id}" ${i===arr.length-1?'disabled':''} title="Move down">↓</button>
-          <button class="btn small danger" data-statusdelete="${st.id}" title="Delete">Delete</button>
-        </div>`).join('') || '<div class="empty">No statuses yet.</div>'}
-      </div>
-      <button class="btn small" id="newStatusBtn">+ New status</button>
-    </div>
-
-    <div class="card" style="margin-top:22px">
-      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Departments</h3>
-      <div class="sub" style="margin-bottom:14px">Labels used on the Internal Tasks page (e.g. Animation, Graphics) — you can also add a new one directly from the department picker on that page.</div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="deptList">
-        ${departmentList().length ? departmentList().map((d,i,arr)=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px">
-          ${colorCircleHtml('dept_color_'+d.id, d.color)}
-          <input type="text" data-deptname="${d.id}" value="${esc(d.name)}" style="flex:1;min-width:120px">
-          <button class="btn small ghost" data-deptup="${d.id}" ${i===0?'disabled':''} title="Move up">↑</button>
-          <button class="btn small ghost" data-deptdown="${d.id}" ${i===arr.length-1?'disabled':''} title="Move down">↓</button>
-          <button class="btn small danger" data-deptdelete="${d.id}" title="Delete">Delete</button>
-        </div>`).join('') : '<div class="empty">No departments yet — run migration v21 (outputs/v21_internal_tasks.sql) in Supabase, then reload.</div>'}
-      </div>
-      <button class="btn small" id="newDeptBtn">+ New department</button>
-    </div>
-
-    <div class="card" style="margin-top:22px">
-      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Checklist templates</h3>
-      <div class="sub" style="margin-bottom:14px">Starter checklists offered under "Start from" when creating a new checklist on a project. Edit a template's tasks here — checklists already created from it are unaffected.</div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="checklistTemplateList">
-        ${state.checklistTemplates.length ? state.checklistTemplates.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(t=>{
-          const count = state.checklistTemplateItems.filter(i=>i.template_id===t.id).length;
-          return `<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px">
-            <span style="font-weight:600;flex:1">${esc(t.name)}</span>
-            <span style="font-size:12.5px;color:var(--muted)">${count} task${count===1?'':'s'}</span>
-            <button class="btn small ghost" data-tpledit="${t.id}">Edit tasks</button>
-          </div>`;
-        }).join('') : '<div class="empty">No checklist templates yet — run migration v25 (outputs/v25_checklist_templates.sql) in Supabase, then reload.</div>'}
-      </div>
-      <div class="row-form">
-        <input id="tpl_name" placeholder="Template name (e.g. Social Media QA)" style="flex:1">
-        <button class="btn small" id="tpl_add">+ New template</button>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:22px">
-      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Pipeline cell statuses</h3>
-      <div class="sub" style="margin-bottom:14px">The status options for each shot × pipeline-step cell on the Animation page. "Behaviour" is what the rest of the app keys off — progress %, the flag chips, and the overdue check all follow behaviour, not the name, so you can rename or recolour freely without breaking anything.</div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="animStatusList">
-        ${state.animCellStatuses.length ? state.animCellStatuses.slice().sort((a,b)=>a.position-b.position).map((st,i,arr)=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          ${colorCircleHtml('as_color_'+st.id, st.color)}
-          <input type="text" data-animstatusname="${st.id}" value="${esc(st.name)}" placeholder="Name" style="flex:1;min-width:120px">
-          <input type="text" data-animstatusshort="${st.id}" value="${esc(st.short)}" placeholder="Short" maxlength="4" style="width:64px;text-align:center" title="Shown inside the small pipeline cell">
-          <select data-animstatusbehavior="${st.id}" style="min-width:170px">
-            <option value="none" ${st.behavior==='none'?'selected':''}>No special meaning</option>
-            <option value="wip" ${st.behavior==='wip'?'selected':''}>Active work in progress</option>
-            <option value="waiting" ${st.behavior==='waiting'?'selected':''}>Waiting on feedback</option>
-            <option value="retake" ${st.behavior==='retake'?'selected':''}>Needs retakes</option>
-            <option value="done" ${st.behavior==='done'?'selected':''}>Counts as done</option>
-            <option value="omitted" ${st.behavior==='omitted'?'selected':''}>Omitted / not applicable</option>
-          </select>
-          <button class="btn small ghost" data-animstatusup="${st.id}" ${i===0?'disabled':''} title="Move up">↑</button>
-          <button class="btn small ghost" data-animstatusdown="${st.id}" ${i===arr.length-1?'disabled':''} title="Move down">↓</button>
-          <button class="btn small danger" data-animstatusdelete="${st.id}" title="Delete">Delete</button>
-        </div>`).join('') : '<div class="empty">No pipeline statuses yet — run migration v20 (outputs/v20_anim_cell_statuses.sql) in Supabase, then reload. Until then the Animation page keeps using its original 7 built-in statuses.</div>'}
-      </div>
-      <button class="btn small" id="newAnimStatusBtn">+ New status</button>
-    </div>
-
-    <div class="card" style="margin-top:22px">
-      <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Data & backups</h3>
-      <div class="sub" style="margin-bottom:14px">Export everything currently in Supabase — good for a periodic backup, or before making big changes.</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn small" id="exportJson">Export full backup (JSON)</button>
-        <button class="btn small ghost" id="exportCsv">Export tasks (CSV)</button>
-      </div>
-    </div>`;
-
+  </div>`;
+}
+function wireSettingsClients(){
   $('#c_isretainer').addEventListener('change', e=>{ $('#c_retainer_fields').style.display = e.target.checked?'flex':'none'; });
   wireColorCircle('c_color', CLIENT_PALETTE);
   $('#c_add').onclick = async ()=>{
@@ -4917,17 +4805,51 @@ function renderSettings(){
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     await loadAll();
   };
+  main.querySelectorAll('[data-cedit]').forEach(b=>b.onclick = ()=> openClientEditModal(b.dataset.cedit));
+  main.querySelectorAll('[data-cactive]').forEach(b=>b.onclick = async ()=>{
+    const c = state.clients.find(c=>c.id===b.dataset.cactive);
+    await db.from('rs_clients').update({active:!c.active}).eq('id',c.id); await loadAll();
+  });
+  main.querySelectorAll('[data-cdelete]').forEach(b=>b.onclick = async ()=>{
+    const c = state.clients.find(c=>c.id===b.dataset.cdelete);
+    if(!confirm(`Permanently delete ${c.name}? This also deletes all of their logged tasks. This cannot be undone.`)) return;
+    const { error } = await db.from('rs_clients').delete().eq('id', c.id);
+    if(error){ toast('Delete failed'); return; } toast('Client deleted'); await loadAll();
+  });
+}
+
+function settingsTeamHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Team members</h3>
+    <table><thead><tr><th>Name</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th></th></tr></thead><tbody>
+    ${state.members.map(m=>`<tr style="${m.active?'':'opacity:.45'}">
+      <td><input type="text" data-membername="${m.id}" value="${esc(m.name)}" style="min-width:120px"></td>
+      <td>×${m.weight}</td>
+      <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_design" ${m.can_design!==false?'checked':''} style="width:auto"></td>
+      <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_review" ${m.can_review!==false?'checked':''} style="width:auto"></td>
+      <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_animate" ${m.can_animate!==false?'checked':''} style="width:auto"></td>
+      <td class="action-cell">
+        <button class="btn small ghost" data-mweight="${m.id}">Change factor</button>
+        <button class="btn small ghost" data-mactive="${m.id}">${m.active?'Archive':'Restore'}</button>
+        ${!m.active? `<button class="btn small danger" data-mdelete="${m.id}">Delete</button>`:''}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">No team members yet.</td></tr>'}
+    </tbody></table>
+    <div class="row-form">
+      <input id="m_name" placeholder="Name" style="flex:2">
+      <input id="m_weight" type="number" step="0.25" min="0.25" value="1" title="Weighting factor">
+      <button class="btn small" id="m_add">Add</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Designer/Reviewer/Animator checkboxes control who shows up in those pickers on project tasks. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
+  </div>`;
+}
+function wireSettingsTeam(){
   $('#m_add').onclick = async ()=>{
     const name = $('#m_name').value.trim(); const w = parseFloat($('#m_weight').value);
     if(!name || !(w>0)){ toast('Name and a positive factor needed'); return; }
     const { error } = await db.from('rs_members').insert({ name, weight:w });
     if(error){ toast('Could not add member'); return; } await loadAll();
   };
-  main.querySelectorAll('[data-cedit]').forEach(b=>b.onclick = ()=> openClientEditModal(b.dataset.cedit));
-  main.querySelectorAll('[data-cactive]').forEach(b=>b.onclick = async ()=>{
-    const c = state.clients.find(c=>c.id===b.dataset.cactive);
-    await db.from('rs_clients').update({active:!c.active}).eq('id',c.id); await loadAll();
-  });
   main.querySelectorAll('[data-mactive]').forEach(b=>b.onclick = async ()=>{
     const m = state.members.find(m=>m.id===b.dataset.mactive);
     await db.from('rs_members').update({active:!m.active}).eq('id',m.id); await loadAll();
@@ -4937,12 +4859,6 @@ function renderSettings(){
     const v = prompt(`New weighting factor for ${m.name}`, m.weight);
     const w = parseFloat(v); if(!(w>0)) return;
     await db.from('rs_members').update({weight:w}).eq('id',m.id); await loadAll();
-  });
-  main.querySelectorAll('[data-cdelete]').forEach(b=>b.onclick = async ()=>{
-    const c = state.clients.find(c=>c.id===b.dataset.cdelete);
-    if(!confirm(`Permanently delete ${c.name}? This also deletes all of their logged tasks. This cannot be undone.`)) return;
-    const { error } = await db.from('rs_clients').delete().eq('id', c.id);
-    if(error){ toast('Delete failed'); return; } toast('Client deleted'); await loadAll();
   });
   main.querySelectorAll('[data-mdelete]').forEach(b=>b.onclick = async ()=>{
     const m = state.members.find(m=>m.id===b.dataset.mdelete);
@@ -4965,6 +4881,26 @@ function renderSettings(){
       toast('Member renamed — updated everywhere they’re assigned'); await loadAll();
     });
   });
+}
+
+function settingsTypesHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Project types & stage templates</h3>
+    <div class="sub" style="margin-bottom:14px">Used when starting a new project — pick the default stages and order here rather than reordering per-project.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+      ${state.projectTypes.map(pt=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px;${pt.active?'':'opacity:.45'}">
+        <span style="font-size:18px">${esc(pt.icon)}</span>
+        <span style="font-weight:600;flex:0 0 140px">${esc(pt.name)}</span>
+        <span style="color:var(--muted);font-size:12.5px;flex:1">${(pt.stage_template||[]).join(' → ')}</span>
+        <button class="btn small ghost" data-ptyedit="${pt.id}">Edit</button>
+        <button class="btn small ghost" data-ptyactive="${pt.id}">${pt.active?'Archive':'Restore'}</button>
+        ${!pt.active? `<button class="btn small danger" data-ptydelete="${pt.id}">Delete</button>`:''}
+      </div>`).join('') || '<div class="empty">No project types yet.</div>'}
+    </div>
+    <button class="btn small" id="newTypeBtn">+ New project type</button>
+  </div>`;
+}
+function wireSettingsTypes(){
   $('#newTypeBtn').onclick = ()=> openProjectTypeModal(null);
   main.querySelectorAll('[data-ptyedit]').forEach(b=>b.onclick = ()=> openProjectTypeModal(b.dataset.ptyedit));
   main.querySelectorAll('[data-ptyactive]').forEach(b=>b.onclick = async ()=>{
@@ -4977,10 +4913,26 @@ function renderSettings(){
     const { error } = await db.from('rs_project_types').delete().eq('id', pt.id);
     if(error){ toast('Delete failed'); return; } toast('Type deleted'); await loadAll();
   });
-  $('#exportJson').onclick = exportAllData;
-  $('#exportCsv').onclick = exportTasksCsv;
-  $('#viewArchivedBtn').onclick = ()=>{ state.view='archived'; render(); };
+}
 
+function settingsStatusesHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Task statuses</h3>
+    <div class="sub" style="margin-bottom:14px">Names and colours used across every task list. Exactly the statuses marked "Counts as complete" decide what shows as done throughout the app.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="statusList">
+      ${taskStatusList().map((st,i,arr)=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px">
+        ${colorCircleHtml('ts_color_'+st.id, st.color)}
+        <input type="text" data-statusname="${st.id}" value="${esc(st.name)}" style="flex:1;min-width:120px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);white-space:nowrap"><input type="checkbox" data-statuscomplete="${st.id}" ${st.is_complete?'checked':''} style="width:auto"> Counts as complete</label>
+        <button class="btn small ghost" data-statusup="${st.id}" ${i===0?'disabled':''} title="Move up">↑</button>
+        <button class="btn small ghost" data-statusdown="${st.id}" ${i===arr.length-1?'disabled':''} title="Move down">↓</button>
+        <button class="btn small danger" data-statusdelete="${st.id}" title="Delete">Delete</button>
+      </div>`).join('') || '<div class="empty">No statuses yet.</div>'}
+    </div>
+    <button class="btn small" id="newStatusBtn">+ New status</button>
+  </div>`;
+}
+function wireSettingsStatuses(){
   taskStatusList().forEach(st=>{
     wireColorCircleCustom('ts_color_'+st.id, async (hex)=>{
       const { error } = await db.from('rs_task_statuses').update({ color:hex }).eq('id', st.id);
@@ -5042,7 +4994,25 @@ function renderSettings(){
     if(error){ toast('Could not add status'); console.error(error); return; }
     toast('Status added — rename it below'); await loadAll();
   };
+}
 
+function settingsDepartmentsHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Departments</h3>
+    <div class="sub" style="margin-bottom:14px">Labels used on the Internal Tasks page (e.g. Animation, Graphics) — you can also add a new one directly from the department picker on that page.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="deptList">
+      ${departmentList().length ? departmentList().map((d,i,arr)=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px">
+        ${colorCircleHtml('dept_color_'+d.id, d.color)}
+        <input type="text" data-deptname="${d.id}" value="${esc(d.name)}" style="flex:1;min-width:120px">
+        <button class="btn small ghost" data-deptup="${d.id}" ${i===0?'disabled':''} title="Move up">↑</button>
+        <button class="btn small ghost" data-deptdown="${d.id}" ${i===arr.length-1?'disabled':''} title="Move down">↓</button>
+        <button class="btn small danger" data-deptdelete="${d.id}" title="Delete">Delete</button>
+      </div>`).join('') : '<div class="empty">No departments yet — run migration v21 (outputs/v21_internal_tasks.sql) in Supabase, then reload.</div>'}
+    </div>
+    <button class="btn small" id="newDeptBtn">+ New department</button>
+  </div>`;
+}
+function wireSettingsDepartments(){
   departmentList().forEach(d=>{
     wireColorCircleCustom('dept_color_'+d.id, async (hex)=>{
       const { error } = await db.from('rs_departments').update({ color:hex }).eq('id', d.id);
@@ -5097,7 +5067,29 @@ function renderSettings(){
     if(error){ toast(error.code==='PGRST205'?'Run migration v21 to enable departments':'Could not add department'); console.error(error); return; }
     toast('Department added — rename it below'); await loadAll();
   };
+}
 
+function settingsChecklistsHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Checklist templates</h3>
+    <div class="sub" style="margin-bottom:14px">Starter checklists offered under "Start from" when creating a new checklist on a project. Edit a template's tasks here — checklists already created from it are unaffected.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="checklistTemplateList">
+      ${state.checklistTemplates.length ? state.checklistTemplates.slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(t=>{
+        const count = state.checklistTemplateItems.filter(i=>i.template_id===t.id).length;
+        return `<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px">
+          <span style="font-weight:600;flex:1">${esc(t.name)}</span>
+          <span style="font-size:12.5px;color:var(--muted)">${count} task${count===1?'':'s'}</span>
+          <button class="btn small ghost" data-tpledit="${t.id}">Edit tasks</button>
+        </div>`;
+      }).join('') : '<div class="empty">No checklist templates yet — run migration v25 (outputs/v25_checklist_templates.sql) in Supabase, then reload.</div>'}
+    </div>
+    <div class="row-form">
+      <input id="tpl_name" placeholder="Template name (e.g. Social Media QA)" style="flex:1">
+      <button class="btn small" id="tpl_add">+ New template</button>
+    </div>
+  </div>`;
+}
+function wireSettingsChecklists(){
   $('#tpl_add').onclick = async ()=>{
     const name = $('#tpl_name').value.trim();
     if(!name){ toast('Give the template a name'); return; }
@@ -5108,7 +5100,34 @@ function renderSettings(){
     openChecklistTemplateModal(data.id);
   };
   main.querySelectorAll('[data-tpledit]').forEach(b=> b.onclick = ()=> openChecklistTemplateModal(b.dataset.tpledit));
+}
 
+function settingsPipelineHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Pipeline cell statuses</h3>
+    <div class="sub" style="margin-bottom:14px">The status options for each shot × pipeline-step cell on the Animation page. "Behaviour" is what the rest of the app keys off — progress %, the flag chips, and the overdue check all follow behaviour, not the name, so you can rename or recolour freely without breaking anything.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px" id="animStatusList">
+      ${state.animCellStatuses.length ? state.animCellStatuses.slice().sort((a,b)=>a.position-b.position).map((st,i,arr)=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${colorCircleHtml('as_color_'+st.id, st.color)}
+        <input type="text" data-animstatusname="${st.id}" value="${esc(st.name)}" placeholder="Name" style="flex:1;min-width:120px">
+        <input type="text" data-animstatusshort="${st.id}" value="${esc(st.short)}" placeholder="Short" maxlength="4" style="width:64px;text-align:center" title="Shown inside the small pipeline cell">
+        <select data-animstatusbehavior="${st.id}" style="min-width:170px">
+          <option value="none" ${st.behavior==='none'?'selected':''}>No special meaning</option>
+          <option value="wip" ${st.behavior==='wip'?'selected':''}>Active work in progress</option>
+          <option value="waiting" ${st.behavior==='waiting'?'selected':''}>Waiting on feedback</option>
+          <option value="retake" ${st.behavior==='retake'?'selected':''}>Needs retakes</option>
+          <option value="done" ${st.behavior==='done'?'selected':''}>Counts as done</option>
+          <option value="omitted" ${st.behavior==='omitted'?'selected':''}>Omitted / not applicable</option>
+        </select>
+        <button class="btn small ghost" data-animstatusup="${st.id}" ${i===0?'disabled':''} title="Move up">↑</button>
+        <button class="btn small ghost" data-animstatusdown="${st.id}" ${i===arr.length-1?'disabled':''} title="Move down">↓</button>
+        <button class="btn small danger" data-animstatusdelete="${st.id}" title="Delete">Delete</button>
+      </div>`).join('') : '<div class="empty">No pipeline statuses yet — run migration v20 (outputs/v20_anim_cell_statuses.sql) in Supabase, then reload. Until then the Animation page keeps using its original 7 built-in statuses.</div>'}
+    </div>
+    <button class="btn small" id="newAnimStatusBtn">+ New status</button>
+  </div>`;
+}
+function wireSettingsPipeline(){
   state.animCellStatuses.forEach(st=>{
     wireColorCircleCustom('as_color_'+st.id, async (hex)=>{
       const { error } = await db.from('rs_anim_cell_statuses').update({ color:hex }).eq('id', st.id);
@@ -5180,6 +5199,58 @@ function renderSettings(){
   };
 }
 
+function settingsDataHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Data & backups</h3>
+    <div class="sub" style="margin-bottom:14px">Export everything currently in Supabase — good for a periodic backup, or before making big changes.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn small" id="exportJson">Export full backup (JSON)</button>
+      <button class="btn small ghost" id="exportCsv">Export tasks (CSV)</button>
+    </div>
+  </div>`;
+}
+function wireSettingsData(){
+  $('#exportJson').onclick = exportAllData;
+  $('#exportCsv').onclick = exportTasksCsv;
+}
+
+function settingsSectionHtml(key){
+  if(key==='clients') return settingsClientsHtml();
+  if(key==='team') return settingsTeamHtml();
+  if(key==='types') return settingsTypesHtml();
+  if(key==='statuses') return settingsStatusesHtml();
+  if(key==='departments') return settingsDepartmentsHtml();
+  if(key==='checklists') return settingsChecklistsHtml();
+  if(key==='pipeline') return settingsPipelineHtml();
+  if(key==='data') return settingsDataHtml();
+  return '';
+}
+function wireSettingsSection(key){
+  if(key==='clients') wireSettingsClients();
+  else if(key==='team') wireSettingsTeam();
+  else if(key==='types') wireSettingsTypes();
+  else if(key==='statuses') wireSettingsStatuses();
+  else if(key==='departments') wireSettingsDepartments();
+  else if(key==='checklists') wireSettingsChecklists();
+  else if(key==='pipeline') wireSettingsPipeline();
+  else if(key==='data') wireSettingsData();
+}
+
+function renderSettings(){
+  main.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div><h2>Settings</h2><div class="sub" style="margin-bottom:0">Clients, retainers and team weighting</div></div>
+      <button class="btn small ghost" id="viewArchivedBtn">View archived</button>
+    </div><div style="margin-bottom:20px"></div>
+    <div class="settings-shell">
+      <div class="settings-nav">${SETTINGS_SECTIONS.map(s=>`<button type="button" class="settings-nav-item ${state.settingsSection===s.key?'active':''}" data-settingsnav="${s.key}">${esc(s.label)}</button>`).join('')}</div>
+      <div class="settings-panel">${settingsSectionHtml(state.settingsSection)}</div>
+    </div>`;
+  $('#viewArchivedBtn').onclick = ()=>{ state.view='archived'; render(); };
+  main.querySelectorAll('[data-settingsnav]').forEach(b=>b.onclick=()=>{ state.settingsSection=b.dataset.settingsnav; render(); });
+  wireSettingsSection(state.settingsSection);
+}
+
 /* ---------- setup / boot ---------- */
 function showSetup(){
   main.innerHTML = `
@@ -5198,7 +5269,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.29.0';
+const APP_VERSION = '0.30.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5916,7 +5987,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>
       <div class="pd-cal-grid">${dowLabels.map(d=>`<div class="pd-cal-dow">${d}</div>`).join('')}${cells}</div>`;
     }
-    const retainerSectionHtml = client.is_retainer ? `<div style="max-width:1000px;margin:0 auto;padding:0 24px 24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdRetainerGrid">
+    const retainerSectionHtml = client.is_retainer ? `<div style="max-width:1280px;margin:0 auto;padding:0 24px 24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdRetainerGrid">
       <div class="card">
         <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Tasks</div>
         <div style="display:flex;flex-direction:column;gap:2px">${tasksListHtml}</div>
@@ -5936,7 +6007,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
     const generalCats = proj ? projectCatsFor(proj.id) : [];
     const generalBody = generalCats.map(categoryBlockHtml).join('');
-    const generalAssetsHtml = (generalBody || isAdmin) ? `<div class="card" style="max-width:1000px;margin:0 auto 20px">
+    const generalAssetsHtml = (generalBody || isAdmin) ? `<div class="card" style="max-width:1280px;margin:0 auto 20px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">General assets</div>
         ${isAdmin && proj ? `<button class="btn small ghost" data-addprojcat="${proj.id}">+ Category</button>` : ''}
@@ -5950,7 +6021,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
           <button class="btn small" style="background:#fff;color:${accent}" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
-        <div style="max-width:1000px;margin:0 auto;padding:40px 24px 20px">
+        <div style="max-width:1280px;margin:0 auto;padding:40px 24px 20px">
           <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px">
             <div style="width:60px;height:60px;border-radius:14px;flex-shrink:0;background:${client.dash_logo_url?'var(--track)':accent};display:flex;align-items:center;justify-content:center;overflow:hidden">
               ${client.dash_logo_url? `<img src="${esc(client.dash_logo_url)}" style="width:100%;height:100%;object-fit:contain">` : `<span style="color:#fff;font-size:24px;font-weight:700">${initials}</span>`}
@@ -5969,8 +6040,8 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         ${retainerSectionHtml}
         ${projects.length ? `
         ${tabsHtml}
-        <div style="max-width:1000px;margin:0 auto;padding:24px 24px 0">${generalAssetsHtml}</div>
-        <div style="max-width:1000px;margin:0 auto;padding:0 24px 24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdGrid">
+        <div style="max-width:1280px;margin:0 auto;padding:24px 24px 0">${generalAssetsHtml}</div>
+        <div style="max-width:1280px;margin:0 auto;padding:0 24px 24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdGrid">
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
               <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Stage progress</div>
