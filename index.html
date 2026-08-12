@@ -554,7 +554,26 @@
   .pd-cal-daynum{font-size:11px;font-weight:600;color:var(--ink);margin-bottom:3px}
   .pd-cal-chip{font-size:9.5px;padding:2px 5px;border-radius:5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--track);color:var(--ink)}
   .pd-cal-more{font-size:10px;color:var(--muted)}
-  @media(max-width:760px){ #pdGrid{grid-template-columns:1fr !important} #pdRetainerGrid{grid-template-columns:1fr !important} .pd-cal-chip{display:none} }
+
+  /* Horizontal stage stepper (Zone 1). Deliberately its own class family
+     rather than restyling .pd-stage-row, which the retainer task list shares. */
+  .pd-stepper{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:4px 0 2px}
+  .pd-step{flex:1 1 0;min-width:104px;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;background:none;border:none;padding:8px 6px;cursor:pointer;font-family:'Inter',sans-serif}
+  .pd-step::before{content:'';position:absolute;top:19px;left:-50%;width:100%;height:2px;background:var(--line);z-index:0}
+  .pd-step:first-child::before{display:none}
+  .pd-step.done::before{background:var(--pd-accent);opacity:.45}
+  .pd-step-dot{width:26px;height:26px;border-radius:50%;background:var(--track);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;position:relative;z-index:1;border:2px solid var(--card)}
+  .pd-step-label{font-size:12.5px;line-height:1.3;text-align:center;color:var(--ink)}
+  .pd-step.current .pd-step-label{font-weight:600;color:var(--pd-accent)}
+  .pd-step-date{font-size:11px;color:var(--muted);white-space:nowrap}
+  .pd-step:hover .pd-step-label{color:var(--pd-accent)}
+  .pd-next{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-radius:var(--radius-sm);margin-bottom:18px}
+  .pd-next-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
+  .pd-next-title{font-size:14px;font-weight:600}
+  .pd-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--line-soft)}
+  .pd-zone-num{width:22px;height:22px;border-radius:50%;background:var(--pd-accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none}
+
+  @media(max-width:760px){ #pdRetainerGrid{grid-template-columns:1fr !important} .pd-cal-chip{display:none} .pd-step{min-width:88px} }
   .year-row:last-child{border-bottom:none}
 </style>
 </head>
@@ -634,7 +653,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.31.0</div>
+    <div id="versionBadge" class="version-badge">v0.33.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -733,8 +752,24 @@ const LINK_ICONS = {
   notion: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933z"/></svg>',
   slack: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52z"/></svg>',
   drive: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M7.71 3.5L1.15 15l3.43 6 6.56-11.5zm0 0M16.29 3.5H3.16l-2 3.46h13.14zm0 0M22.85 15L16.29 3.5l-3.44 6 6.57 11.5zm0 0M21.42 18.04H8.28l-2 3.46h13.14zm0 0M15 12.04L12 6.5l-3 5.54 3 5.46zm0 0"/></svg>',
+  loom: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M24 10.665h-7.018l6.078-3.509-1.335-2.312-6.078 3.509 3.509-6.078L16.844 0l-3.509 6.078V0h-2.67v7.018L7.156.94 4.844 2.275l3.509 6.078-6.078-3.509L.94 7.156l6.078 3.509H0v2.67h7.018L.94 16.844l1.335 2.312 6.078-3.509-3.509 6.078L7.156 23.06l3.509-6.078V24h2.67v-7.018l3.509 6.078 2.312-1.335-3.509-6.078 6.078 3.509 1.335-2.312-6.078-3.509H24v-2.67zM12 15.475A3.475 3.475 0 1 1 15.475 12 3.48 3.48 0 0 1 12 15.475z"/></svg>',
+  pdf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h1.5a1.5 1.5 0 0 0 0-3H9v6"/><path d="M14 18v-6h1a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2z"/></svg>',
+  youtube: '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M23.5 6.19a3.02 3.02 0 0 0-2.12-2.14C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.5A3.02 3.02 0 0 0 .5 6.19C0 8.07 0 12 0 12s0 3.93.5 5.81a3.02 3.02 0 0 0 2.12 2.14c1.88.5 9.38.5 9.38.5s7.5 0 9.38-.5a3.02 3.02 0 0 0 2.12-2.14C24 15.93 24 12 24 12s0-3.93-.5-5.81zM9.55 15.57V8.43L15.82 12l-6.27 3.57z"/></svg>',
   link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
 };
+
+/* Every URL that reaches an href/src on the client-facing dashboard goes
+   through here first. esc() escapes HTML metacharacters but does nothing to a
+   `javascript:` scheme, which would execute on click — and ?admin=1 has no
+   auth, so anyone with that link could plant one. https only (not http): every
+   target is a SaaS tool, and http would trigger mixed-content warnings anyway.
+   Returns null for anything unparseable or non-https; callers render inert. */
+function safeUrl(u){
+  try {
+    const parsed = new URL(String(u||'').trim());
+    return parsed.protocol === 'https:' ? parsed.href : null;
+  } catch { return null; }
+}
 function fmtH(n){ const v=Math.round(n*100)/100; return (v%1===0? v.toFixed(0):v.toFixed(2).replace(/0$/,''))+'h'; }
 function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function fmtDate(d){ return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
@@ -1477,6 +1512,10 @@ function openClientEditModal(clientId){
         <div><label>Logo image URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_logourl" value="${esc(c.dash_logo_url||'')}" placeholder="https://..."></div>
         <div><label>Contact email <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="email" id="ec_contactemail" value="${esc(c.dash_contact_email||'')}" placeholder="team@reciprocal.space"></div>
         <div class="full"><label>Website URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_websiteurl" value="${esc(c.dash_website_url||'')}" placeholder="https://reciprocal.space"></div>
+        <div class="full sub" style="margin:8px 0 4px;color:var(--muted)">Quick actions — these become buttons at the top of the client's dashboard. Leave blank to hide a button. Must be https.</div>
+        <div><label>Book a call link <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_bookingurl" value="${esc(c.dash_booking_url||'')}" placeholder="https://cal.com/..."></div>
+        <div><label>Request form link <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_requesturl" value="${esc(c.dash_request_url||'')}" placeholder="https://form.typeform.com/..."></div>
+        <div class="full"><label>Message link <span style="color:var(--muted);font-weight:400">(optional — overrides the contact email button)</span></label><input type="url" id="ec_messageurl" value="${esc(c.dash_message_url||'')}" placeholder="https://slack.com/..."></div>
       </div>
     </form>
     <div class="modal-actions">
@@ -2245,30 +2284,65 @@ function retainerMilestoneChipHtml(t, cl, weekStyle){
   </div>`;
 }
 
+/* Which zone of the client dashboard a category renders in. Defined once and
+   used by both this modal and the dashboard's render dispatcher, so the four
+   valid values live in exactly one place. Must stay in sync with the
+   rs_stage_categories_zone_check constraint in outputs/v27_dashboard_zones.sql. */
+const CATEGORY_ZONES = [
+  ['general',  'Files & links', 'Grouped under the selected stage, as today'],
+  ['proofing', 'Proofing',      'Figma / Loom / PDF previews the client reviews'],
+  ['brief',    'Creative brief', 'Scope docs — shown alongside the project details'],
+  ['vault',    'Vault',         'Final deliverables — the high-res handover files'],
+];
+
 function openStageCategoryModal(ctx, onDone){
   onDone = onDone || refreshProjectView;
-  const stageId = ctx.stageId || null, projectId = ctx.projectId || null;
+  const existing = ctx.categoryId ? state.stageCategories.find(c=>c.id===ctx.categoryId) : null;
+  const isNew = !existing;
+  // On create the scope comes from ctx; on edit it's already on the row and
+  // must be preserved untouched (we only ever change name + zone).
+  const stageId = isNew ? (ctx.stageId || null) : existing.stage_id;
+  const projectId = isNew ? (ctx.projectId || null) : existing.project_id;
+  const clientId = isNew ? (ctx.clientId || null) : existing.client_id;
+  const zone = (existing && existing.zone) || ctx.zone || 'general';
   showModal(`
-    <h3>New category</h3>
+    <h3>${isNew?'New category':'Edit category'}</h3>
     <div class="sub">e.g. "Design files", "Brand assets" — links you add underneath will show grouped under this name on the client's dashboard.</div>
     <form class="log" style="max-width:none">
-      <div class="full"><label>Category name</label><input type="text" id="cat_name" placeholder="e.g. Design files"></div>
+      <div class="full"><label>Category name</label><input type="text" id="cat_name" placeholder="e.g. Design files" value="${esc(existing?existing.name:'')}"></div>
+      <div class="full"><label>Show in</label><select id="cat_zone">${CATEGORY_ZONES.map(([v,label,hint])=>`<option value="${v}" ${zone===v?'selected':''}>${esc(label)} — ${esc(hint)}</option>`).join('')}</select></div>
     </form>
     <div class="modal-actions">
+      ${isNew?'<span></span>':`<button class="btn danger" id="cat_delete">Delete category</button>`}
       <div class="right">
         <button class="btn ghost" id="cat_cancel">Cancel</button>
-        <button class="btn" id="cat_save">Add category</button>
+        <button class="btn" id="cat_save">${isNew?'Add category':'Save changes'}</button>
       </div>
     </div>
   `);
   $('#cat_cancel').onclick = closeModal;
+  if(!isNew) $('#cat_delete').onclick = async ()=>{
+    if(!confirm('Delete this category and all its links? This cannot be undone.')) return;
+    const { error } = await db.from('rs_stage_categories').delete().eq('id', existing.id);
+    if(error){ toast('Delete failed'); return; }
+    closeModal(); toast('Category deleted'); await onDone();
+  };
   $('#cat_save').onclick = async ()=>{
     const name = $('#cat_name').value.trim();
     if(!name){ toast('Give the category a name'); return; }
-    const position = state.stageCategories.filter(c=> stageId ? c.stage_id===stageId : c.project_id===projectId).length;
-    const { error } = await db.from('rs_stage_categories').insert({ stage_id:stageId, project_id:projectId, name, position });
-    if(error){ toast('Could not add category'); console.error(error); return; }
-    closeModal(); toast('Category added'); await onDone();
+    const newZone = $('#cat_zone').value;
+    if(isNew){
+      // Position is per zone AND per scope, so re-tagging a category doesn't
+      // collide with whatever is already sitting in the destination zone.
+      const position = state.stageCategories.filter(c=> c.zone===newZone && (stageId ? c.stage_id===stageId : projectId ? c.project_id===projectId : c.client_id===clientId && !c.stage_id && !c.project_id)).length;
+      const { error } = await db.from('rs_stage_categories').insert({ stage_id:stageId, project_id:projectId, client_id:clientId, zone:newZone, name, position });
+      if(error){ toast(error.code==='PGRST204'?'Run migration v27 to enable dashboard zones':'Could not add category'); console.error(error); return; }
+      closeModal(); toast('Category added'); await onDone();
+    } else {
+      const { error } = await db.from('rs_stage_categories').update({ name, zone:newZone }).eq('id', existing.id);
+      if(error){ toast(error.code==='PGRST204'?'Run migration v27 to enable dashboard zones':'Could not save'); console.error(error); return; }
+      closeModal(); toast('Category updated'); await onDone();
+    }
   };
 }
 
@@ -2301,8 +2375,11 @@ function openStageLinkModal(categoryId, linkId, onDone){
   };
   $('#lk_save').onclick = async ()=>{
     const label = $('#lk_label').value.trim();
-    const url = $('#lk_url').value.trim();
-    if(!label || !url){ toast('Label and URL are both required'); return; }
+    const url = safeUrl($('#lk_url').value);
+    if(!label || !$('#lk_url').value.trim()){ toast('Label and URL are both required'); return; }
+    // Reject at the door rather than storing something the client page will
+    // refuse to render — this link ends up on a client-facing page.
+    if(!url){ toast('URL must be a full https:// address'); return; }
     const icon = $('#lk_icon').value;
     const description = $('#lk_desc').value.trim() || null;
     if(isNew){
@@ -3065,6 +3142,16 @@ function stageStatus(stageId){
   const tasks = state.projTasks.filter(t=>t.stage_id===stageId);
   if(!tasks.length) return 'Pending';
   return tasks.every(t=>isCompleteStatus(t.status)) ? 'Complete' : 'Active';
+}
+/* First stage (by position) that isn't complete — i.e. the one currently in
+   play. Takes `stages` as an argument rather than reading state, because the
+   public dashboard path skips loadAll() and only hand-populates a few state
+   keys; a global-reading helper would silently see an empty array there.
+   Note two OTHER "next stage" rules still exist inline in the internal app
+   (clientCardHtml's cross-project next-by-due-date, and the client project
+   grid's next-by-position) — those are deliberately left alone for now. */
+function nextIncompleteStage(stages){
+  return (stages||[]).slice().sort((a,b)=>(a.position||0)-(b.position||0)).find(s=>stageStatus(s.id)!=='Complete') || null;
 }
 
 const TASK_COL_DEFAULTS = { status:205, priority:104, designer:88, reviewer:88, animator:88, hours:64, due:104, retainer:80 };
@@ -5300,7 +5387,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.31.0';
+const APP_VERSION = '0.33.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5875,10 +5962,32 @@ async function bootPublicDashboard(slug, isAdmin){
   const stagesRes = projectIds.length ? await db.from('rs_project_stages').select('*').in('project_id', projectIds).order('position') : { data: [] };
   const stages = stagesRes.data||[];
   const stageIds = stages.map(s=>s.id);
-  const catsRes = (stageIds.length || projectIds.length)
-    ? await db.from('rs_stage_categories').select('*').or(`stage_id.in.(${stageIds.join(',')||'00000000-0000-0000-0000-000000000000'}),project_id.in.(${projectIds.join(',')||'00000000-0000-0000-0000-000000000000'})`).order('position')
-    : { data: [] };
-  const categories = catsRes.data||[];
+  // Categories are owned by the client as of v27. Fetching by client_id rather
+  // than by the client's stage/project ids is what lets a pure-retainer client
+  // with zero projects own categories at all — the old .or() filter matched
+  // nothing in that case and was skipped entirely.
+  const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+  const scopedOr = `stage_id.in.(${stageIds.join(',')||NIL_UUID}),project_id.in.(${projectIds.join(',')||NIL_UUID})`;
+  const hasScope = stageIds.length || projectIds.length;
+  const byClientRes = await db.from('rs_stage_categories').select('*').eq('client_id', client.id).order('position');
+  let categories;
+  if(byClientRes.error){
+    // v27 not run yet — client_id doesn't exist, so fall back to the original
+    // scope-only query verbatim. Retainer-only clients get nothing here, same
+    // as before v27; that's the pre-existing behaviour, not a new regression.
+    console.warn('Dashboard zones not enabled — run outputs/v27_dashboard_zones.sql', byClientRes.error);
+    const legacyOnly = hasScope ? await db.from('rs_stage_categories').select('*').or(scopedOr).order('position') : { data: [] };
+    categories = legacyOnly.data||[];
+  } else {
+    // Also sweep up any row the v27 backfill couldn't reach (orphaned by a
+    // hard-deleted stage/project). Drop this second query once
+    // `select count(*) from rs_stage_categories where client_id is null` is 0.
+    const orphanRes = hasScope
+      ? await db.from('rs_stage_categories').select('*').is('client_id', null).or(scopedOr).order('position')
+      : { data: [] };
+    const seen = new Set();
+    categories = [...(byClientRes.data||[]), ...(orphanRes.data||[])].filter(c=> seen.has(c.id) ? false : seen.add(c.id));
+  }
   const catIds = categories.map(c=>c.id);
   const linksRes = catIds.length ? await db.from('rs_stage_links').select('*').in('category_id', catIds).order('position') : { data: [] };
   const links = linksRes.data||[];
@@ -5906,11 +6015,93 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   const pub = { projectId: projects[0]?.id || null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
   const accent = client.dash_accent_color || '#2383e2';
   const initials = (client.name||'?').charAt(0).toUpperCase();
+  // Both are stored per-client and end up in an src/href, so they go through
+  // safeUrl like every other URL on this page. A rejected logo falls back to
+  // the initials avatar; a rejected website URL falls back to our own site.
+  const logoSrc = safeUrl(client.dash_logo_url);
+  const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true); }
+
+  /* Shared chrome for the three dashboard zones, so they can't drift apart. */
+  function pdZoneHtml(n, title, sub, body, headerExtra){
+    return `<div class="card" style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:${sub?'4px':'16px'}">
+        <span class="pd-zone-num">${n}</span>
+        <div style="font-size:15px;font-weight:600;flex:1;min-width:0">${esc(title)}</div>
+        ${headerExtra||''}
+      </div>
+      ${sub? `<div class="sub" style="margin:0 0 16px 32px">${esc(sub)}</div>`:''}
+      ${body}
+    </div>`;
+  }
+
+  /* What the client should look at next. Projects → the first incomplete
+     stage; retainer clients → their next upcoming task. Returns null when
+     there's genuinely nothing ahead. */
+  function pdNextMilestone(stages, upcoming){
+    if(client.is_retainer && !stages.length){
+      const t = upcoming[0];
+      return t ? { title: t.title, dateStr: t.due_date, dateHidden: false } : null;
+    }
+    const s = nextIncompleteStage(stages);
+    if(!s) return null;
+    // A stage flagged hide_due_date_from_client must not leak its date here
+    // either — not as a date, and not as a relative "in 6 days" label.
+    return { title: s.name, dateStr: s.hide_due_date_from_client ? null : s.due_date, dateHidden: !!s.hide_due_date_from_client && !!s.due_date };
+  }
+  function pdNextMilestoneHtml(next){
+    if(!next) return '';
+    const rel = next.dateStr ? daysUntilLabel(next.dateStr+'T00:00') : null;
+    const when = next.dateStr
+      ? `<span style="font-size:12.5px;opacity:.8">${esc(fmtDateNatural(next.dateStr))}${rel?` · ${esc(rel)}`:''}</span>`
+      : (next.dateHidden && isAdmin ? `<span style="font-size:12.5px;font-style:italic;opacity:.7">(date hidden from client)</span>` : '');
+    return `<div class="pd-next" style="background:${accent}14;color:${accent}">
+      <span class="pd-next-label">Next up</span>
+      <span class="pd-next-title" style="flex:1;min-width:0;color:var(--ink)">${esc(next.title)}</span>
+      ${when}
+    </div>`;
+  }
+
+  function pdStepperHtml(stages){
+    return `<div class="pd-stepper">${stages.map((s,i)=>{
+      const done = stageStatus(s.id)==='Complete';
+      const current = s.id===pub.viewedStageId;
+      const hidden = !!s.hide_due_date_from_client;
+      const dateLabel = hidden
+        ? (isAdmin? '<span style="font-style:italic">Hidden</span>' : '')
+        : (s.due_date? esc(fmtDate(new Date(s.due_date+'T00:00'))) : '');
+      return `<button type="button" class="pd-step ${done?'done':''} ${current?'current':''}" data-pdstage="${s.id}">
+        <span class="pd-step-dot" style="${done||current?`background:${accent};color:#fff`:''}">${done?'✓':i+1}</span>
+        <span class="pd-step-label">${esc(s.name)}</span>
+        ${dateLabel? `<span class="pd-step-date">${dateLabel}</span>`:''}
+        ${isAdmin && s.due_date? `<button type="button" class="btn small ghost" data-toggledate="${s.id}" style="padding:1px 7px;font-size:10px" title="${hidden?'Show this date to the client':'Hide this date from the client'}">${hidden?'Show':'Hide'}</button>`:''}
+      </button>`;
+    }).join('')}</div>`;
+  }
+
+  /* Book a Call / Submit New Request / Contact us. The mailto is promoted out
+     of the header so there's exactly one place to start a conversation. */
+  function pdQuickActionsHtml(){
+    const booking = safeUrl(client.dash_booking_url);
+    const request = safeUrl(client.dash_request_url);
+    const message = safeUrl(client.dash_message_url);
+    const contact = message || (client.dash_contact_email ? `mailto:${client.dash_contact_email}` : null);
+    const btns = [
+      booking? `<a class="btn small" style="background:${accent}" href="${esc(booking)}" target="_blank" rel="noopener">Book a call</a>`:'',
+      request? `<a class="btn small ghost" href="${esc(request)}" target="_blank" rel="noopener">Submit a request</a>`:'',
+      contact? `<a class="btn small ghost" href="${esc(contact)}"${message?' target="_blank" rel="noopener"':''}>Message the team</a>`:''
+    ].filter(Boolean);
+    if(!btns.length) return isAdmin ? `<div class="pd-quick"><span class="sub" style="margin:0">No quick actions set — add a booking or request link in the client's settings.</span></div>` : '';
+    return `<div class="pd-quick">${btns.join('')}</div>`;
+  }
 
   function stagesFor(projectId){ return allStages.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
   function catsFor(stageId){ return allCategories.filter(c=>c.stage_id===stageId).sort((a,b)=>a.position-b.position); }
   function projectCatsFor(projectId){ return allCategories.filter(c=>c.project_id===projectId && !c.stage_id).sort((a,b)=>a.position-b.position); }
+  /* Client-scoped categories (v27) — attached to the client directly rather
+     than to a stage or project. The only kind a retainer client with no
+     projects can have, and they show on every project tab. */
+  function clientCatsFor(){ return allCategories.filter(c=>!c.stage_id && !c.project_id).sort((a,b)=>a.position-b.position); }
   function linksFor(categoryId){ return allLinks.filter(l=>l.category_id===categoryId).sort((a,b)=>a.position-b.position); }
 
   function categoryBlockHtml(cat){
@@ -5919,25 +6110,34 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     return `<div style="margin-bottom:18px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div class="pd-cat-label" style="margin-bottom:0">${esc(cat.name)}</div>
-        ${isAdmin? `<div style="display:flex;gap:6px"><button class="btn small ghost" data-addlink="${cat.id}">+ Link</button><button class="btn small ghost" data-delcat="${cat.id}">Delete category</button></div>` : ''}
+        ${isAdmin? `<div style="display:flex;gap:6px"><button class="btn small ghost" data-addlink="${cat.id}">+ Link</button><button class="btn small ghost" data-editcat="${cat.id}">Edit category</button></div>` : ''}
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        ${catLinks.map(l=> isAdmin ? `
-          <div class="pd-link-card">
-            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
+        ${catLinks.map(l=>{
+          // A link whose URL isn't https renders inert rather than as a dead or
+          // dangerous <a> — admins get told why, clients just see plain text.
+          const href = safeUrl(l.url);
+          const icon = `<span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>`;
+          const desc = l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:'';
+          if(isAdmin) return `<div class="pd-link-card">
+            ${icon}
             <span style="flex:1;min-width:0">
-              <a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" style="display:block;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none">${esc(l.label)}</a>
-              ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}
+              ${href
+                ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer" style="display:block;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none">${esc(l.label)}</a>`
+                : `<span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span><span style="display:block;font-size:12px;color:var(--red);margin-top:2px">Not shown to the client — the URL must start with https://</span>`}
+              ${desc}
             </span>
             <button class="btn small ghost" data-editlink="${l.id}">Edit</button>
-          </div>` : `<a class="pd-link-card" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
-            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
+          </div>`;
+          if(!href) return '';
+          return `<a class="pd-link-card" href="${esc(href)}" target="_blank" rel="noopener noreferrer">
+            ${icon}
             <span style="flex:1;min-width:0">
               <span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span>
-              ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}
+              ${desc}
             </span>
-          </a>`
-        ).join('') || (isAdmin? '<div class="empty" style="padding:6px 0">No links yet</div>' : '')}
+          </a>`;
+        }).join('') || (isAdmin? '<div class="empty" style="padding:6px 0">No links yet</div>' : '')}
       </div>
     </div>`;
   }
@@ -5956,19 +6156,6 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     const tabsHtml = projects.length>1 ? `<div class="pd-tabs">${projects.map(p=>`
       <button type="button" class="pd-tab ${p.id===pub.projectId?'active':''}" data-pdtab="${p.id}" style="${p.id===pub.projectId?`color:${accent};border-color:${accent}`:''}">${esc(p.project_type)}</button>
     `).join('')}</div>` : '';
-
-    const stagesHtml = stages.length ? stages.map((s,i)=>{
-      const done = stageStatus(s.id)==='Complete';
-      const viewed = s.id===pub.viewedStageId;
-      const hidden = !!s.hide_due_date_from_client;
-      const dateLabel = hidden ? (isAdmin? '<span style="font-style:italic">Hidden</span>' : '') : (s.due_date? fmtDate(new Date(s.due_date+'T00:00')) : '');
-      return `<div class="pd-stage-row ${viewed?'viewed':''}" data-pdstage="${s.id}" style="${viewed?`background:${accent}14`:''}">
-        <div class="pd-stage-dot" style="${done||viewed?`background:${accent};color:#fff`:''}">${done?'✓':i+1}</div>
-        <div class="pd-stage-label" style="${viewed?`color:${accent};font-weight:600`:''}">${esc(s.name)}</div>
-        ${s.due_date? `<div class="pd-stage-date">${dateLabel}</div>`:''}
-        ${isAdmin && s.due_date? `<button type="button" class="btn small ghost" data-toggledate="${s.id}" style="padding:2px 8px;font-size:11px" title="${hidden?'Show this date to the client':'Hide this date from the client'}">${hidden?'Show':'Hide'}</button>`:''}
-      </div>`;
-    }).join('') : `<div class="empty" style="padding:20px 0">No stages yet.</div>`;
 
     // Retainer clients aren't organized into stages — show a chronological
     // task list (previous / upcoming) plus a read-only monthly calendar of
@@ -6018,16 +6205,20 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>
       <div class="pd-cal-grid">${dowLabels.map(d=>`<div class="pd-cal-dow">${d}</div>`).join('')}${cells}</div>`;
     }
-    const retainerSectionHtml = client.is_retainer ? `<div style="margin-bottom:24px;display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdRetainerGrid">
-      <div class="card">
-        <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Tasks</div>
+    // Retainer clients have no stages, so their "pulse" is the task timeline +
+    // calendar. Nested inside Zone 1 rather than being its own section, so both
+    // client types get the same three-zone shape.
+    const retainerPulseHtml = client.is_retainer ? `<div style="display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdRetainerGrid">
+      <div>
+        <div class="pd-cat-label">Tasks</div>
         <div style="display:flex;flex-direction:column;gap:2px">${tasksListHtml}</div>
       </div>
-      <div class="card">
-        <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Calendar</div>
+      <div>
+        <div class="pd-cat-label">Calendar</div>
         ${calendarHtmlPd(pub.calY, pub.calM)}
       </div>
-    </div>` : '';
+    </div>` : '<div class="empty" style="padding:20px 0">No project stages yet.</div>';
+    const nextMilestone = pdNextMilestone(stages, upcomingTasks);
 
     const stageCatsList = viewedStage ? catsFor(viewedStage.id) : [];
     const assetsBody = stageCatsList.map(categoryBlockHtml).join('');
@@ -6036,18 +6227,23 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         + (isAdmin? `<button class="btn small ghost" data-addcat="${viewedStage.id}">+ Category</button>` : '')
       : '';
 
-    const generalCats = proj ? projectCatsFor(proj.id) : [];
+    // Project-scoped general assets, plus (v27) client-scoped ones — the
+    // latter are the only kind a retainer client with no projects can own.
+    const generalCats = [...(proj ? projectCatsFor(proj.id) : []), ...clientCatsFor()];
     const generalBody = generalCats.map(categoryBlockHtml).join('');
+    const generalAddBtn = isAdmin
+      ? `<button class="btn small ghost" data-addgeneralcat="${proj?proj.id:''}">+ Category</button>`
+      : '';
     const generalAssetsHtml = (generalBody || isAdmin) ? `<div class="card" style="margin-bottom:20px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">General assets</div>
-        ${isAdmin && proj ? `<button class="btn small ghost" data-addprojcat="${proj.id}">+ Category</button>` : ''}
+        ${generalAddBtn}
       </div>
       ${generalBody || (isAdmin? '<div class="empty">No general assets yet.</div>' : '')}
     </div>` : '';
 
     document.body.innerHTML = `
-      <div style="min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink)">
+      <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink)">
         ${isAdmin? `<div style="background:var(--accent-soft);color:var(--accent);border-bottom:1px solid var(--line);text-align:center;padding:10px 20px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
           <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
           <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
@@ -6055,36 +6251,28 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         <div style="max-width:1280px;margin:0 auto;padding:32px 24px 40px">
           <div class="card" style="margin-bottom:24px">
             <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-              <div style="width:44px;height:44px;border-radius:var(--radius-sm);flex-shrink:0;background:${client.dash_logo_url?'var(--track)':accent};display:flex;align-items:center;justify-content:center;overflow:hidden">
-                ${client.dash_logo_url? `<img src="${esc(client.dash_logo_url)}" style="width:100%;height:100%;object-fit:contain">` : `<span style="color:#fff;font-size:16px;font-weight:700">${initials}</span>`}
+              <div style="width:44px;height:44px;border-radius:var(--radius-sm);flex-shrink:0;background:${logoSrc?'var(--track)':accent};display:flex;align-items:center;justify-content:center;overflow:hidden">
+                ${logoSrc? `<img src="${esc(logoSrc)}" alt="" style="width:100%;height:100%;object-fit:contain">` : `<span style="color:#fff;font-size:16px;font-weight:700">${initials}</span>`}
               </div>
               <div style="flex:1;min-width:0">
                 <h2 style="margin-bottom:0">${esc(client.name)}</h2>
                 ${client.dash_logo_text? `<div class="sub" style="margin:2px 0 0">${esc(client.dash_logo_text)}</div>`:''}
               </div>
-              <div style="display:flex;gap:8px">
-                ${client.dash_contact_email? `<a class="btn small ghost" href="mailto:${esc(client.dash_contact_email)}">Contact us</a>`:''}
-                <a class="btn small ghost" href="${esc(client.dash_website_url||'https://reciprocal.space')}" target="_blank" rel="noopener">Reciprocal Space</a>
-              </div>
+              <a class="btn small ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener">Reciprocal Space</a>
             </div>
             ${client.dash_greeting? `<p class="sub" style="margin:14px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
           </div>
-          ${retainerSectionHtml}
-          ${projects.length ? `
-          ${tabsHtml}
+          ${projects.length>1 ? tabsHtml : ''}
+          ${pdZoneHtml(1, 'Project pulse', null,
+              pdNextMilestoneHtml(nextMilestone)
+              + (projects.length ? pdStepperHtml(stages) : retainerPulseHtml)
+              + pdQuickActionsHtml(),
+              projects.length ? `<span style="font-size:13px;font-weight:700;color:${accent}">${pct}%</span>` : '')}
           ${generalAssetsHtml}
-          <div style="display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdGrid">
-            <div class="card">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
-                <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Stage progress</div>
-                <div style="font-size:13px;font-weight:700;color:${accent}">${pct}%</div>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:2px">${stagesHtml}</div>
-            </div>
-            <div class="card">
-              <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">${viewedStage? esc(viewedStage.name) : 'Files & links'}</div>
-              ${assetsHtml}
-            </div>
+          ${projects.length ? `
+          <div class="card">
+            <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">${viewedStage? esc(viewedStage.name) : 'Files & links'}</div>
+            ${assetsHtml}
           </div>` : ''}
         </div>
         <div style="display:flex;align-items:center;justify-content:center;padding:20px;opacity:.5;font-size:12px;color:var(--muted)">Reciprocal Space</div>
@@ -6108,14 +6296,11 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         const url = `${window.location.origin}${window.location.pathname}?client=${client.slug}`;
         navigator.clipboard?.writeText(url).then(()=> toast('Client link copied')).catch(()=> toast(url));
       });
-      document.querySelectorAll('[data-addcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ stageId: el.dataset.addcat }, reload)));
-      document.querySelectorAll('[data-addprojcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ projectId: el.dataset.addprojcat }, reload)));
-      document.querySelectorAll('[data-delcat]').forEach(el=>el.addEventListener('click', async ()=>{
-        if(!confirm('Delete this category and all its links? This cannot be undone.')) return;
-        const { error } = await db.from('rs_stage_categories').delete().eq('id', el.dataset.delcat);
-        if(error){ toast('Delete failed'); return; }
-        toast('Category deleted'); await reload();
-      }));
+      document.querySelectorAll('[data-addcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ stageId: el.dataset.addcat, clientId: client.id }, reload)));
+      // General assets: scope to the current project when there is one, else
+      // straight to the client (the retainer-with-no-projects case).
+      document.querySelectorAll('[data-addgeneralcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ projectId: el.dataset.addgeneralcat || null, clientId: client.id }, reload)));
+      document.querySelectorAll('[data-editcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ categoryId: el.dataset.editcat }, reload)));
       document.querySelectorAll('[data-addlink]').forEach(el=>el.addEventListener('click', ()=> openStageLinkModal(el.dataset.addlink, null, reload)));
       document.querySelectorAll('[data-editlink]').forEach(el=>{
         const link = allLinks.find(l=>l.id===el.dataset.editlink);
