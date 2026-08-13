@@ -215,6 +215,7 @@
   .btn:hover{background:var(--accent-hover)}
   .btn:active{transform:scale(.97)}
   .btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+  a.btn{text-decoration:none}
   .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
   .btn.ghost:hover{background:var(--track);border-color:var(--line)}
   .btn.small{padding:7px 14px;font-size:12.5px}
@@ -572,6 +573,15 @@
   .pd-next-title{font-size:14px;font-weight:600}
   .pd-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--line-soft)}
   .pd-zone-num{width:22px;height:22px;border-radius:50%;background:var(--pd-accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none}
+  .pd-embed-card{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:10px;background:var(--card)}
+  .pd-embed-head{display:flex;align-items:center;gap:12px;padding:13px 14px;flex-wrap:wrap}
+  .pd-embed-name{font-size:13.5px;font-weight:600;color:var(--ink)}
+  .pd-embed-frame{border-top:1px solid var(--line);background:var(--track)}
+  .pd-embed-frame iframe{width:100%;border:0;display:block}
+  .pd-embed-foot{padding:8px 14px;border-top:1px solid var(--line-soft);font-size:11.5px;color:var(--muted)}
+  .pd-brief{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .pd-brief-item{background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12.5px;color:var(--ink)}
+  .pd-vault-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
 
   @media(max-width:760px){ #pdRetainerGrid{grid-template-columns:1fr !important} .pd-cal-chip{display:none} .pd-step{min-width:88px} }
   .year-row:last-child{border-bottom:none}
@@ -653,7 +663,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.33.0</div>
+    <div id="versionBadge" class="version-badge">v0.35.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -769,6 +779,59 @@ function safeUrl(u){
     const parsed = new URL(String(u||'').trim());
     return parsed.protocol === 'https:' ? parsed.href : null;
   } catch { return null; }
+}
+
+/* Turns a proofing link into something embeddable, or null if we don't
+   recognise it. The whitelist IS the security model here — a URL that doesn't
+   match a known host+path pattern never reaches an iframe src. Matched on
+   URL.hostname (exact / suffix), never a substring of the raw string, so
+   "evil.com/?x=figma.com" can't slip through.
+   Returns { provider, label, src, aspect, minHeight, sandbox, allow } | null. */
+const EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox';
+function embedInfoFor(rawUrl){
+  const safe = safeUrl(rawUrl);
+  if(!safe) return null;
+  let u; try { u = new URL(safe); } catch { return null; }
+  const host = u.hostname.toLowerCase().replace(/^www\./,'');
+  const seg = u.pathname.split('/').filter(Boolean);
+
+  // Figma — file / design / proto / board. Keep the whole query string: it
+  // carries node-id, page-id, scaling and hide-ui, which are the difference
+  // between a usable frame and an unreadable full-canvas view.
+  if(host==='figma.com' || host.endsWith('.figma.com')){
+    if(['file','design','proto','board','slides'].includes(seg[0])){
+      const embed = new URL(`https://embed.figma.com${u.pathname}${u.search}`);
+      embed.searchParams.set('embed-host', 'reciprocal-dashboard');
+      return { provider:'figma', label:'Figma', src:embed.href, aspect:'16 / 10', sandbox:EMBED_SANDBOX, allow:'fullscreen; clipboard-write' };
+    }
+    return null;
+  }
+  // Loom — /share/<id>. The ?sid= is a share token, not needed to embed.
+  if(host==='loom.com'){
+    if(seg[0]==='share' && seg[1]) return { provider:'loom', label:'Loom', src:`https://www.loom.com/embed/${encodeURIComponent(seg[1])}`, aspect:'16 / 9', sandbox:EMBED_SANDBOX, allow:'fullscreen' };
+    return null;
+  }
+  // Miro — /app/board/<id>/
+  if(host==='miro.com'){
+    // seg[2] came out of URL.pathname so it's already a legal path segment —
+    // don't re-encode it, Miro board ids end in "=" and Miro's own embed URLs
+    // keep that literal.
+    if(seg[0]==='app' && seg[1]==='board' && seg[2]) return { provider:'miro', label:'Miro', src:`https://miro.com/app/live-embed/${seg[2]}/?embedMode=view_only_without_ui`, aspect:'16 / 10', sandbox:EMBED_SANDBOX, allow:'fullscreen' };
+    return null;
+  }
+  // Google Drive PDFs — /file/d/<id>/... → /preview
+  if(host==='drive.google.com'){
+    const i = seg.indexOf('d');
+    if(seg[0]==='file' && i>-1 && seg[i+1]) return { provider:'pdf', label:'PDF', src:`https://drive.google.com/file/d/${encodeURIComponent(seg[i+1])}/preview`, minHeight:640, sandbox:'', allow:'' };
+    return null;
+  }
+  // A direct .pdf on any https host — the browser's own viewer handles it.
+  if(u.pathname.toLowerCase().endsWith('.pdf')){
+    return { provider:'pdf', label:'PDF', src:`${safe}#toolbar=0&view=FitH`, minHeight:640, sandbox:'', allow:'' };
+  }
+  // Everything else (notably Dropbox, which refuses framing on most paths)
+  // deliberately falls through to a plain link card.
+  return null;
 }
 function fmtH(n){ const v=Math.round(n*100)/100; return (v%1===0? v.toFixed(0):v.toFixed(2).replace(/0$/,''))+'h'; }
 function iso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -1552,9 +1615,17 @@ function openClientEditModal(clientId){
     const dash_logo_url = $('#ec_logourl').value.trim() || null;
     const dash_contact_email = $('#ec_contactemail').value.trim() || null;
     const dash_website_url = $('#ec_websiteurl').value.trim() || null;
+    const dash_booking_url = $('#ec_bookingurl').value.trim() || null;
+    const dash_request_url = $('#ec_requesturl').value.trim() || null;
+    const dash_message_url = $('#ec_messageurl').value.trim() || null;
+    // These three end up as buttons on a client-facing page, so reject a
+    // non-https URL here rather than storing something safeUrl() will drop.
+    for(const [val,label] of [[dash_booking_url,'Book a call'],[dash_request_url,'Request form'],[dash_message_url,'Message']]){
+      if(val && !safeUrl(val)){ toast(`${label} link must be a full https:// address`); return; }
+    }
 
-    const { error: updErr } = await db.from('rs_clients').update({ color, is_retainer, retainer_hours, renewal_day, miro_link_external, miro_link_internal, slug:newSlug, dash_accent_color, dash_logo_text, dash_greeting, dash_logo_url, dash_contact_email, dash_website_url }).eq('id', c.id);
-    if(updErr){ toast('Save failed'); console.error(updErr); return; }
+    const { error: updErr } = await db.from('rs_clients').update({ color, is_retainer, retainer_hours, renewal_day, miro_link_external, miro_link_internal, slug:newSlug, dash_accent_color, dash_logo_text, dash_greeting, dash_logo_url, dash_contact_email, dash_website_url, dash_booking_url, dash_request_url, dash_message_url }).eq('id', c.id);
+    if(updErr){ toast(updErr.code==='PGRST204'?'Run migration v27 to enable quick-action links':'Save failed'); console.error(updErr); return; }
     if(turningOn){
       await db.from('rs_client_settings_history').insert({ client_id:c.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     } else if(changed){
@@ -4196,24 +4267,30 @@ function renderProjDetail(){
    seed name "Deck projects" isn't guaranteed to survive a rename (e.g. a
    project type renamed to just "Deck") — match loosely on "deck" instead of
    the exact seed string so this extra field keeps working after a rename. */
+/* Project type names are user-editable in Settings, so every per-type branch
+   must tolerate a rename — matching with `===` against the v1 seed name is
+   what silently killed the Deck "Number of slides" field once already. */
 function isDeckType(type){ return (type||'').toLowerCase().includes('deck'); }
+function isWebsiteType(type){ const t=(type||'').toLowerCase(); return t.includes('website')||t.includes('web site')||t==='web'; }
+function isBrandingType(type){ return (type||'').toLowerCase().includes('brand'); }
+function isAnimationType(type){ return (type||'').toLowerCase().includes('anim'); }
 function projExtraFieldHtml(type, details){
   details = details || {};
-  if(type==='Website') return `<div><label>Number of pages</label><input type="number" min="1" id="pj_extra_pages" value="${details.pages||''}"></div><div><label>Number of sections</label><input type="number" min="1" id="pj_extra_sections" value="${details.sections||''}"></div>`;
-  if(type==='Branding') return `<div><label>Scope</label><select id="pj_extra">${BRANDING_SCOPES.map(s=>`<option value="${s}" ${details.scope===s?'selected':''}>${s}</option>`).join('')}</select></div>`;
-  if(type==='Animations') return `<div><label>Length (seconds)</label><input type="number" min="1" id="pj_extra" value="${details.seconds||''}"></div>`;
+  if(isWebsiteType(type)) return `<div><label>Number of pages</label><input type="number" min="1" id="pj_extra_pages" value="${details.pages||''}"></div><div><label>Number of sections</label><input type="number" min="1" id="pj_extra_sections" value="${details.sections||''}"></div>`;
+  if(isBrandingType(type)) return `<div><label>Scope</label><select id="pj_extra">${BRANDING_SCOPES.map(s=>`<option value="${s}" ${details.scope===s?'selected':''}>${s}</option>`).join('')}</select></div>`;
+  if(isAnimationType(type)) return `<div><label>Length (seconds)</label><input type="number" min="1" id="pj_extra" value="${details.seconds||''}"></div>`;
   if(isDeckType(type)) return `<div><label>Number of slides</label><input type="number" min="1" id="pj_extra" value="${details.slides||''}"></div>`;
   return '<div></div>';
 }
 function projExtraFieldValue(type){
-  if(type==='Website'){
+  if(isWebsiteType(type)){
     const pagesEl = document.getElementById('pj_extra_pages'), sectionsEl = document.getElementById('pj_extra_sections');
     return { pages: pagesEl&&pagesEl.value?+pagesEl.value:null, sections: sectionsEl&&sectionsEl.value?+sectionsEl.value:null };
   }
   const el = document.getElementById('pj_extra');
   if(!el) return {};
-  if(type==='Branding') return { scope: el.value || null };
-  if(type==='Animations') return { seconds: el.value?+el.value:null };
+  if(isBrandingType(type)) return { scope: el.value || null };
+  if(isAnimationType(type)) return { seconds: el.value?+el.value:null };
   if(isDeckType(type)) return { slides: el.value?+el.value:null };
   return {};
 }
@@ -4240,12 +4317,12 @@ function reviewWindowLabel(dueDateStr, reviewDays){
 
 function projectDetailsSummary(p){
   const d = p.details || {};
-  if(p.project_type==='Website'){
+  if(isWebsiteType(p.project_type)){
     const parts = [d.pages? `${d.pages} page${d.pages===1?'':'s'}`:null, d.sections? `${d.sections} section${d.sections===1?'':'s'}`:null].filter(Boolean);
     return parts.length? parts.join(' · ') : null;
   }
-  if(p.project_type==='Branding') return d.scope ? `${d.scope} branding` : null;
-  if(p.project_type==='Animations') return d.seconds ? `${d.seconds}s length` : null;
+  if(isBrandingType(p.project_type)) return d.scope ? `${d.scope} branding` : null;
+  if(isAnimationType(p.project_type)) return d.seconds ? `${d.seconds}s length` : null;
   if(isDeckType(p.project_type)) return d.slides ? `${d.slides} slide${d.slides===1?'':'s'}` : null;
   return null;
 }
@@ -4370,9 +4447,9 @@ function buildDiscordCard(project){
   lines.push(`**${project.name}** — ${c.name}`);
   let typeLine = `Type: ${project.project_type}`;
   const d = project.details||{};
-  if(project.project_type==='Website' && (d.pages||d.sections)) typeLine += ` · ${[d.pages?d.pages+' pages':null, d.sections?d.sections+' sections':null].filter(Boolean).join(', ')}`;
-  if(project.project_type==='Branding' && d.scope) typeLine += ` (${d.scope})`;
-  if(project.project_type==='Animations' && d.seconds) typeLine += ` · ${d.seconds}s`;
+  if(isWebsiteType(project.project_type) && (d.pages||d.sections)) typeLine += ` · ${[d.pages?d.pages+' pages':null, d.sections?d.sections+' sections':null].filter(Boolean).join(', ')}`;
+  if(isBrandingType(project.project_type) && d.scope) typeLine += ` (${d.scope})`;
+  if(isAnimationType(project.project_type) && d.seconds) typeLine += ` · ${d.seconds}s`;
   if(isDeckType(project.project_type) && d.slides) typeLine += ` · ${d.slides} slides`;
   if(project.label) typeLine += ` · 🏷️ ${project.label}`;
   lines.push(typeLine);
@@ -5387,7 +5464,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.33.0';
+const APP_VERSION = '0.35.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6012,7 +6089,12 @@ async function bootPublicDashboard(slug, isAdmin){
 function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks){
   retainerTasks = retainerTasks || [];
   const now = new Date();
-  const pub = { projectId: projects[0]?.id || null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
+  // openEmbeds survives paint() so an opened preview isn't collapsed by an
+  // unrelated repaint (stage click, tab switch, calendar nav). It can't
+  // preserve the frame's internal scroll position — paint() rebuilds
+  // document.body wholesale, so the iframe genuinely reloads. Splitting
+  // paint() into per-zone repaints would fix that properly; out of scope here.
+  const pub = { projectId: projects[0]?.id || null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth(), openEmbeds: new Set() };
   const accent = client.dash_accent_color || '#2383e2';
   const initials = (client.name||'?').charAt(0).toUpperCase();
   // Both are stored per-client and end up in an src/href, so they go through
@@ -6051,9 +6133,13 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   }
   function pdNextMilestoneHtml(next){
     if(!next) return '';
-    const rel = next.dateStr ? daysUntilLabel(next.dateStr+'T00:00') : null;
+    const natural = next.dateStr ? fmtDateNatural(next.dateStr) : null;
+    let rel = next.dateStr ? daysUntilLabel(next.dateStr+'T00:00') : null;
+    // fmtDateNatural already says "Today"/"Tomorrow", so don't append the
+    // relative label when it would just repeat it ("Today · today").
+    if(rel && natural && rel.toLowerCase() === natural.toLowerCase()) rel = null;
     const when = next.dateStr
-      ? `<span style="font-size:12.5px;opacity:.8">${esc(fmtDateNatural(next.dateStr))}${rel?` · ${esc(rel)}`:''}</span>`
+      ? `<span style="font-size:12.5px;opacity:.8">${esc(natural)}${rel?` · ${esc(rel)}`:''}</span>`
       : (next.dateHidden && isAdmin ? `<span style="font-size:12.5px;font-style:italic;opacity:.7">(date hidden from client)</span>` : '');
     return `<div class="pd-next" style="background:${accent}14;color:${accent}">
       <span class="pd-next-label">Next up</span>
@@ -6096,12 +6182,67 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   }
 
   function stagesFor(projectId){ return allStages.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
-  function catsFor(stageId){ return allCategories.filter(c=>c.stage_id===stageId).sort((a,b)=>a.position-b.position); }
-  function projectCatsFor(projectId){ return allCategories.filter(c=>c.project_id===projectId && !c.stage_id).sort((a,b)=>a.position-b.position); }
-  /* Client-scoped categories (v27) — attached to the client directly rather
-     than to a stage or project. The only kind a retainer client with no
-     projects can have, and they show on every project tab. */
-  function clientCatsFor(){ return allCategories.filter(c=>!c.stage_id && !c.project_id).sort((a,b)=>a.position-b.position); }
+  /* Categories for one dashboard zone, across every scope that applies to what
+     the client is currently looking at: the viewed stage, the current project,
+     and the client itself. Anything without a zone counts as 'general' so the
+     pre-v27 rows keep rendering where they always did. */
+  function catsForZone(zone, projectId, stageId){
+    return allCategories
+      .filter(c=> (c.zone||'general')===zone)
+      .filter(c=> (stageId && c.stage_id===stageId) || (projectId && c.project_id===projectId && !c.stage_id) || (!c.stage_id && !c.project_id))
+      .sort((a,b)=>(a.position||0)-(b.position||0));
+  }
+
+  /* One proofing link. Nothing auto-loads: an iframe only appears once the
+     client asks for it, which keeps the page weightless no matter how many
+     proofs exist, avoids loading third-party frames unasked, and limits the
+     cost of paint() tearing the whole body down on every repaint.
+     The "Open in …" anchor is a permanent part of the card rather than a
+     failure fallback — a provider that refuses framing (X-Frame-Options can't
+     be detected reliably from JS: no error event fires and the frame is
+     cross-origin) then degrades to exactly today's working experience. */
+  function pdEmbedCardHtml(l){
+    const href = safeUrl(l.url);
+    const info = (l.embed !== false) ? embedInfoFor(l.url) : null;
+    const icon = `<span style="color:${accent};flex:none">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>`;
+    if(!href){
+      return isAdmin ? `<div class="pd-embed-card"><div class="pd-embed-head">${icon}
+        <span style="flex:1;min-width:0"><span class="pd-embed-name">${esc(l.label)}</span>
+        <span style="display:block;font-size:12px;color:var(--red);margin-top:2px">Not shown to the client — the URL must start with https://</span></span>
+        <button class="btn small ghost" data-editlink="${l.id}">Edit</button></div></div>` : '';
+    }
+    const open = pub.openEmbeds.has(l.id);
+    const desc = l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:'';
+    const frame = (open && info) ? `<div class="pd-embed-frame">
+        <iframe src="${esc(info.src)}" title="${esc(l.label)} preview" loading="lazy"
+          referrerpolicy="strict-origin-when-cross-origin"
+          ${info.allow? `allow="${esc(info.allow)}" allowfullscreen`:''}
+          sandbox="${esc(info.sandbox)}"
+          style="${info.aspect? `aspect-ratio:${info.aspect}`:`min-height:${info.minHeight||640}px`}"></iframe>
+      </div>
+      <div class="pd-embed-foot">Trouble viewing? <a href="${esc(href)}" target="_blank" rel="noopener noreferrer">Open in ${esc(info.label)} ↗</a></div>` : '';
+    return `<div class="pd-embed-card">
+      <div class="pd-embed-head">
+        ${icon}
+        <span style="flex:1;min-width:0"><span class="pd-embed-name">${esc(l.label)}</span>${desc}</span>
+        ${info? `<button type="button" class="btn small ghost" data-embedtoggle="${l.id}">${open?'Hide preview':'Show preview'}</button>`:''}
+        <a class="btn small ghost" href="${esc(href)}" target="_blank" rel="noopener noreferrer">Open${info?` in ${esc(info.label)}`:''} ↗</a>
+        ${isAdmin? `<button class="btn small ghost" data-editlink="${l.id}">Edit</button>`:''}
+      </div>
+      ${frame}
+    </div>`;
+  }
+  function proofingBlockHtml(cat){
+    const catLinks = linksFor(cat.id);
+    if(!isAdmin && !catLinks.length) return '';
+    return `<div style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="pd-cat-label" style="margin-bottom:0">${esc(cat.name)}</div>
+        ${isAdmin? `<div style="display:flex;gap:6px"><button class="btn small ghost" data-addlink="${cat.id}">+ Link</button><button class="btn small ghost" data-editcat="${cat.id}">Edit category</button></div>`:''}
+      </div>
+      ${catLinks.map(pdEmbedCardHtml).join('') || (isAdmin? '<div class="empty" style="padding:6px 0">No links yet</div>':'')}
+    </div>`;
+  }
   function linksFor(categoryId){ return allLinks.filter(l=>l.category_id===categoryId).sort((a,b)=>a.position-b.position); }
 
   function categoryBlockHtml(cat){
@@ -6220,27 +6361,73 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     </div>` : '<div class="empty" style="padding:20px 0">No project stages yet.</div>';
     const nextMilestone = pdNextMilestone(stages, upcomingTasks);
 
-    const stageCatsList = viewedStage ? catsFor(viewedStage.id) : [];
-    const assetsBody = stageCatsList.map(categoryBlockHtml).join('');
-    const assetsHtml = viewedStage
-      ? (assetsBody || (isAdmin? '' : `<div class="empty" style="padding:20px 0">Nothing shared for this stage yet.</div>`))
-        + (isAdmin? `<button class="btn small ghost" data-addcat="${viewedStage.id}">+ Category</button>` : '')
+    const projId = proj ? proj.id : null;
+    const stageId = viewedStage ? viewedStage.id : null;
+    // Admin "+ Category" for a zone: scope to the viewed stage for general
+    // (that's where per-stage files belong), otherwise to the project, and to
+    // the client when there's no project at all (retainer-only).
+    const addCatBtn = (zone)=> isAdmin
+      ? `<button class="btn small ghost" data-addzonecat="${zone}" data-scopestage="${zone==='general'&&stageId?stageId:''}" data-scopeproj="${projId||''}">+ Category</button>`
       : '';
 
-    // Project-scoped general assets, plus (v27) client-scoped ones — the
-    // latter are the only kind a retainer client with no projects can own.
-    const generalCats = [...(proj ? projectCatsFor(proj.id) : []), ...clientCatsFor()];
+    /* ---- Zone 2: Creative engine & proofing ---- */
+    // High-level scope, sourced from the same rs_projects.details the internal
+    // app uses — not a second copy that can drift.
+    const briefBits = proj ? [
+      projectDetailsSummary(proj),
+      proj.project_type,
+      proj.label,
+      viewedStage && viewedStage.due_date && !viewedStage.hide_due_date_from_client ? reviewWindowLabel(viewedStage.due_date, proj.review_days) : null
+    ].filter(Boolean) : [];
+    const briefCats = catsForZone('brief', projId, stageId);
+    const briefLinks = briefCats.map(categoryBlockHtml).join('');
+    const briefHtml = (briefBits.length || briefLinks || isAdmin) ? `
+      <div class="pd-cat-label">Creative brief</div>
+      ${briefBits.length? `<div class="pd-brief">${briefBits.map(b=>`<span class="pd-brief-item">${esc(b)}</span>`).join('')}</div>`:''}
+      ${briefLinks}
+      ${isAdmin? addCatBtn('brief'):''}` : '';
+
+    const proofCats = catsForZone('proofing', projId, stageId);
+    const proofBody = proofCats.map(proofingBlockHtml).join('');
+    const proofHtml = (proofBody || isAdmin) ? `
+      <div class="pd-cat-label" style="margin-top:${briefHtml?'22px':'0'}">Proofing</div>
+      ${proofBody || (isAdmin? '<div class="empty" style="padding:6px 0">No proofs shared yet.</div>':'')}
+      ${isAdmin? addCatBtn('proofing'):''}` : '';
+
+    const generalCats = catsForZone('general', projId, stageId);
     const generalBody = generalCats.map(categoryBlockHtml).join('');
-    const generalAddBtn = isAdmin
-      ? `<button class="btn small ghost" data-addgeneralcat="${proj?proj.id:''}">+ Category</button>`
+    const filesHtml = (generalBody || isAdmin) ? `
+      <div class="pd-cat-label" style="margin-top:${(briefHtml||proofHtml)?'22px':'0'}">${viewedStage? esc(viewedStage.name)+' — files & links' : 'Files & links'}</div>
+      ${generalBody || (isAdmin? '<div class="empty" style="padding:6px 0">Nothing shared yet.</div>':'')}
+      ${isAdmin? addCatBtn('general'):''}` : '';
+
+    const zone2Body = briefHtml + proofHtml + filesHtml;
+    const zone2Html = zone2Body.trim() ? pdZoneHtml(2, 'Creative engine & proofing', null, zone2Body) : '';
+
+    /* ---- Zone 3: Vault ---- */
+    const vaultCats = catsForZone('vault', projId, stageId);
+    const vaultBody = vaultCats.map(cat=>{
+      const catLinks = linksFor(cat.id);
+      if(!isAdmin && !catLinks.length) return '';
+      return `<div style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="pd-cat-label" style="margin-bottom:0">${esc(cat.name)}</div>
+          ${isAdmin? `<div style="display:flex;gap:6px"><button class="btn small ghost" data-addlink="${cat.id}">+ Link</button><button class="btn small ghost" data-editcat="${cat.id}">Edit category</button></div>`:''}
+        </div>
+        <div class="pd-vault-grid">${catLinks.map(l=>{
+          const href = safeUrl(l.url);
+          if(!href) return isAdmin? `<div class="pd-link-card"><span style="color:var(--red);font-size:12px">${esc(l.label)} — needs an https:// URL</span></div>`:'';
+          return `<a class="pd-link-card" href="${esc(href)}" target="_blank" rel="noopener noreferrer">
+            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
+            <span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span>
+            ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}</span>
+          </a>`;
+        }).join('') || (isAdmin? '<div class="empty" style="padding:6px 0">No files yet</div>':'')}</div>
+      </div>`;
+    }).join('');
+    const zone3Html = (vaultBody || isAdmin)
+      ? pdZoneHtml(3, 'Vault', 'Final delivered files — your high-res handover.', vaultBody || '<div class="empty" style="padding:6px 0">Nothing delivered yet.</div>', addCatBtn('vault'))
       : '';
-    const generalAssetsHtml = (generalBody || isAdmin) ? `<div class="card" style="margin-bottom:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">General assets</div>
-        ${generalAddBtn}
-      </div>
-      ${generalBody || (isAdmin? '<div class="empty">No general assets yet.</div>' : '')}
-    </div>` : '';
 
     document.body.innerHTML = `
       <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink)">
@@ -6268,12 +6455,8 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
               + (projects.length ? pdStepperHtml(stages) : retainerPulseHtml)
               + pdQuickActionsHtml(),
               projects.length ? `<span style="font-size:13px;font-weight:700;color:${accent}">${pct}%</span>` : '')}
-          ${generalAssetsHtml}
-          ${projects.length ? `
-          <div class="card">
-            <div style="font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">${viewedStage? esc(viewedStage.name) : 'Files & links'}</div>
-            ${assetsHtml}
-          </div>` : ''}
+          ${zone2Html}
+          ${zone3Html}
         </div>
         <div style="display:flex;align-items:center;justify-content:center;padding:20px;opacity:.5;font-size:12px;color:var(--muted)">Reciprocal Space</div>
       </div>
@@ -6290,16 +6473,27 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       paint();
     }));
 
+    // Client-side too: the preview toggle is not an admin-only affordance.
+    document.querySelectorAll('[data-embedtoggle]').forEach(el=>el.addEventListener('click', ()=>{
+      const id = el.dataset.embedtoggle;
+      if(pub.openEmbeds.has(id)) pub.openEmbeds.delete(id); else pub.openEmbeds.add(id);
+      paint();
+    }));
+
     if(isAdmin){
       const copyBtn = document.getElementById('pdCopyClient');
       if(copyBtn) copyBtn.addEventListener('click', ()=>{
         const url = `${window.location.origin}${window.location.pathname}?client=${client.slug}`;
         navigator.clipboard?.writeText(url).then(()=> toast('Client link copied')).catch(()=> toast(url));
       });
-      document.querySelectorAll('[data-addcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ stageId: el.dataset.addcat, clientId: client.id }, reload)));
-      // General assets: scope to the current project when there is one, else
-      // straight to the client (the retainer-with-no-projects case).
-      document.querySelectorAll('[data-addgeneralcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ projectId: el.dataset.addgeneralcat || null, clientId: client.id }, reload)));
+      // One handler for all four zones. Scope falls back project → client, so
+      // a retainer client with no projects still gets a usable category.
+      document.querySelectorAll('[data-addzonecat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({
+        zone: el.dataset.addzonecat,
+        stageId: el.dataset.scopestage || null,
+        projectId: el.dataset.scopestage ? null : (el.dataset.scopeproj || null),
+        clientId: client.id
+      }, reload)));
       document.querySelectorAll('[data-editcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ categoryId: el.dataset.editcat }, reload)));
       document.querySelectorAll('[data-addlink]').forEach(el=>el.addEventListener('click', ()=> openStageLinkModal(el.dataset.addlink, null, reload)));
       document.querySelectorAll('[data-editlink]').forEach(el=>{
