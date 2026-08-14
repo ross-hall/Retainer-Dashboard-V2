@@ -576,19 +576,22 @@
   .pd-material-open{width:100%;justify-content:center;margin-top:4px;padding:9px 14px;font-size:13px}
   .pd-material-edit{position:absolute;top:8px;right:8px;padding:2px 7px;font-size:10px}
 
-  /* Combined left-hand nav (projects + nested stages, or Tasks for a
-     retainer client) — Notion-style menu with a vertical rule separating
-     it from the content column. border-right (not the grid gap) carries
-     the line so it reaches full column height under align-items:stretch. */
+  /* Combined left-hand nav (projects + their stages, always expanded, or
+     Tasks for a retainer client) — Notion-style menu with a vertical rule
+     separating it from the content column. border-right (not the grid gap)
+     carries the line so it reaches full column height under
+     align-items:stretch. */
   .pd-nav-col{border-right:1px solid var(--line);padding-right:20px}
-  .pd-nav-group{display:flex;align-items:center;gap:8px;width:100%;padding:9px 8px;border:none;background:transparent;border-radius:9px;cursor:pointer;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;color:var(--ink);text-align:left}
+  .pd-nav-title{font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin-bottom:5px}
+  .pd-nav-sub{font-size:12px;line-height:1.5;color:var(--muted);margin:0 0 22px}
+  .pd-nav-project{margin-bottom:16px}
+  .pd-nav-project:last-child{margin-bottom:0}
+  .pd-nav-group{display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;border-radius:9px;cursor:pointer;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;color:var(--ink);text-align:left}
   .pd-nav-group:hover{background:var(--track)}
   .pd-nav-group.active{background:var(--track)}
-  .pd-nav-chevron{flex:none;transition:transform .15s}
-  .pd-nav-chevron.open{transform:rotate(90deg)}
+  .pd-nav-group-icon{flex:none;display:flex;color:var(--muted)}
   .pd-nav-group-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pd-nav-group-pct{font-size:11.5px;font-weight:700;color:var(--muted)}
-  .pd-nav-substages{margin:2px 0 10px 16px;padding-left:12px;border-left:1px solid var(--line-soft);display:flex;flex-direction:column;gap:1px}
   .pd-divider{border-top:1px solid var(--line);margin:26px 0}
 
   @media(max-width:900px){
@@ -675,7 +678,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.38.0</div>
+    <div id="versionBadge" class="version-badge">v0.39.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -802,7 +805,13 @@ function safeUrl(u){
 const EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox';
 /* Shown near the top of every client dashboard so a first-time visitor knows
    what they're looking at without being told separately. */
-const DASH_EXPLAINER = "This is your live project dashboard. It updates as we work, so it's always the current picture — follow progress on the left, and review proofs, briefs and final files on the right.";
+const DASH_EXPLAINER = "Your live project portal, updated as we work — browse stages here on the left, and review materials on the right.";
+/* Animation projects only — a reference PDF (how to leave good feedback,
+   safe zones, export specs, etc.) linked from a button in the page header.
+   Paste the doc's https:// URL here once it's hosted somewhere; the button
+   stays hidden (for admin and client alike) until this resolves through
+   safeUrl, so there's no dead link in the meantime. */
+const ANIMATION_CHEATSHEET_URL = '';
 function embedInfoFor(rawUrl){
   const safe = safeUrl(rawUrl);
   if(!safe) return null;
@@ -5487,7 +5496,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.38.0';
+const APP_VERSION = '0.39.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6120,14 +6129,21 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true); }
 
-  /* Vertical stage list — rendered inside the combined nav tree (pdNavHtml,
-     below) either directly (single-project client) or nested under its
-     project's expandable group. Reuses .pd-stage-row (shared with the
-     retainer task list) so the two rails look identical — and so this
-     can't drift from it. Rendered with no card wrapper: the only framed
-     surface on the page is the content-materials column. */
-  function pdStageListHtml(stages){
-    if(!stages.length) return `<div class="empty" style="padding:12px 0">No stages yet.</div>`;
+  /* Vertical stage list — rendered flush (no indent) directly under each
+     project's group header in the combined nav tree (pdNavHtml, below);
+     every project's list is always shown, there's no collapse/expand any
+     more. Reuses .pd-stage-row (shared with the retainer task list) so the
+     two rails look identical — and so this can't drift from it. Rendered
+     with no card wrapper: the only framed surface on the page is the
+     content-materials column. Carries the owning project's id on each row
+     (data-pdstageproj) so clicking a stage from any project also switches
+     pub.projectId, keeping the content column (materials/pills/title) in
+     sync with whichever stage was clicked. The currently-highlighted row
+     (accent background/text) is pub.viewedStageId, which defaults to the
+     first incomplete stage — i.e. "the stage we're on" — until the admin
+     or client clicks a different one. */
+  function pdStageListHtml(stages, projectId){
+    if(!stages.length) return `<div class="empty" style="padding:6px 0 6px 2px;font-size:12.5px">No stages yet.</div>`;
     return stages.map((s,i)=>{
       const done = stageStatus(s.id)==='Complete';
       const current = s.id===pub.viewedStageId;
@@ -6135,7 +6151,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       const dateLabel = hidden
         ? (isAdmin? '<span style="font-style:italic">Hidden</span>' : '')
         : (s.due_date? esc(fmtDate(new Date(s.due_date+'T00:00'))) : '');
-      return `<div class="pd-stage-row" data-pdstage="${s.id}" style="${current?`background:${accent}14`:''}">
+      return `<div class="pd-stage-row" data-pdstage="${s.id}" data-pdstageproj="${projectId}" style="${current?`background:${accent}14`:''}">
         <div class="pd-stage-dot" style="${done||current?`background:${accent};color:#fff`:''}">${done?'✓':i+1}</div>
         <div class="pd-stage-label" style="${current?`color:${accent};font-weight:600`:''}">${esc(s.name)}</div>
         ${dateLabel? `<div class="pd-stage-date">${dateLabel}</div>`:''}
@@ -6293,50 +6309,50 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ? `<div class="card" style="margin-top:20px"><div class="pd-section-title">Calendar</div>${calendarHtmlPd(pub.calY, pub.calM)}</div>`
       : '';
 
-    /* Combined left-hand nav — projects and their stages used to be a
-       horizontal tab strip plus a separate stage list; now they're one
-       tree, project (by type, matching the old tab label) as an
-       expandable group with its stages nested underneath. Only the active
-       project's stages render (single-expand, driven by pub.projectId —
-       same click target/attribute the tabs used, data-pdtab), so no new
-       expand/collapse state is needed. A single-project client skips the
-       group header entirely, since there's nothing to expand between.
-       Retainer clients (no rs_projects rows) fall back to the Tasks rail. */
+    /* Combined left-hand nav. Every project is always expanded — no
+       accordion any more — each rendered as a group header (type icon +
+       label + completion %) with its stages listed flush underneath, no
+       indent. Clicking a group header or one of its stages both select
+       that project as pub.projectId (so the content column's title/pills/
+       materials follow it) and, for a stage click, set pub.viewedStageId —
+       which is what actually gets the accent highlight, i.e. "the stage
+       we're on" (defaults to the first incomplete stage on load). Retainer
+       clients (no rs_projects rows) fall back to the Tasks rail instead. */
     function pdNavHtml(){
-      if(!projects.length) return `<div class="pd-section-title">Tasks</div>${retainerRailHtml}`;
-      if(projects.length===1){
-        return `<div class="pd-section-title" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
-          <span>Stages</span>
-          ${stages.length? `<span style="font-size:13px;font-weight:700;color:${accent}">${Math.round(stages.filter(s=>stageStatus(s.id)==='Complete').length/stages.length*100)}%</span>`:''}
-        </div>${pdStageListHtml(stages)}`;
-      }
-      return `<div class="pd-section-title">Projects</div>
-        <div class="pd-nav-tree">${projects.map(p=>{
-          const active = p.id===pub.projectId;
-          const pStages = stagesFor(p.id);
-          const pPct = pStages.length? Math.round(pStages.filter(s=>stageStatus(s.id)==='Complete').length/pStages.length*100) : null;
-          return `<button type="button" class="pd-nav-group ${active?'active':''}" data-pdtab="${p.id}" style="${active?`color:${accent}`:''}">
-              <svg class="pd-nav-chevron ${active?'open':''}" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M9 6l6 6-6 6"/></svg>
+      const portalHeader = `<div class="pd-nav-title">${esc(client.name)} Client Portal</div>
+        <p class="pd-nav-sub">${esc(DASH_EXPLAINER)}</p>`;
+      if(!projects.length) return `${portalHeader}<div class="pd-section-title">Tasks</div>${retainerRailHtml}`;
+      return `${portalHeader}<div class="pd-nav-tree">${projects.map(p=>{
+        const active = p.id===pub.projectId;
+        const pStages = stagesFor(p.id);
+        const pPct = pStages.length? Math.round(pStages.filter(s=>stageStatus(s.id)==='Complete').length/pStages.length*100) : null;
+        return `<div class="pd-nav-project">
+            <button type="button" class="pd-nav-group ${active?'active':''}" data-pdtab="${p.id}" style="${active?`color:${accent}`:''}">
+              <span class="pd-nav-group-icon" style="${active?`color:${accent}`:''}">${projectTypeIconHtml(p.project_type, 15)}</span>
               <span class="pd-nav-group-label">${esc(p.project_type)}</span>
               ${pPct!==null? `<span class="pd-nav-group-pct">${pPct}%</span>`:''}
             </button>
-            ${active? `<div class="pd-nav-substages">${pdStageListHtml(pStages)}</div>`:''}`;
-        }).join('')}</div>`;
+            ${pdStageListHtml(pStages, p.id)}
+          </div>`;
+      }).join('')}</div>`;
     }
 
     const projId = proj ? proj.id : null;
     const stageId = viewedStage ? viewedStage.id : null;
 
-    // Scope of the project, as pills at the top of the page — sourced from the
-    // same rs_projects.details the internal app uses, not a second copy.
-    const briefBits = proj ? [
-      projectDetailsSummary(proj),
-      proj.project_type,
-      proj.label,
-      viewedStage && viewedStage.due_date && !viewedStage.hide_due_date_from_client ? reviewWindowLabel(viewedStage.due_date, proj.review_days) : null
-    ].filter(Boolean) : [];
-    const scopePillsHtml = briefBits.length
-      ? `<div class="pd-brief" style="margin:8px 0 0">${briefBits.map(b=>`<span class="pd-brief-item">${esc(b)}</span>`).join('')}</div>`
+    // Reference PDF for Animation projects — see ANIMATION_CHEATSHEET_URL's
+    // own comment. Gated on both the project type and a real https URL, so
+    // there's never a dead button for admin or client.
+    const cheatsheetHref = proj && isAnimationType(proj.project_type) ? safeUrl(ANIMATION_CHEATSHEET_URL) : null;
+
+    // Scope pill — just the project's scope figure (e.g. "12 slides",
+    // "60s length"), sourced from the same rs_projects.details the internal
+    // app uses. Type/label/review-window are no longer shown here — the
+    // type now has its own icon+label in the nav, and this is deliberately
+    // just the one number a client actually wants to see.
+    const scopeBit = proj ? projectDetailsSummary(proj) : null;
+    const scopePillsHtml = scopeBit
+      ? `<div class="pd-brief" style="margin:8px 0 0"><span class="pd-brief-item">${esc(scopeBit)}</span></div>`
       : '';
 
     // Stage Materials — every brief/proofing/general/vault link, flattened
@@ -6377,13 +6393,12 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
             <div class="pd-nav-col">${pdNavHtml()}</div>
             <div>
               <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
-                <div style="flex:1;min-width:0">
-                  <h2 style="margin-bottom:0">Hello, ${esc(client.name)}</h2>
-                  ${client.dash_logo_text? `<div class="sub" style="margin:2px 0 0">${esc(client.dash_logo_text)}</div>`:''}
+                <h2 style="margin-bottom:0;flex:1;min-width:0">${proj? esc(proj.project_type) : esc(client.name)}</h2>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <a class="btn small ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener">Reciprocal Space</a>
+                  ${cheatsheetHref? `<a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a>`:''}
                 </div>
-                <a class="btn small ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener">Reciprocal Space</a>
               </div>
-              <p class="sub" style="margin:10px 0 0;max-width:640px">${esc(DASH_EXPLAINER)}</p>
               ${scopePillsHtml}
               ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
               ${pdQuickActionsHtml()}
@@ -6400,7 +6415,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <div class="toast" id="toast"></div>`;
 
     document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; paint(); }));
-    document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; paint(); }));
+    document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; if(el.dataset.pdstageproj) pub.projectId = el.dataset.pdstageproj; paint(); }));
     document.querySelectorAll('[data-calnav]').forEach(el=>el.addEventListener('click', ()=>{
       let m = pub.calM + (+el.dataset.calnav);
       let y = pub.calY;

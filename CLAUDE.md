@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.38.0**
+Current version: **v0.39.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -320,6 +320,18 @@ Font: Inter (unchanged from v0.9.0)
 - **Scope pills' position is unchanged from v0.37.0** (already directly below `DASH_EXPLAINER`, which is what "pills below the introductory text" asked for) — no reorder needed there, only the surrounding section they're nested inside moved.
 - Mobile (`@media(max-width:900px)`): `.pd-nav-col`'s `border-right` swaps to a `border-bottom` so the divider still makes sense once the two columns stack.
 - No schema change. `pdStageListHtml`'s row markup, `pdQuickActionsHtml`'s button logic (booking/request/message), `pdMaterialCardHtml`, `linksForZones`, `ensureMaterialsCategory`, and the retainer Tasks/Calendar rail are all unchanged from v0.37.0 — only the surrounding nav/layout chrome moved.
+
+**What shipped in v0.39.0** (nav gets a portal title + one-line explainer; every project always expanded with a type icon, no more accordion; content header follows the project; pills trimmed to scope only; new Animation cheat-sheet button):
+- **The nav now opens with "{Client Name} Client Portal" (`.pd-nav-title`) plus one short sentence (`.pd-nav-sub`, reusing the `DASH_EXPLAINER` constant, reworded now that it lives inside the menu it's describing)** — this replaced the explainer paragraph that used to sit under the content column's header; it's gone from there entirely, not duplicated.
+- **Removed the single-expand accordion.** Every project in the nav is now always expanded — `pdNavHtml()` no longer branches on `projects.length===1` vs `>1`, it always renders a group header (icon + `project_type` + completion %) with that project's stages listed immediately underneath, for every project, unconditionally. The chevron toggle and the indented `.pd-nav-substages` wrapper are both gone; stages render flush under their group, just spaced by a `.pd-nav-project` wrapper (`margin-bottom`) instead of an indent guide.
+- **Project type icon reuses the app's existing icon system** (`projectTypeIconHtml`/`PROJECT_TYPE_ICONS`, `index.html:1811` — already used elsewhere internally) rather than inventing a second one; this file matches by exact type name with a generic-folder fallback for anything renamed or custom, so a project type like "Deck" (renamed from the v1 seed "Deck projects") shows the fallback icon, not a broken one — consistent with how the rest of the app already treats that map, not a new gap.
+- **Clicking any stage now also selects its owning project** — `pdStageListHtml(stages, projectId)` stamps `data-pdstageproj` on every row, and the stage click handler sets both `pub.viewedStageId` and `pub.projectId` from it. This matters now that every project's stages are visible at once: clicking a stage in a project that wasn't previously "active" has to bring the content column (title/pills/materials) along with it, not just move the highlight.
+- **"The stage we're on" is still `pub.viewedStageId`**, unchanged from v0.38.0 — it already defaults to the first incomplete stage on load, so no new "current stage" concept was needed to satisfy highlighting it; only the clicking/syncing above is new.
+- **Content column header is now the project's title, not a greeting** — `proj ? proj.project_type : client.name` (client name is the retainer/no-project fallback, since there's no project to title it with). `client.dash_logo_text` is no longer rendered anywhere on this page (still stored/editable, just unused, same pattern as `dash_logo_url` from v0.36.0).
+- **Scope pills trimmed to exactly one pill**, just `projectDetailsSummary(proj)` (e.g. "60s length", "12 slides") — `project_type`, `label`, and the review-window pill are gone from here now that the type has its own icon+label in the nav and the review window wasn't asked for.
+- **Removed the admin-only "No quick actions set…" hint** — already done in v0.38.0, unaffected by this version.
+- **New "Animation cheat sheet" button**, far-right of the header row (after "Reciprocal Space", so it's the true rightmost element) — gated on both `isAnimationType(proj.project_type)` and a real URL: `ANIMATION_CHEATSHEET_URL` (`index.html:814`, next to `DASH_EXPLAINER`) is currently `''`, so the button renders for nobody, admin included, until a real `https://` PDF URL is pasted into that one constant. Global (not per-client) by design — it's a reference doc the team maintains, not client-specific content, so it doesn't need a DB column or a Settings field.
+- No schema change. `pdMaterialCardHtml`, `linksForZones`, `ensureMaterialsCategory`, `pdQuickActionsHtml`, the retainer Tasks/Calendar rail, and `.pd-divider` section dividers are all unchanged from v0.38.0.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
