@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.36.0**
+Current version: **v0.37.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -302,6 +302,15 @@ Font: Inter (unchanged from v0.9.0)
 - **Retainer clients**: the task timeline moves into the same left rail (`retainerRailHtml`, no card), and the calendar sits in its own card below the content column (`retainerCalendarHtml`) rather than a `300px/1fr` grid nested inside a zone card. `#pdRetainerGrid` is gone; the responsive breakpoint is now a single `#pdMainGrid` rule at `900px` (rail collapses above content) alongside the existing `760px` calendar-chip rule.
 - **Every link is still its own bordered card** — `.pd-link-card` (brief/vault links) and `.pd-embed-card` (proofing links) are unchanged; only their container lost its wrapping frame, which is exactly the "one outer frame, per-link cards inside it" shape that was asked for.
 - No schema change. `pct`, `nextMilestone`, `pdQuickActionsHtml`, `pdNextMilestoneHtml`, `embedInfoFor`, `catsForZone`, `pub.openEmbeds` are all unchanged from v0.35.0 — only the surrounding chrome moved.
+
+**What shipped in v0.37.0** (Stage Materials simplified to one flat card grid, per explicit user direction — supersedes the multi-section content card from v0.35.0–v0.36.0):
+- **Every link — brief docs, proofs, working files, final delivery — is now one uniform card** (`pdMaterialCardHtml`): icon on top, title, optional description, one big "Open ↗" button. `embedInfoFor` is still consulted, but only to label the button ("Open in Figma ↗") — nothing embeds inline any more. The click-to-load iframe/`pub.openEmbeds` machinery from v0.35.0 is gone entirely (`pdEmbedCardHtml`, `.pd-embed-*` CSS all removed) along with the per-category grouping (`categoryBlockHtml`/`proofingBlockHtml` removed) — general/proofing/brief/vault are now indistinguishable to a client, merged by `linksForZones(MATERIAL_ZONES, projectId, stageId)` into one `.pd-materials-grid` under a single "Stage Materials" heading.
+- **New "Meeting Notes" section** — a second, separate flat grid below Stage Materials, same card style, backed by a new `zone='notes'` value (`outputs/v28_meeting_notes_zone.sql`, extends the `rs_stage_categories_zone_check` constraint). Degrades gracefully pre-migration: `ensureMaterialsCategory` catches the check-constraint violation (`23514`) and toasts "Run migration v28…" rather than failing silently.
+- **Admins no longer manage categories directly on this page.** "+ Add material"/"+ Add note" call `ensureMaterialsCategory(zones, defaultZone, projectId, stageId, clientId)`, which finds an existing category in the target zone-group for the current scope or silently creates one (named "Materials"/"Meeting notes" — the name is never shown to the client any more, only its links are), then opens the ordinary link modal directly. `openStageCategoryModal`/`CATEGORY_ZONES` are **left in place but no longer wired from here** — still correct, still exercises the same schema, documented at the top of `openStageCategoryModal` as currently unreachable from the public dashboard.
+- **"Next up" removed entirely** (`pdNextMilestone`/`pdNextMilestoneHtml` and the `.pd-next*` CSS deleted) — was judged redundant now that the stage rail and Stage Materials give the same information more directly.
+- **Header simplified further**: no logo tile at all now (just "Hello, {name}"), and the page order is now header → `DASH_EXPLAINER` → scope pills → greeting → quick actions (explainer moved directly under the greeting per explicit request, ahead of the scope pills it previously followed).
+- **New `.pd-section-title` class** (19px, bold, sentence-case, `var(--ink)`) replaces `.pd-cat-label` (11px, uppercase, `var(--muted)`) for every big heading — Stages/Tasks, Stage Materials, Meeting Notes, Calendar. `.pd-cat-label` itself is unchanged and still used for the genuinely minor "Previous"/"Upcoming" sub-labels inside the retainer task rail — the two classes are for different weights of heading, not a global ban on the small style.
+- No visual regression check needed against v0.35/v0.36's zone chrome — that entire numbered-zone (`pdZoneHtml`, `.pd-zone-num`) design was already superseded in v0.36.0 and none of it survived into this version either.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

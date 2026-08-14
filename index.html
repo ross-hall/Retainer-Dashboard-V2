@@ -544,6 +544,11 @@
   .pd-stage-label{flex:1;font-size:13.5px;color:var(--ink)}
   .pd-stage-date{font-size:11.5px;color:var(--muted);white-space:nowrap}
   .pd-cat-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  /* Big, sentence-case section headings (Stages / Stage Materials / Meeting
+     Notes / Calendar) — deliberately NOT the small all-caps .pd-cat-label
+     style above, which is reserved for minor sub-groupings like Previous/
+     Upcoming inside the retainer task list. Always sits outside any card. */
+  .pd-section-title{font-size:19px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin-bottom:12px}
   .pd-link-card{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;background:var(--paper);border:1px solid var(--line);border-radius:10px;text-decoration:none;transition:border-color .15s}
   .pd-link-card:hover{border-color:var(--accent)}
   .pd-cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -556,19 +561,20 @@
   .pd-cal-chip{font-size:9.5px;padding:2px 5px;border-radius:5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--track);color:var(--ink)}
   .pd-cal-more{font-size:10px;color:var(--muted)}
 
-  .pd-next{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-radius:var(--radius-sm);margin-bottom:18px}
-  .pd-next-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
-  .pd-next-title{font-size:14px;font-weight:600}
-  .pd-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--line-soft)}
-  .pd-embed-card{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:10px;background:var(--card)}
-  .pd-embed-head{display:flex;align-items:center;gap:12px;padding:13px 14px;flex-wrap:wrap}
-  .pd-embed-name{font-size:13.5px;font-weight:600;color:var(--ink)}
-  .pd-embed-frame{border-top:1px solid var(--line);background:var(--track)}
-  .pd-embed-frame iframe{width:100%;border:0;display:block}
-  .pd-embed-foot{padding:8px 14px;border-top:1px solid var(--line-soft);font-size:11.5px;color:var(--muted)}
+  .pd-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
   .pd-brief{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
   .pd-brief-item{background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12.5px;color:var(--ink)}
-  .pd-vault-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+
+  /* One card per link, icon-on-top, stacked in a grid — Stage Materials and
+     Meeting Notes both use this. */
+  .pd-materials-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+  .pd-material-card{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:22px 16px 18px;background:var(--paper);border:1px solid var(--line);border-radius:12px}
+  .pd-material-icon{width:46px;height:46px;border-radius:12px;background:var(--track);display:flex;align-items:center;justify-content:center}
+  .pd-material-icon svg{width:24px;height:24px}
+  .pd-material-title{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.3}
+  .pd-material-desc{font-size:11.5px;color:var(--muted);margin-top:-4px}
+  .pd-material-open{width:100%;justify-content:center;margin-top:4px;padding:9px 14px;font-size:13px}
+  .pd-material-edit{position:absolute;top:8px;right:8px;padding:2px 7px;font-size:10px}
 
   @media(max-width:900px){ #pdMainGrid{grid-template-columns:1fr !important} }
   @media(max-width:760px){ .pd-cal-chip{display:none} }
@@ -651,7 +657,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.36.0</div>
+    <div id="versionBadge" class="version-badge">v0.37.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -2346,17 +2352,25 @@ function retainerMilestoneChipHtml(t, cl, weekStyle){
   </div>`;
 }
 
-/* Which zone of the client dashboard a category renders in. Defined once and
-   used by both this modal and the dashboard's render dispatcher, so the four
-   valid values live in exactly one place. Must stay in sync with the
-   rs_stage_categories_zone_check constraint in outputs/v27_dashboard_zones.sql. */
+/* Which zone of the client dashboard a category renders in. Must stay in sync
+   with the rs_stage_categories_zone_check constraint in outputs/v27_dashboard_
+   zones.sql + outputs/v28_meeting_notes_zone.sql. general/proofing/brief/vault
+   are all flattened into one "Stage Materials" grid as of v0.37.0 (no more
+   per-category grouping shown to admins), 'notes' feeds "Meeting Notes". */
 const CATEGORY_ZONES = [
-  ['general',  'Files & links', 'Grouped under the selected stage, as today'],
-  ['proofing', 'Proofing',      'Figma / Loom / PDF previews the client reviews'],
-  ['brief',    'Creative brief', 'Scope docs — shown alongside the project details'],
-  ['vault',    'Vault',         'Final deliverables — the high-res handover files'],
+  ['general',  'Materials', 'Shown in the Stage Materials grid, as today'],
+  ['proofing', 'Materials (proofing)', 'Shown in the Stage Materials grid'],
+  ['brief',    'Materials (brief)', 'Shown in the Stage Materials grid'],
+  ['vault',    'Materials (vault)', 'Shown in the Stage Materials grid'],
+  ['notes',    'Meeting notes', 'Shown in the separate Meeting Notes grid'],
 ];
 
+/* NOT currently called from the public dashboard — as of v0.37.0, "Stage
+   Materials"/"Meeting Notes" auto-create-or-reuse a category via
+   ensureMaterialsCategory() (in renderPublicDashboard) instead of exposing
+   category management directly, since admins no longer see categories as a
+   grouping concept. Left in place (still correct, still exercises the same
+   schema) in case fine-grained per-category control is wanted again later. */
 function openStageCategoryModal(ctx, onDone){
   onDone = onDone || refreshProjectView;
   const existing = ctx.categoryId ? state.stageCategories.find(c=>c.id===ctx.categoryId) : null;
@@ -5455,7 +5469,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.36.0';
+const APP_VERSION = '0.37.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6080,49 +6094,13 @@ async function bootPublicDashboard(slug, isAdmin){
 function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks){
   retainerTasks = retainerTasks || [];
   const now = new Date();
-  // openEmbeds survives paint() so an opened preview isn't collapsed by an
-  // unrelated repaint (stage click, tab switch, calendar nav). It can't
-  // preserve the frame's internal scroll position — paint() rebuilds
-  // document.body wholesale, so the iframe genuinely reloads. Splitting
-  // paint() into per-zone repaints would fix that properly; out of scope here.
-  const pub = { projectId: projects[0]?.id || null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth(), openEmbeds: new Set() };
+  const pub = { projectId: projects[0]?.id || null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
   const accent = client.dash_accent_color || '#2383e2';
   // The header is now a plain "Hello, {name}" greeting with no logo tile, so
   // client.dash_logo_url is no longer rendered anywhere on this page — the
   // field is still stored and still editable, just currently unused.
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true); }
-
-  /* What the client should look at next. Projects → the first incomplete
-     stage; retainer clients → their next upcoming task. Returns null when
-     there's genuinely nothing ahead. */
-  function pdNextMilestone(stages, upcoming){
-    if(client.is_retainer && !stages.length){
-      const t = upcoming[0];
-      return t ? { title: t.title, dateStr: t.due_date, dateHidden: false } : null;
-    }
-    const s = nextIncompleteStage(stages);
-    if(!s) return null;
-    // A stage flagged hide_due_date_from_client must not leak its date here
-    // either — not as a date, and not as a relative "in 6 days" label.
-    return { title: s.name, dateStr: s.hide_due_date_from_client ? null : s.due_date, dateHidden: !!s.hide_due_date_from_client && !!s.due_date };
-  }
-  function pdNextMilestoneHtml(next){
-    if(!next) return '';
-    const natural = next.dateStr ? fmtDateNatural(next.dateStr) : null;
-    let rel = next.dateStr ? daysUntilLabel(next.dateStr+'T00:00') : null;
-    // fmtDateNatural already says "Today"/"Tomorrow", so don't append the
-    // relative label when it would just repeat it ("Today · today").
-    if(rel && natural && rel.toLowerCase() === natural.toLowerCase()) rel = null;
-    const when = next.dateStr
-      ? `<span style="font-size:12.5px;opacity:.8">${esc(natural)}${rel?` · ${esc(rel)}`:''}</span>`
-      : (next.dateHidden && isAdmin ? `<span style="font-size:12.5px;font-style:italic;opacity:.7">(date hidden from client)</span>` : '');
-    return `<div class="pd-next" style="background:${accent}14;color:${accent}">
-      <span class="pd-next-label">Next up</span>
-      <span class="pd-next-title" style="flex:1;min-width:0;color:var(--ink)">${esc(next.title)}</span>
-      ${when}
-    </div>`;
-  }
 
   /* Vertical stage list for the left rail. Reuses .pd-stage-row (shared with
      the retainer task list) so the two rails look identical — and so this
@@ -6163,104 +6141,69 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   }
 
   function stagesFor(projectId){ return allStages.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
-  /* Categories for one dashboard zone, across every scope that applies to what
-     the client is currently looking at: the viewed stage, the current project,
-     and the client itself. Anything without a zone counts as 'general' so the
-     pre-v27 rows keep rendering where they always did. */
-  function catsForZone(zone, projectId, stageId){
-    return allCategories
-      .filter(c=> (c.zone||'general')===zone)
-      .filter(c=> (stageId && c.stage_id===stageId) || (projectId && c.project_id===projectId && !c.stage_id) || (!c.stage_id && !c.project_id))
-      .sort((a,b)=>(a.position||0)-(b.position||0));
-  }
-
-  /* One proofing link. Nothing auto-loads: an iframe only appears once the
-     client asks for it, which keeps the page weightless no matter how many
-     proofs exist, avoids loading third-party frames unasked, and limits the
-     cost of paint() tearing the whole body down on every repaint.
-     The "Open in …" anchor is a permanent part of the card rather than a
-     failure fallback — a provider that refuses framing (X-Frame-Options can't
-     be detected reliably from JS: no error event fires and the frame is
-     cross-origin) then degrades to exactly today's working experience. */
-  function pdEmbedCardHtml(l){
-    const href = safeUrl(l.url);
-    const info = (l.embed !== false) ? embedInfoFor(l.url) : null;
-    const icon = `<span style="color:${accent};flex:none">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>`;
-    if(!href){
-      return isAdmin ? `<div class="pd-embed-card"><div class="pd-embed-head">${icon}
-        <span style="flex:1;min-width:0"><span class="pd-embed-name">${esc(l.label)}</span>
-        <span style="display:block;font-size:12px;color:var(--red);margin-top:2px">Not shown to the client — the URL must start with https://</span></span>
-        <button class="btn small ghost" data-editlink="${l.id}">Edit</button></div></div>` : '';
-    }
-    const open = pub.openEmbeds.has(l.id);
-    const desc = l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:'';
-    const frame = (open && info) ? `<div class="pd-embed-frame">
-        <iframe src="${esc(info.src)}" title="${esc(l.label)} preview" loading="lazy"
-          referrerpolicy="strict-origin-when-cross-origin"
-          ${info.allow? `allow="${esc(info.allow)}" allowfullscreen`:''}
-          sandbox="${esc(info.sandbox)}"
-          style="${info.aspect? `aspect-ratio:${info.aspect}`:`min-height:${info.minHeight||640}px`}"></iframe>
-      </div>
-      <div class="pd-embed-foot">Trouble viewing? <a href="${esc(href)}" target="_blank" rel="noopener noreferrer">Open in ${esc(info.label)} ↗</a></div>` : '';
-    return `<div class="pd-embed-card">
-      <div class="pd-embed-head">
-        ${icon}
-        <span style="flex:1;min-width:0"><span class="pd-embed-name">${esc(l.label)}</span>${desc}</span>
-        ${info? `<button type="button" class="btn small ghost" data-embedtoggle="${l.id}">${open?'Hide preview':'Show preview'}</button>`:''}
-        <a class="btn small ghost" href="${esc(href)}" target="_blank" rel="noopener noreferrer">Open${info?` in ${esc(info.label)}`:''} ↗</a>
-        ${isAdmin? `<button class="btn small ghost" data-editlink="${l.id}">Edit</button>`:''}
-      </div>
-      ${frame}
-    </div>`;
-  }
-  function proofingBlockHtml(cat){
-    const catLinks = linksFor(cat.id);
-    if(!isAdmin && !catLinks.length) return '';
-    return `<div style="margin-bottom:18px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="pd-cat-label" style="margin-bottom:0">${esc(cat.name)}</div>
-        ${isAdmin? `<div style="display:flex;gap:6px"><button class="btn small ghost" data-addlink="${cat.id}">+ Link</button><button class="btn small ghost" data-editcat="${cat.id}">Edit category</button></div>`:''}
-      </div>
-      ${catLinks.map(pdEmbedCardHtml).join('') || (isAdmin? '<div class="empty" style="padding:6px 0">No links yet</div>':'')}
-    </div>`;
-  }
   function linksFor(categoryId){ return allLinks.filter(l=>l.category_id===categoryId).sort((a,b)=>a.position-b.position); }
-
-  function categoryBlockHtml(cat){
-    const catLinks = linksFor(cat.id);
-    if(!isAdmin && !catLinks.length) return '';
-    return `<div style="margin-bottom:18px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="pd-cat-label" style="margin-bottom:0">${esc(cat.name)}</div>
-        ${isAdmin? `<div style="display:flex;gap:6px"><button class="btn small ghost" data-addlink="${cat.id}">+ Link</button><button class="btn small ghost" data-editcat="${cat.id}">Edit category</button></div>` : ''}
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${catLinks.map(l=>{
-          // A link whose URL isn't https renders inert rather than as a dead or
-          // dangerous <a> — admins get told why, clients just see plain text.
-          const href = safeUrl(l.url);
-          const icon = `<span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>`;
-          const desc = l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:'';
-          if(isAdmin) return `<div class="pd-link-card">
-            ${icon}
-            <span style="flex:1;min-width:0">
-              ${href
-                ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer" style="display:block;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none">${esc(l.label)}</a>`
-                : `<span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span><span style="display:block;font-size:12px;color:var(--red);margin-top:2px">Not shown to the client — the URL must start with https://</span>`}
-              ${desc}
-            </span>
-            <button class="btn small ghost" data-editlink="${l.id}">Edit</button>
-          </div>`;
-          if(!href) return '';
-          return `<a class="pd-link-card" href="${esc(href)}" target="_blank" rel="noopener noreferrer">
-            ${icon}
-            <span style="flex:1;min-width:0">
-              <span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span>
-              ${desc}
-            </span>
-          </a>`;
-        }).join('') || (isAdmin? '<div class="empty" style="padding:6px 0">No links yet</div>' : '')}
-      </div>
+  /* Every category not explicitly tagged 'notes' feeds the single Stage
+     Materials grid — brief/proofing/general/vault are no longer shown as
+     separate sections, just merged and flattened to one card per link. */
+  const MATERIAL_ZONES = ['general','proofing','brief','vault'];
+  /* Links across every category matching one of `zones`, scoped to whatever
+     the client is currently looking at (the viewed stage, the current
+     project, or the client itself for a project-less retainer). Anything
+     without a zone counts as 'general' so pre-v27 rows keep showing up. */
+  function linksForZones(zones, projectId, stageId){
+    const cats = allCategories
+      .filter(c=> zones.includes(c.zone||'general'))
+      .filter(c=> (stageId && c.stage_id===stageId) || (projectId && c.project_id===projectId && !c.stage_id) || (!c.stage_id && !c.project_id));
+    const catIds = new Set(cats.map(c=>c.id));
+    return allLinks.filter(l=>catIds.has(l.category_id)).sort((a,b)=>(a.position||0)-(b.position||0));
+  }
+  /* Finds an existing category to hang a new link off, or creates one on the
+     fly — admins no longer manage categories directly here, so "+ Add
+     material"/"+ Add note" just needs *a* place to put the link. Reuses
+     whichever matching category already exists rather than proliferating
+     duplicates every time someone adds a link. */
+  async function ensureMaterialsCategory(zones, defaultZone, projectId, stageId, clientId){
+    const existing = allCategories
+      .filter(c=> zones.includes(c.zone||'general'))
+      .find(c=> (stageId && c.stage_id===stageId) || (projectId && c.project_id===projectId && !c.stage_id) || (!c.stage_id && !c.project_id));
+    if(existing) return existing;
+    const { data, error } = await db.from('rs_stage_categories').insert({
+      stage_id: stageId||null, project_id: stageId?null:(projectId||null), client_id: clientId,
+      zone: defaultZone, name: defaultZone==='notes'?'Meeting notes':'Materials', position:0
+    }).select().single();
+    if(error){
+      // A check-constraint violation (23514) on zone='notes' means v28 hasn't
+      // run yet — PGRST204 (column missing) is the only other case that maps
+      // to a migration hint, kept for defensiveness against a bare Supabase.
+      const needsMigration = defaultZone==='notes' && (error.code==='23514' || error.code==='PGRST204');
+      toast(needsMigration ? 'Run migration v28 to enable meeting notes' : 'Could not add');
+      console.error(error);
+      return null;
+    }
+    return data;
+  }
+  /* One material — icon on top, title, optional description, one big Open
+     button. Every link on the dashboard (brief docs, proofs, working files,
+     final delivery, meeting notes) renders identically now; embedInfoFor is
+     only consulted for a nicer button label ("Open in Figma ↗"), nothing is
+     embedded inline any more. */
+  function pdMaterialCardHtml(l){
+    const href = safeUrl(l.url);
+    const info = embedInfoFor(l.url);
+    const iconHtml = `<div class="pd-material-icon" style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</div>`;
+    const editBtn = isAdmin? `<button type="button" class="btn small ghost pd-material-edit" data-editlink="${l.id}">Edit</button>`:'';
+    if(!href){
+      if(!isAdmin) return '';
+      return `<div class="pd-material-card">${editBtn}${iconHtml}
+        <div class="pd-material-title">${esc(l.label)}</div>
+        <div class="pd-material-desc" style="color:var(--red)">Needs an https:// URL</div>
+      </div>`;
+    }
+    const openLabel = info? `Open in ${esc(info.label)}` : 'Open';
+    return `<div class="pd-material-card">${editBtn}${iconHtml}
+      <div class="pd-material-title">${esc(l.label)}</div>
+      ${l.description? `<div class="pd-material-desc">${esc(l.description)}</div>`:''}
+      <a class="btn pd-material-open" style="background:${accent}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${openLabel} ↗</a>
     </div>`;
   }
 
@@ -6333,95 +6276,50 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ? `<div style="display:flex;flex-direction:column;gap:2px">${tasksListHtml}</div>`
       : '<div class="empty" style="padding:12px 0">No stages yet.</div>';
     const retainerCalendarHtml = client.is_retainer
-      ? `<div class="card" style="margin-top:20px"><div class="pd-cat-label">Calendar</div>${calendarHtmlPd(pub.calY, pub.calM)}</div>`
+      ? `<div class="card" style="margin-top:20px"><div class="pd-section-title">Calendar</div>${calendarHtmlPd(pub.calY, pub.calM)}</div>`
       : '';
-    const nextMilestone = pdNextMilestone(stages, upcomingTasks);
 
     const projId = proj ? proj.id : null;
     const stageId = viewedStage ? viewedStage.id : null;
-    // Admin "+ Category" for a zone: scope to the viewed stage for general
-    // (that's where per-stage files belong), otherwise to the project, and to
-    // the client when there's no project at all (retainer-only).
-    const addCatBtn = (zone)=> isAdmin
-      ? `<button class="btn small ghost" data-addzonecat="${zone}" data-scopestage="${zone==='general'&&stageId?stageId:''}" data-scopeproj="${projId||''}">+ Category</button>`
-      : '';
 
-    /* ---- Zone 2: Creative engine & proofing ---- */
-    // High-level scope, sourced from the same rs_projects.details the internal
-    // app uses — not a second copy that can drift.
+    // Scope of the project, as pills at the top of the page — sourced from the
+    // same rs_projects.details the internal app uses, not a second copy.
     const briefBits = proj ? [
       projectDetailsSummary(proj),
       proj.project_type,
       proj.label,
       viewedStage && viewedStage.due_date && !viewedStage.hide_due_date_from_client ? reviewWindowLabel(viewedStage.due_date, proj.review_days) : null
     ].filter(Boolean) : [];
-    const briefCats = catsForZone('brief', projId, stageId);
-    const briefLinks = briefCats.map(categoryBlockHtml).join('');
-    // The scope pills themselves render at the top of the page now, so this
-    // section is just the linked brief documents.
-    const briefHtml = (briefLinks || isAdmin) ? `
-      <div class="pd-cat-label" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <span>Creative brief</span>${addCatBtn('brief')}
-      </div>
-      ${briefLinks || (isAdmin? '<div class="empty" style="padding:6px 0">No brief linked yet.</div>':'')}` : '';
-
-    const proofCats = catsForZone('proofing', projId, stageId);
-    const proofBody = proofCats.map(proofingBlockHtml).join('');
-    const proofHtml = (proofBody || isAdmin) ? `
-      <div class="pd-cat-label" style="margin-top:${briefHtml?'22px':'0'};display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <span>Proofing</span>${addCatBtn('proofing')}
-      </div>
-      ${proofBody || (isAdmin? '<div class="empty" style="padding:6px 0">No proofs shared yet.</div>':'')}` : '';
-
-    const generalCats = catsForZone('general', projId, stageId);
-    const generalBody = generalCats.map(categoryBlockHtml).join('');
-    const filesHtml = (generalBody || isAdmin) ? `
-      <div class="pd-cat-label" style="margin-top:${(briefHtml||proofHtml)?'22px':'0'};display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <span>${viewedStage? esc(viewedStage.name)+' — files &amp; links' : 'Files &amp; links'}</span>${addCatBtn('general')}
-      </div>
-      ${generalBody || (isAdmin? '<div class="empty" style="padding:6px 0">Nothing shared yet.</div>':'')}` : '';
-
-    const zone2Body = briefHtml + proofHtml + filesHtml;
-
-    /* ---- Zone 3: Vault ---- */
-    const vaultCats = catsForZone('vault', projId, stageId);
-    const vaultBody = vaultCats.map(cat=>{
-      const catLinks = linksFor(cat.id);
-      if(!isAdmin && !catLinks.length) return '';
-      return `<div style="margin-bottom:18px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div class="pd-cat-label" style="margin-bottom:0">${esc(cat.name)}</div>
-          ${isAdmin? `<div style="display:flex;gap:6px"><button class="btn small ghost" data-addlink="${cat.id}">+ Link</button><button class="btn small ghost" data-editcat="${cat.id}">Edit category</button></div>`:''}
-        </div>
-        <div class="pd-vault-grid">${catLinks.map(l=>{
-          const href = safeUrl(l.url);
-          if(!href) return isAdmin? `<div class="pd-link-card"><span style="color:var(--red);font-size:12px">${esc(l.label)} — needs an https:// URL</span></div>`:'';
-          return `<a class="pd-link-card" href="${esc(href)}" target="_blank" rel="noopener noreferrer">
-            <span style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</span>
-            <span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:var(--ink)">${esc(l.label)}</span>
-            ${l.description? `<span style="display:block;font-size:12px;color:var(--muted);margin-top:2px">${esc(l.description)}</span>`:''}</span>
-          </a>`;
-        }).join('') || (isAdmin? '<div class="empty" style="padding:6px 0">No files yet</div>':'')}</div>
-      </div>`;
-    }).join('');
-    const vaultHtml = (vaultBody || isAdmin) ? `
-      <div class="pd-cat-label" style="margin-top:${zone2Body.trim()?'22px':'0'};display:flex;align-items:center;justify-content:space-between;gap:10px">
-        <span>Vault — final delivered files</span>${addCatBtn('vault')}
-      </div>
-      ${vaultBody || (isAdmin? '<div class="empty" style="padding:6px 0">Nothing delivered yet.</div>':'')}` : '';
-
-    // One framed surface on the whole page. Everything the client actually
-    // opens — brief docs, proofs, working files, final delivery — lives here;
-    // the stage rail and the header sit unframed against the page.
-    const contentBody = zone2Body + vaultHtml;
-    const contentCardHtml = contentBody.trim()
-      ? `<div class="card">${contentBody}</div>`
-      : `<div class="card"><div class="empty" style="padding:20px 0">Nothing shared yet.</div></div>`;
-
-    // Scope of the project, as pills at the top of the page.
     const scopePillsHtml = briefBits.length
-      ? `<div class="pd-brief" style="margin:10px 0 0">${briefBits.map(b=>`<span class="pd-brief-item">${esc(b)}</span>`).join('')}</div>`
+      ? `<div class="pd-brief" style="margin:8px 0 0">${briefBits.map(b=>`<span class="pd-brief-item">${esc(b)}</span>`).join('')}</div>`
       : '';
+
+    // Stage Materials — every brief/proofing/general/vault link, flattened
+    // into one grid of cards. No per-category grouping shown any more; admins
+    // add straight into it via ensureMaterialsCategory rather than managing
+    // categories directly.
+    const materialLinks = linksForZones(MATERIAL_ZONES, projId, stageId);
+    const materialsBody = materialLinks.length
+      ? `<div class="pd-materials-grid">${materialLinks.map(pdMaterialCardHtml).join('')}</div>`
+      : `<div class="empty" style="padding:20px 0">${isAdmin?'No materials added yet.':'Nothing shared yet.'}</div>`;
+    const materialsSectionHtml = (materialLinks.length || isAdmin) ? `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+        <div class="pd-section-title" style="margin-bottom:0">Stage Materials</div>
+        ${isAdmin? `<button class="btn small ghost" data-addmaterial="1">+ Add material</button>`:''}
+      </div>
+      <div class="card" style="margin-top:14px;margin-bottom:28px">${materialsBody}</div>` : '';
+
+    // Meeting Notes — a second, separate flat grid, same card style.
+    const noteLinks = linksForZones(['notes'], projId, stageId);
+    const notesBody = noteLinks.length
+      ? `<div class="pd-materials-grid">${noteLinks.map(pdMaterialCardHtml).join('')}</div>`
+      : `<div class="empty" style="padding:20px 0">${isAdmin?'No notes added yet.':'Nothing shared yet.'}</div>`;
+    const notesSectionHtml = (noteLinks.length || isAdmin) ? `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+        <div class="pd-section-title" style="margin-bottom:0">Meeting Notes</div>
+        ${isAdmin? `<button class="btn small ghost" data-addnote="1">+ Add note</button>`:''}
+      </div>
+      <div class="card" style="margin-top:14px">${notesBody}</div>` : '';
 
     document.body.innerHTML = `
       <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink)">
@@ -6437,22 +6335,22 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
             </div>
             <a class="btn small ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener">Reciprocal Space</a>
           </div>
+          <p class="sub" style="margin:10px 0 0;max-width:680px">${esc(DASH_EXPLAINER)}</p>
           ${scopePillsHtml}
-          <p class="sub" style="margin:14px 0 0;max-width:680px">${esc(DASH_EXPLAINER)}</p>
           ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:680px">${esc(client.dash_greeting)}</p>`:''}
-          <div style="margin-top:22px">${pdNextMilestoneHtml(nextMilestone)}</div>
           ${pdQuickActionsHtml()}
           ${projects.length>1 ? `<div style="margin-top:24px">${tabsHtml}</div>` : ''}
           <div id="pdMainGrid" style="display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:start;margin-top:${projects.length>1?'0':'26px'}">
             <div>
-              <div class="pd-cat-label" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+              <div class="pd-section-title" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
                 <span>${projects.length? 'Stages':'Tasks'}</span>
-                ${projects.length? `<span style="font-size:12px;font-weight:700;color:${accent}">${pct}%</span>`:''}
+                ${projects.length? `<span style="font-size:13px;font-weight:700;color:${accent}">${pct}%</span>`:''}
               </div>
               ${projects.length ? pdStageListHtml(stages) : retainerRailHtml}
             </div>
             <div>
-              ${contentCardHtml}
+              ${materialsSectionHtml}
+              ${notesSectionHtml}
               ${retainerCalendarHtml}
             </div>
           </div>
@@ -6472,29 +6370,26 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       paint();
     }));
 
-    // Client-side too: the preview toggle is not an admin-only affordance.
-    document.querySelectorAll('[data-embedtoggle]').forEach(el=>el.addEventListener('click', ()=>{
-      const id = el.dataset.embedtoggle;
-      if(pub.openEmbeds.has(id)) pub.openEmbeds.delete(id); else pub.openEmbeds.add(id);
-      paint();
-    }));
-
     if(isAdmin){
       const copyBtn = document.getElementById('pdCopyClient');
       if(copyBtn) copyBtn.addEventListener('click', ()=>{
         const url = `${window.location.origin}${window.location.pathname}?client=${client.slug}`;
         navigator.clipboard?.writeText(url).then(()=> toast('Client link copied')).catch(()=> toast(url));
       });
-      // One handler for all four zones. Scope falls back project → client, so
-      // a retainer client with no projects still gets a usable category.
-      document.querySelectorAll('[data-addzonecat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({
-        zone: el.dataset.addzonecat,
-        stageId: el.dataset.scopestage || null,
-        projectId: el.dataset.scopestage ? null : (el.dataset.scopeproj || null),
-        clientId: client.id
-      }, reload)));
-      document.querySelectorAll('[data-editcat]').forEach(el=>el.addEventListener('click', ()=> openStageCategoryModal({ categoryId: el.dataset.editcat }, reload)));
-      document.querySelectorAll('[data-addlink]').forEach(el=>el.addEventListener('click', ()=> openStageLinkModal(el.dataset.addlink, null, reload)));
+      // "+ Add material"/"+ Add note" no longer surface category management at
+      // all — find-or-create a category behind the scenes (ensureMaterialsCategory)
+      // and go straight to the link modal. Scope falls back stage → project →
+      // client, so a retainer client with no projects still gets somewhere to add.
+      const addBtn = document.querySelector('[data-addmaterial]');
+      if(addBtn) addBtn.addEventListener('click', async ()=>{
+        const cat = await ensureMaterialsCategory(MATERIAL_ZONES, 'general', projId, stageId, client.id);
+        if(cat) openStageLinkModal(cat.id, null, reload);
+      });
+      const addNoteBtn = document.querySelector('[data-addnote]');
+      if(addNoteBtn) addNoteBtn.addEventListener('click', async ()=>{
+        const cat = await ensureMaterialsCategory(['notes'], 'notes', projId, stageId, client.id);
+        if(cat) openStageLinkModal(cat.id, null, reload);
+      });
       document.querySelectorAll('[data-editlink]').forEach(el=>{
         const link = allLinks.find(l=>l.id===el.dataset.editlink);
         el.addEventListener('click', ()=> openStageLinkModal(link.category_id, link.id, reload));
