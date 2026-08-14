@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.35.0**
+Current version: **v0.36.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -293,6 +293,15 @@ Font: Inter (unchanged from v0.9.0)
 - **`catsForZone(zone, projectId, stageId)` replaced `catsFor`/`projectCatsFor`**, matching across all three scopes (viewed stage, current project, client) and treating a missing `zone` as `'general'` so pre-v27 rows keep rendering where they always did. One `data-addzonecat` handler now serves all four zones, falling back project → client so a retainer client with no projects still gets a usable category.
 - **Fixed the rename-fragility in `projectDetailsSummary`**: it matched `'Website'`/`'Branding'`/`'Animations'` with exact `===` while type names are user-editable, so a rename silently produced an empty brief — the same bug class as the Deck rename. Added `isWebsiteType`/`isBrandingType`/`isAnimationType` loose matchers beside the existing `isDeckType` and applied them at all four call sites (`projExtraFieldHtml`, `projExtraFieldValue`, `projectDetailsSummary`, the Discord summary).
 - ⚠️ **One thing not verified end-to-end:** the Figma embed could not be confirmed *visually* from the local dev harness, because the preview serves the file from a `data:` URL — `origin` is `"null"` and it isn't a secure context, which Figma's embed refuses (it loads, shows its progress bar, then stays blank; no console/CSP error). The URL transform itself is verified correct against a real prototype link, and the load event fires. **Confirm the frame actually paints once the dashboard is served from its real https origin.**
+
+**What shipped in v0.36.0** (public dashboard restructured to one-frame layout, per explicit user direction — supersedes the numbered-zone chrome from v0.34.0–v0.35.0):
+- **Header simplified to a plain "Hello, {client name}" greeting** — the logo tile and `client.dash_logo_url` rendering are gone from this page (the column and modal field are untouched, just currently unused here). No card frame around the header either; it sits directly on the page background like the stage rail.
+- **Project scope now renders as pills right under the header** (`scopePillsHtml`, reusing the existing `.pd-brief`/`.pd-brief-item` chip styling) instead of buried inside a "Creative brief" card — `projectDetailsSummary(p)` + type + label + review window, unchanged data source.
+- **New `DASH_EXPLAINER` constant** — a fixed one-line sentence under the pills telling a first-time visitor what the page is and how to read it (rail = progress, right column = materials). Edit that one constant to change the copy for every client at once; it's intentionally not per-client.
+- **Exactly one framed surface on the whole page.** `pdStageListHtml` replaces the old horizontal `pdStepperHtml` — stages are a vertical, unframed list again (reusing `.pd-stage-row`, the same class the retainer task rail already used, so the two rails are visually identical by construction) in a left rail with no card/border. Everything a client actually opens — brief links, proofing embeds, working files, vault — is concatenated into one `contentCardHtml` on the right. The old `pdZoneHtml`/numbered zone chrome (`.pd-zone-num`, the "1/2/3" badges) is gone entirely; section headings inside the content card are now plain `.pd-cat-label` rows, each with its own inline "+ Category" button in admin mode.
+- **Retainer clients**: the task timeline moves into the same left rail (`retainerRailHtml`, no card), and the calendar sits in its own card below the content column (`retainerCalendarHtml`) rather than a `300px/1fr` grid nested inside a zone card. `#pdRetainerGrid` is gone; the responsive breakpoint is now a single `#pdMainGrid` rule at `900px` (rail collapses above content) alongside the existing `760px` calendar-chip rule.
+- **Every link is still its own bordered card** — `.pd-link-card` (brief/vault links) and `.pd-embed-card` (proofing links) are unchanged; only their container lost its wrapping frame, which is exactly the "one outer frame, per-link cards inside it" shape that was asked for.
+- No schema change. `pct`, `nextMilestone`, `pdQuickActionsHtml`, `pdNextMilestoneHtml`, `embedInfoFor`, `catsForZone`, `pub.openEmbeds` are all unchanged from v0.35.0 — only the surrounding chrome moved.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

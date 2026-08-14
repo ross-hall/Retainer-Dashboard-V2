@@ -556,23 +556,10 @@
   .pd-cal-chip{font-size:9.5px;padding:2px 5px;border-radius:5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--track);color:var(--ink)}
   .pd-cal-more{font-size:10px;color:var(--muted)}
 
-  /* Horizontal stage stepper (Zone 1). Deliberately its own class family
-     rather than restyling .pd-stage-row, which the retainer task list shares. */
-  .pd-stepper{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:4px 0 2px}
-  .pd-step{flex:1 1 0;min-width:104px;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;background:none;border:none;padding:8px 6px;cursor:pointer;font-family:'Inter',sans-serif}
-  .pd-step::before{content:'';position:absolute;top:19px;left:-50%;width:100%;height:2px;background:var(--line);z-index:0}
-  .pd-step:first-child::before{display:none}
-  .pd-step.done::before{background:var(--pd-accent);opacity:.45}
-  .pd-step-dot{width:26px;height:26px;border-radius:50%;background:var(--track);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;position:relative;z-index:1;border:2px solid var(--card)}
-  .pd-step-label{font-size:12.5px;line-height:1.3;text-align:center;color:var(--ink)}
-  .pd-step.current .pd-step-label{font-weight:600;color:var(--pd-accent)}
-  .pd-step-date{font-size:11px;color:var(--muted);white-space:nowrap}
-  .pd-step:hover .pd-step-label{color:var(--pd-accent)}
   .pd-next{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-radius:var(--radius-sm);margin-bottom:18px}
   .pd-next-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
   .pd-next-title{font-size:14px;font-weight:600}
   .pd-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--line-soft)}
-  .pd-zone-num{width:22px;height:22px;border-radius:50%;background:var(--pd-accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none}
   .pd-embed-card{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:10px;background:var(--card)}
   .pd-embed-head{display:flex;align-items:center;gap:12px;padding:13px 14px;flex-wrap:wrap}
   .pd-embed-name{font-size:13.5px;font-weight:600;color:var(--ink)}
@@ -583,7 +570,8 @@
   .pd-brief-item{background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12.5px;color:var(--ink)}
   .pd-vault-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
 
-  @media(max-width:760px){ #pdRetainerGrid{grid-template-columns:1fr !important} .pd-cal-chip{display:none} .pd-step{min-width:88px} }
+  @media(max-width:900px){ #pdMainGrid{grid-template-columns:1fr !important} }
+  @media(max-width:760px){ .pd-cal-chip{display:none} }
   .year-row:last-child{border-bottom:none}
 </style>
 </head>
@@ -663,7 +651,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.35.0</div>
+    <div id="versionBadge" class="version-badge">v0.36.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -788,6 +776,9 @@ function safeUrl(u){
    "evil.com/?x=figma.com" can't slip through.
    Returns { provider, label, src, aspect, minHeight, sandbox, allow } | null. */
 const EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox';
+/* Shown near the top of every client dashboard so a first-time visitor knows
+   what they're looking at without being told separately. */
+const DASH_EXPLAINER = "This is your live project dashboard. It updates as we work, so it's always the current picture — follow progress on the left, and review proofs, briefs and final files on the right.";
 function embedInfoFor(rawUrl){
   const safe = safeUrl(rawUrl);
   if(!safe) return null;
@@ -5464,7 +5455,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.35.0';
+const APP_VERSION = '0.36.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6096,26 +6087,11 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   // paint() into per-zone repaints would fix that properly; out of scope here.
   const pub = { projectId: projects[0]?.id || null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth(), openEmbeds: new Set() };
   const accent = client.dash_accent_color || '#2383e2';
-  const initials = (client.name||'?').charAt(0).toUpperCase();
-  // Both are stored per-client and end up in an src/href, so they go through
-  // safeUrl like every other URL on this page. A rejected logo falls back to
-  // the initials avatar; a rejected website URL falls back to our own site.
-  const logoSrc = safeUrl(client.dash_logo_url);
+  // The header is now a plain "Hello, {name}" greeting with no logo tile, so
+  // client.dash_logo_url is no longer rendered anywhere on this page — the
+  // field is still stored and still editable, just currently unused.
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true); }
-
-  /* Shared chrome for the three dashboard zones, so they can't drift apart. */
-  function pdZoneHtml(n, title, sub, body, headerExtra){
-    return `<div class="card" style="margin-bottom:24px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:${sub?'4px':'16px'}">
-        <span class="pd-zone-num">${n}</span>
-        <div style="font-size:15px;font-weight:600;flex:1;min-width:0">${esc(title)}</div>
-        ${headerExtra||''}
-      </div>
-      ${sub? `<div class="sub" style="margin:0 0 16px 32px">${esc(sub)}</div>`:''}
-      ${body}
-    </div>`;
-  }
 
   /* What the client should look at next. Projects → the first incomplete
      stage; retainer clients → their next upcoming task. Returns null when
@@ -6148,21 +6124,26 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     </div>`;
   }
 
-  function pdStepperHtml(stages){
-    return `<div class="pd-stepper">${stages.map((s,i)=>{
+  /* Vertical stage list for the left rail. Reuses .pd-stage-row (shared with
+     the retainer task list) so the two rails look identical — and so this
+     can't drift from it. Rendered with no card wrapper: the only framed
+     surface on the page is the content-materials column. */
+  function pdStageListHtml(stages){
+    if(!stages.length) return `<div class="empty" style="padding:12px 0">No stages yet.</div>`;
+    return stages.map((s,i)=>{
       const done = stageStatus(s.id)==='Complete';
       const current = s.id===pub.viewedStageId;
       const hidden = !!s.hide_due_date_from_client;
       const dateLabel = hidden
         ? (isAdmin? '<span style="font-style:italic">Hidden</span>' : '')
         : (s.due_date? esc(fmtDate(new Date(s.due_date+'T00:00'))) : '');
-      return `<button type="button" class="pd-step ${done?'done':''} ${current?'current':''}" data-pdstage="${s.id}">
-        <span class="pd-step-dot" style="${done||current?`background:${accent};color:#fff`:''}">${done?'✓':i+1}</span>
-        <span class="pd-step-label">${esc(s.name)}</span>
-        ${dateLabel? `<span class="pd-step-date">${dateLabel}</span>`:''}
+      return `<div class="pd-stage-row" data-pdstage="${s.id}" style="${current?`background:${accent}14`:''}">
+        <div class="pd-stage-dot" style="${done||current?`background:${accent};color:#fff`:''}">${done?'✓':i+1}</div>
+        <div class="pd-stage-label" style="${current?`color:${accent};font-weight:600`:''}">${esc(s.name)}</div>
+        ${dateLabel? `<div class="pd-stage-date">${dateLabel}</div>`:''}
         ${isAdmin && s.due_date? `<button type="button" class="btn small ghost" data-toggledate="${s.id}" style="padding:1px 7px;font-size:10px" title="${hidden?'Show this date to the client':'Hide this date from the client'}">${hidden?'Show':'Hide'}</button>`:''}
-      </button>`;
-    }).join('')}</div>`;
+      </div>`;
+    }).join('');
   }
 
   /* Book a Call / Submit New Request / Contact us. The mailto is promoted out
@@ -6346,19 +6327,14 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>
       <div class="pd-cal-grid">${dowLabels.map(d=>`<div class="pd-cal-dow">${d}</div>`).join('')}${cells}</div>`;
     }
-    // Retainer clients have no stages, so their "pulse" is the task timeline +
-    // calendar. Nested inside Zone 1 rather than being its own section, so both
-    // client types get the same three-zone shape.
-    const retainerPulseHtml = client.is_retainer ? `<div style="display:grid;grid-template-columns:300px 1fr;gap:20px" id="pdRetainerGrid">
-      <div>
-        <div class="pd-cat-label">Tasks</div>
-        <div style="display:flex;flex-direction:column;gap:2px">${tasksListHtml}</div>
-      </div>
-      <div>
-        <div class="pd-cat-label">Calendar</div>
-        ${calendarHtmlPd(pub.calY, pub.calM)}
-      </div>
-    </div>` : '<div class="empty" style="padding:20px 0">No project stages yet.</div>';
+    // Retainer clients have no stages, so the left rail carries their task
+    // timeline instead, and the calendar sits under the content column.
+    const retainerRailHtml = client.is_retainer
+      ? `<div style="display:flex;flex-direction:column;gap:2px">${tasksListHtml}</div>`
+      : '<div class="empty" style="padding:12px 0">No stages yet.</div>';
+    const retainerCalendarHtml = client.is_retainer
+      ? `<div class="card" style="margin-top:20px"><div class="pd-cat-label">Calendar</div>${calendarHtmlPd(pub.calY, pub.calM)}</div>`
+      : '';
     const nextMilestone = pdNextMilestone(stages, upcomingTasks);
 
     const projId = proj ? proj.id : null;
@@ -6381,28 +6357,31 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     ].filter(Boolean) : [];
     const briefCats = catsForZone('brief', projId, stageId);
     const briefLinks = briefCats.map(categoryBlockHtml).join('');
-    const briefHtml = (briefBits.length || briefLinks || isAdmin) ? `
-      <div class="pd-cat-label">Creative brief</div>
-      ${briefBits.length? `<div class="pd-brief">${briefBits.map(b=>`<span class="pd-brief-item">${esc(b)}</span>`).join('')}</div>`:''}
-      ${briefLinks}
-      ${isAdmin? addCatBtn('brief'):''}` : '';
+    // The scope pills themselves render at the top of the page now, so this
+    // section is just the linked brief documents.
+    const briefHtml = (briefLinks || isAdmin) ? `
+      <div class="pd-cat-label" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span>Creative brief</span>${addCatBtn('brief')}
+      </div>
+      ${briefLinks || (isAdmin? '<div class="empty" style="padding:6px 0">No brief linked yet.</div>':'')}` : '';
 
     const proofCats = catsForZone('proofing', projId, stageId);
     const proofBody = proofCats.map(proofingBlockHtml).join('');
     const proofHtml = (proofBody || isAdmin) ? `
-      <div class="pd-cat-label" style="margin-top:${briefHtml?'22px':'0'}">Proofing</div>
-      ${proofBody || (isAdmin? '<div class="empty" style="padding:6px 0">No proofs shared yet.</div>':'')}
-      ${isAdmin? addCatBtn('proofing'):''}` : '';
+      <div class="pd-cat-label" style="margin-top:${briefHtml?'22px':'0'};display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span>Proofing</span>${addCatBtn('proofing')}
+      </div>
+      ${proofBody || (isAdmin? '<div class="empty" style="padding:6px 0">No proofs shared yet.</div>':'')}` : '';
 
     const generalCats = catsForZone('general', projId, stageId);
     const generalBody = generalCats.map(categoryBlockHtml).join('');
     const filesHtml = (generalBody || isAdmin) ? `
-      <div class="pd-cat-label" style="margin-top:${(briefHtml||proofHtml)?'22px':'0'}">${viewedStage? esc(viewedStage.name)+' — files & links' : 'Files & links'}</div>
-      ${generalBody || (isAdmin? '<div class="empty" style="padding:6px 0">Nothing shared yet.</div>':'')}
-      ${isAdmin? addCatBtn('general'):''}` : '';
+      <div class="pd-cat-label" style="margin-top:${(briefHtml||proofHtml)?'22px':'0'};display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span>${viewedStage? esc(viewedStage.name)+' — files &amp; links' : 'Files &amp; links'}</span>${addCatBtn('general')}
+      </div>
+      ${generalBody || (isAdmin? '<div class="empty" style="padding:6px 0">Nothing shared yet.</div>':'')}` : '';
 
     const zone2Body = briefHtml + proofHtml + filesHtml;
-    const zone2Html = zone2Body.trim() ? pdZoneHtml(2, 'Creative engine & proofing', null, zone2Body) : '';
 
     /* ---- Zone 3: Vault ---- */
     const vaultCats = catsForZone('vault', projId, stageId);
@@ -6425,8 +6404,23 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         }).join('') || (isAdmin? '<div class="empty" style="padding:6px 0">No files yet</div>':'')}</div>
       </div>`;
     }).join('');
-    const zone3Html = (vaultBody || isAdmin)
-      ? pdZoneHtml(3, 'Vault', 'Final delivered files — your high-res handover.', vaultBody || '<div class="empty" style="padding:6px 0">Nothing delivered yet.</div>', addCatBtn('vault'))
+    const vaultHtml = (vaultBody || isAdmin) ? `
+      <div class="pd-cat-label" style="margin-top:${zone2Body.trim()?'22px':'0'};display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <span>Vault — final delivered files</span>${addCatBtn('vault')}
+      </div>
+      ${vaultBody || (isAdmin? '<div class="empty" style="padding:6px 0">Nothing delivered yet.</div>':'')}` : '';
+
+    // One framed surface on the whole page. Everything the client actually
+    // opens — brief docs, proofs, working files, final delivery — lives here;
+    // the stage rail and the header sit unframed against the page.
+    const contentBody = zone2Body + vaultHtml;
+    const contentCardHtml = contentBody.trim()
+      ? `<div class="card">${contentBody}</div>`
+      : `<div class="card"><div class="empty" style="padding:20px 0">Nothing shared yet.</div></div>`;
+
+    // Scope of the project, as pills at the top of the page.
+    const scopePillsHtml = briefBits.length
+      ? `<div class="pd-brief" style="margin:10px 0 0">${briefBits.map(b=>`<span class="pd-brief-item">${esc(b)}</span>`).join('')}</div>`
       : '';
 
     document.body.innerHTML = `
@@ -6436,27 +6430,32 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
         <div style="max-width:1280px;margin:0 auto;padding:32px 24px 40px">
-          <div class="card" style="margin-bottom:24px">
-            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-              <div style="width:44px;height:44px;border-radius:var(--radius-sm);flex-shrink:0;background:${logoSrc?'var(--track)':accent};display:flex;align-items:center;justify-content:center;overflow:hidden">
-                ${logoSrc? `<img src="${esc(logoSrc)}" alt="" style="width:100%;height:100%;object-fit:contain">` : `<span style="color:#fff;font-size:16px;font-weight:700">${initials}</span>`}
-              </div>
-              <div style="flex:1;min-width:0">
-                <h2 style="margin-bottom:0">${esc(client.name)}</h2>
-                ${client.dash_logo_text? `<div class="sub" style="margin:2px 0 0">${esc(client.dash_logo_text)}</div>`:''}
-              </div>
-              <a class="btn small ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener">Reciprocal Space</a>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+            <div style="flex:1;min-width:0">
+              <h2 style="margin-bottom:0">Hello, ${esc(client.name)}</h2>
+              ${client.dash_logo_text? `<div class="sub" style="margin:2px 0 0">${esc(client.dash_logo_text)}</div>`:''}
             </div>
-            ${client.dash_greeting? `<p class="sub" style="margin:14px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
+            <a class="btn small ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener">Reciprocal Space</a>
           </div>
-          ${projects.length>1 ? tabsHtml : ''}
-          ${pdZoneHtml(1, 'Project pulse', null,
-              pdNextMilestoneHtml(nextMilestone)
-              + (projects.length ? pdStepperHtml(stages) : retainerPulseHtml)
-              + pdQuickActionsHtml(),
-              projects.length ? `<span style="font-size:13px;font-weight:700;color:${accent}">${pct}%</span>` : '')}
-          ${zone2Html}
-          ${zone3Html}
+          ${scopePillsHtml}
+          <p class="sub" style="margin:14px 0 0;max-width:680px">${esc(DASH_EXPLAINER)}</p>
+          ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:680px">${esc(client.dash_greeting)}</p>`:''}
+          <div style="margin-top:22px">${pdNextMilestoneHtml(nextMilestone)}</div>
+          ${pdQuickActionsHtml()}
+          ${projects.length>1 ? `<div style="margin-top:24px">${tabsHtml}</div>` : ''}
+          <div id="pdMainGrid" style="display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:start;margin-top:${projects.length>1?'0':'26px'}">
+            <div>
+              <div class="pd-cat-label" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+                <span>${projects.length? 'Stages':'Tasks'}</span>
+                ${projects.length? `<span style="font-size:12px;font-weight:700;color:${accent}">${pct}%</span>`:''}
+              </div>
+              ${projects.length ? pdStageListHtml(stages) : retainerRailHtml}
+            </div>
+            <div>
+              ${contentCardHtml}
+              ${retainerCalendarHtml}
+            </div>
+          </div>
         </div>
         <div style="display:flex;align-items:center;justify-content:center;padding:20px;opacity:.5;font-size:12px;color:var(--muted)">Reciprocal Space</div>
       </div>
