@@ -4857,7 +4857,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.44.1';
+const APP_VERSION = '0.45.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5881,9 +5881,14 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     // team is actually working on — e.g. browsing back through an already-
     // delivered stage — so it doesn't read as "this is what's happening now".
     // Belt-and-suspenders alongside the accordion's own Current/Pending
-    // pills, which already communicate this but less explicitly.
+    // pills, which already communicate this but less explicitly. The whole
+    // sentence is one <span> (not raw text/<strong> mixed directly inside
+    // the flex container) — flex treats every text run and every element
+    // child as its own separate flex item, so unwrapped mixed content here
+    // used to fragment into several independently-wrapping columns on
+    // narrow screens instead of one normal paragraph.
     const stageMismatchWarningHtml = (viewedStage && currentStage && viewedStage.id!==currentStage.id) ? `
-      <div class="pd-stage-warning">⚠️ You're viewing <strong>${esc(viewedStage.name)}</strong> — the team is currently working on <strong>${esc(currentStage.name)}</strong>.</div>
+      <div class="pd-stage-warning"><span>⚠️</span><span>You're viewing <strong>${esc(viewedStage.name)}</strong> — the team is currently working on <strong>${esc(currentStage.name)}</strong>.</span></div>
     ` : '';
 
     // Everything that used to sit below the tab strip now lives inside
