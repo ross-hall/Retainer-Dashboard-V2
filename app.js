@@ -1761,7 +1761,7 @@ function openStageCategoryModal(ctx, onDone){
 
 function openStageLinkModal(categoryId, linkId, onDone){
   onDone = onDone || refreshProjectView;
-  const l = linkId ? state.stageLinks.find(x=>x.id===linkId) : { label:'', url:'', icon:'link', description:'' };
+  const l = linkId ? state.stageLinks.find(x=>x.id===linkId) : { label:'', url:'', icon:'link', description:'', link_date:null };
   const isNew = !linkId;
   showModal(`
     <h3>${isNew?'New link':'Edit link'}</h3>
@@ -1769,6 +1769,7 @@ function openStageLinkModal(categoryId, linkId, onDone){
       <div class="full"><label>Label</label><input type="text" id="lk_label" value="${esc(l.label)}" placeholder="e.g. Figma board"></div>
       <div class="full"><label>URL</label><input type="url" id="lk_url" value="${esc(l.url)}" placeholder="https://..."></div>
       <div><label>Icon</label><select id="lk_icon">${Object.keys(LINK_ICONS).map(k=>`<option value="${k}" ${l.icon===k?'selected':''}>${k[0].toUpperCase()+k.slice(1)}</option>`).join('')}</select></div>
+      <div><label>Date <span style="color:var(--muted);font-weight:400">(optional — e.g. meeting date)</span></label><input type="date" id="lk_date" value="${l.link_date||''}"></div>
       <div class="full"><label>Description <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="lk_desc" value="${esc(l.description||'')}" placeholder="Shown under the label"></div>
     </form>
     <div class="modal-actions">
@@ -1795,15 +1796,29 @@ function openStageLinkModal(categoryId, linkId, onDone){
     if(!url){ toast('URL must be a full https:// address'); return; }
     const icon = $('#lk_icon').value;
     const description = $('#lk_desc').value.trim() || null;
+    const link_date = $('#lk_date').value || null;
+    // link_date needs v30 — try with it first, and if the column doesn't
+    // exist yet (PGRST204), retry without it so add/edit still works and
+    // only the date itself is silently dropped, rather than blocking every
+    // link edit until the migration is run.
+    let dateDropped = false;
     if(isNew){
       const position = state.stageLinks.filter(x=>x.category_id===categoryId).length;
-      const { error } = await db.from('rs_stage_links').insert({ category_id:categoryId, label, url, icon, description, position });
+      let { error } = await db.from('rs_stage_links').insert({ category_id:categoryId, label, url, icon, description, link_date, position });
+      if(error && error.code==='PGRST204'){
+        dateDropped = true;
+        ({ error } = await db.from('rs_stage_links').insert({ category_id:categoryId, label, url, icon, description, position }));
+      }
       if(error){ toast('Could not add link'); console.error(error); return; }
-      closeModal(); toast('Link added'); await onDone();
+      closeModal(); toast(dateDropped? 'Link added (run migration v30 to save dates)' : 'Link added'); await onDone();
     } else {
-      const { error } = await db.from('rs_stage_links').update({ label, url, icon, description }).eq('id', linkId);
+      let { error } = await db.from('rs_stage_links').update({ label, url, icon, description, link_date }).eq('id', linkId);
+      if(error && error.code==='PGRST204'){
+        dateDropped = true;
+        ({ error } = await db.from('rs_stage_links').update({ label, url, icon, description }).eq('id', linkId));
+      }
       if(error){ toast('Could not save'); console.error(error); return; }
-      closeModal(); toast('Link updated'); await onDone();
+      closeModal(); toast(dateDropped? 'Link updated (run migration v30 to save dates)' : 'Link updated'); await onDone();
     }
   };
 }
@@ -4842,7 +4857,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.40.0';
+const APP_VERSION = '0.41.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5606,6 +5621,31 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <button type="button" class="btn pd-material-open" style="background:${accent}" data-pdopenproj="${proj.id}">Open ↗</button>
     </div>`;
   }
+  /* Meeting Notes render as rows, not cards — a Loom recording (or any
+     meeting link) reads better as a list with a date column than a card
+     grid, and it's the one place on this page a date is actually useful. */
+  function pdMeetingRowHtml(l){
+    const href = safeUrl(l.url);
+    const iconHtml = `<div class="pd-meeting-icon" style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</div>`;
+    const dateLabel = l.link_date? esc(fmtDate(new Date(l.link_date+'T00:00'))) : '';
+    const editBtn = isAdmin? `<button type="button" class="btn small ghost pd-meeting-edit" data-editlink="${l.id}">Edit</button>`:'';
+    if(!href){
+      if(!isAdmin) return '';
+      return `<div class="pd-meeting-row">${iconHtml}
+        <div class="pd-meeting-body"><div class="pd-meeting-title">${esc(l.label)}</div><div class="pd-meeting-desc" style="color:var(--red)">Needs an https:// URL</div></div>
+        ${editBtn}
+      </div>`;
+    }
+    return `<div class="pd-meeting-row">${iconHtml}
+      <div class="pd-meeting-body">
+        <div class="pd-meeting-title">${esc(l.label)}</div>
+        ${l.description? `<div class="pd-meeting-desc">${esc(l.description)}</div>`:''}
+      </div>
+      ${dateLabel? `<div class="pd-meeting-date">${dateLabel}</div>`:''}
+      <a class="btn pd-meeting-open" style="background:${accent}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">Open ↗</a>
+      ${editBtn}
+    </div>`;
+  }
 
   function paint(){
     let proj = projects.find(p=>p.id===pub.projectId) || null;
@@ -5689,11 +5729,22 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
        Retainer clients (no rs_projects rows) fall back to the Tasks rail.
        The Reciprocal Space link sits at the very bottom, pinned there via
        .pd-nav-col's flex column + this being the last child with
-       margin-top:auto (see CSS). */
+       margin-top:auto (see CSS). Home is now its own nav button (data-pdhome,
+       styled like every other .pd-nav-group entry) rather than the brand
+       title being clickable — the title is plain text again, just with a
+       one-letter client-initial badge next to it. */
     function pdNavHtml(){
-      const portalHeader = `<button type="button" class="pd-nav-title" data-pdhome="1">Client Portal</button>`;
+      const initial = esc((client.name||'?').trim().charAt(0).toUpperCase() || '?');
+      const brand = `<div class="pd-nav-brand"><span class="pd-nav-avatar" style="background:${accent}">${initial}</span><span class="pd-nav-title">Client Portal</span></div>`;
+      const homeActive = pub.view==='home';
+      const homeBtn = `<div style="margin-bottom:16px">
+          <button type="button" class="pd-nav-group ${homeActive?'active':''}" data-pdhome="1" style="${homeActive?`color:${accent}`:''}">
+            <span class="pd-nav-group-icon" style="${homeActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg></span>
+            <span class="pd-nav-group-label">Home</span>
+          </button>
+        </div>`;
       const footerLink = `<a class="pd-nav-footer-link" href="${esc(websiteHref)}" target="_blank" rel="noopener">${LINK_ICONS.link} Reciprocal Space</a>`;
-      if(!projects.length) return `${portalHeader}<div class="pd-section-title">Tasks</div>${retainerRailHtml}${footerLink}`;
+      if(!projects.length) return `${brand}${homeBtn}<div class="pd-section-title">Tasks</div>${retainerRailHtml}${footerLink}`;
       const tree = `<div class="pd-nav-tree">${projects.map(p=>{
         const active = pub.view==='project' && p.id===pub.projectId;
         const pStages = stagesFor(p.id);
@@ -5707,7 +5758,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
             ${pdStageListHtml(pStages, p.id)}
           </div>`;
       }).join('')}</div>`;
-      return `${portalHeader}${tree}${footerLink}`;
+      return `${brand}${homeBtn}${tree}${footerLink}`;
     }
 
     const projId = proj ? proj.id : null;
@@ -5729,9 +5780,10 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       : '';
 
     // Stage Materials — every brief/proofing/general/vault link, flattened
-    // into one grid of cards. No per-category grouping shown any more; admins
-    // add straight into it via ensureMaterialsCategory rather than managing
-    // categories directly.
+    // into one grid of cards, no outer frame — the cards themselves (white
+    // fill, same as the All Projects page) are the only surface. No
+    // per-category grouping shown any more; admins add straight into it via
+    // ensureMaterialsCategory rather than managing categories directly.
     const materialLinks = linksForZones(MATERIAL_ZONES, projId, stageId);
     const materialsBody = materialLinks.length
       ? `<div class="pd-materials-grid">${materialLinks.map(pdMaterialCardHtml).join('')}</div>`
@@ -5741,23 +5793,24 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         <div class="pd-section-title" style="margin-bottom:0">Stage Materials</div>
         ${isAdmin? `<button class="btn small ghost" data-addmaterial="1">+ Add material</button>`:''}
       </div>
-      <div class="card" style="margin-top:14px;margin-bottom:28px">${materialsBody}</div>` : '';
+      <div style="margin-top:14px;margin-bottom:28px">${materialsBody}</div>` : '';
 
-    // Meeting Notes — a second, separate flat grid, same card style.
+    // Meeting Notes — rows (pdMeetingRowHtml), not cards, with a date column.
     const noteLinks = linksForZones(['notes'], projId, stageId);
     const notesBody = noteLinks.length
-      ? `<div class="pd-materials-grid">${noteLinks.map(pdMaterialCardHtml).join('')}</div>`
+      ? noteLinks.map(pdMeetingRowHtml).join('')
       : `<div class="empty" style="padding:20px 0">${isAdmin?'No notes added yet.':'Nothing shared yet.'}</div>`;
     const notesSectionHtml = (noteLinks.length || isAdmin) ? `
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
         <div class="pd-section-title" style="margin-bottom:0">Meeting Notes</div>
         ${isAdmin? `<button class="btn small ghost" data-addnote="1">+ Add note</button>`:''}
       </div>
-      <div class="card" style="margin-top:14px">${notesBody}</div>` : '';
+      <div style="margin-top:6px">${notesBody}</div>` : '';
 
     // Useful Information — a client-wide (not project/stage-scoped) grid of
-    // reference PDFs/links, same card shape as everything else. Lives on the
-    // Home page for every client type, project or retainer alike.
+    // reference PDFs/links, same card shape as everything else, no outer
+    // frame. Lives on the Home page for every client type, project or
+    // retainer alike.
     const usefulLinks = linksForZones(['useful'], null, null);
     const usefulBody = usefulLinks.length
       ? `<div class="pd-materials-grid">${usefulLinks.map(pdMaterialCardHtml).join('')}</div>`
@@ -5767,7 +5820,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         <div class="pd-section-title" style="margin-bottom:0">Useful Information</div>
         ${isAdmin? `<button class="btn small ghost" data-addresource="1">+ Add resource</button>`:''}
       </div>
-      <div class="card" style="margin-top:14px">${usefulBody}</div>` : '';
+      <div style="margin-top:14px">${usefulBody}</div>` : '';
 
     // Home page — the greeting/explainer block is shared by every client
     // type; project clients additionally get a "Your Projects" card grid
