@@ -4857,7 +4857,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.43.0';
+const APP_VERSION = '0.44.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5930,16 +5930,28 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       : (pub.view==='timeline' && projects.length) ? timelineHtml
       : homeHtml;
 
+    // The padded wrapper and #pdMainGrid both get explicit width:100% (not
+    // just relying on flex's align-items:stretch default) plus min-width:0.
+    // Without width:100%, the wrapper's cross-axis size was shrinking to fit
+    // its content's preferred width instead of filling the available
+    // viewport width — verified live: it measured ~980px wide on a page with
+    // little content and ~830px on one with more (e.g. more stage tabs), a
+    // ~150px difference, which is what actually read as "the nav jumps
+    // around" (the nav column itself was always a fixed 260px — the whole
+    // centered container's total width, and so its centering offset, was
+    // what moved). min-width:0 additionally stops any single wide,
+    // unbreakable child (like a long .pd-tabs strip) from forcing its column
+    // wider than its fair share once width is otherwise fixed.
     document.body.innerHTML = `
       <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink);display:flex;flex-direction:column">
         ${isAdmin? `<div style="background:var(--accent-soft);color:var(--accent);border-bottom:1px solid var(--line);text-align:center;padding:10px 20px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
           <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
           <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
-        <div style="max-width:1600px;margin:0 auto;padding:32px 24px 40px;flex:1;display:flex;flex-direction:column">
-          <div id="pdMainGrid" style="display:grid;grid-template-columns:260px 1fr;gap:32px;flex:1">
+        <div style="max-width:1600px;width:100%;box-sizing:border-box;margin:0 auto;padding:32px 24px 40px;flex:1;display:flex;flex-direction:column;min-width:0">
+          <div id="pdMainGrid" style="display:grid;grid-template-columns:260px 1fr;gap:32px;flex:1;min-width:0;width:100%">
             <div class="pd-nav-col">${pdNavHtml()}</div>
-            <div>${contentHtml}</div>
+            <div style="min-width:0">${contentHtml}</div>
           </div>
         </div>
       </div>
