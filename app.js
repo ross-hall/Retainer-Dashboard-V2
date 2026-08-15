@@ -5501,12 +5501,18 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   /* Stages as a single-expand accordion in the right content column — the
      viewed stage (pub.viewedStageId, defaults to the current/first-incomplete
      stage, but the client can click any other one) is always the one open;
-     every other stage renders collapsed, header only. Each header carries
-     "Stage N" plus a three-state status pill (Completed/Current/Pending) so
-     the state is legible without opening anything. panelHtml (materials +
-     notes + due date + mismatch warning, assembled once in paint() since
-     it's the same content regardless of which row it's nested under) is
-     injected into whichever stage is currently open. */
+     every other stage renders collapsed, header only. Each stage is its own
+     card (see .pd-accordion-item) so 5 stages read as 5 distinct things, not
+     one continuous list. Header shows "Stage N", the stage name and a
+     three-state status pill on one line, the due date on a second line (a
+     plain <span>, not a nested <button> — the header itself is a <button>,
+     and a <button> can't contain another one, which is also why the admin
+     Hide/Show due-date toggle stays inside the panel rather than moving up
+     here) so the date is visible even collapsed, and a +/− toggle on the
+     right. panelHtml (materials + notes + due date w/ the Hide/Show toggle +
+     mismatch warning, assembled once in paint() since it's the same content
+     regardless of which row it's nested under) is injected into whichever
+     stage is currently open. */
   function pdStageAccordionHtml(stages, currentStage, panelHtml){
     if(!stages.length) return '';
     return `<div class="pd-accordion">${stages.map((s,i)=>{
@@ -5517,12 +5523,21 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       const statusStyle = done ? `background:var(--green-bg);color:var(--green)`
         : isCurrent ? `background:${mutedBg(accent)};color:${accent}`
         : `background:var(--track);color:var(--muted)`;
+      const hidden = !!s.hide_due_date_from_client;
+      const dateText = hidden
+        ? (isAdmin? 'Hidden from client' : '')
+        : (s.due_date? `Due ${fmtDate(new Date(s.due_date+'T00:00'))}` : (isAdmin? 'No due date set' : ''));
       return `<div class="pd-accordion-item">
         <button type="button" class="pd-accordion-header" data-pdstage="${s.id}">
-          <svg class="pd-accordion-chevron ${viewed?'open':''}" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M9 6l6 6-6 6"/></svg>
-          <span class="pd-accordion-num">Stage ${i+1}</span>
-          <span class="pd-accordion-name">${esc(s.name)}</span>
-          <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
+          <div class="pd-accordion-header-main">
+            <div class="pd-accordion-line1">
+              <span class="pd-accordion-num">Stage ${i+1}</span>
+              <span class="pd-accordion-name">${esc(s.name)}</span>
+              <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
+            </div>
+            ${dateText? `<div class="pd-accordion-line2">${esc(dateText)}</div>`:''}
+          </div>
+          <span class="pd-accordion-toggle">${viewed?'−':'+'}</span>
         </button>
         ${viewed? `<div class="pd-accordion-panel">${panelHtml}</div>` : ''}
       </div>`;
