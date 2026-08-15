@@ -3595,7 +3595,7 @@ function renderProjDetail(){
     }, { withTime:true, currentTime:s.due_time });
   }));
   // Renaming writes straight to rs_project_stages.name — the same field/row
-  // the public dashboard reads (pdStageListHtml), so a rename here shows up
+  // the public dashboard reads (pdStageTabsHtml), so a rename here shows up
   // there on its next load with no separate sync step.
   main.querySelectorAll('[data-stagename]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
@@ -4857,7 +4857,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.42.0';
+const APP_VERSION = '0.43.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5486,6 +5486,11 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   // drills into one project's stage materials. No project is pre-selected —
   // the client lands on Home and picks a project from the nav or its card.
   const pub = { view:'home', projectId: null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
+  // Reserve the scrollbar gutter permanently — without this, a short page
+  // (Home) has no vertical scrollbar while a tall one (a project with lots
+  // of materials) does, and the centered max-width container shifts a few
+  // pixels sideways between them, which reads as the whole nav "jumping".
+  document.documentElement.style.overflowY = 'scroll';
   const accent = client.dash_accent_color || '#2383e2';
   // The header is now a plain "Hello, {name}" greeting with no logo tile, so
   // client.dash_logo_url is no longer rendered anywhere on this page — the
@@ -5718,41 +5723,47 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     /* Combined left-hand nav — projects only now, not their stages (those
        moved to horizontal tabs in the right content column, see
        pdStageTabsHtml). Each project is a group header (type icon + label +
-       completion %); clicking one selects it as pub.projectId and switches
-       pub.view to 'project'. "active" (highlighted) requires being on that
-       project's page specifically, not just having it selected, so nothing
-       is highlighted while on Home. Retainer clients (no rs_projects rows)
-       fall back to the Tasks rail instead. The Reciprocal Space link sits at
-       the very bottom, pinned there via .pd-nav-col's flex column + this
-       being the last child with margin-top:auto (see CSS). Home is its own
-       nav button (data-pdhome, styled like every other .pd-nav-group entry)
-       — the brand title next to the client-initial avatar is plain text,
-       not clickable. */
+       a stage-count pill, e.g. "2/5"); clicking one selects it as
+       pub.projectId and switches pub.view to 'project'. "active" (highlighted)
+       requires being on that project's page specifically, not just having it
+       selected, so nothing is highlighted while on Home. Retainer clients
+       (no rs_projects rows) fall back to the Tasks rail instead. The
+       Reciprocal Space link sits at the very bottom, pinned there via
+       .pd-nav-col's flex column + this being the last child with
+       margin-top:auto (see CSS). Home and Timeline are global pages (not
+       tied to a project), grouped together and set apart from the projects
+       list below by a border-top divider, so the two groups read as
+       distinct — the brand title next to the client-initial avatar is plain
+       text, not clickable. */
     function pdNavHtml(){
       const initial = esc((client.name||'?').trim().charAt(0).toUpperCase() || '?');
       const brand = `<div class="pd-nav-brand"><span class="pd-nav-avatar" style="background:${accent}">${initial}</span><span class="pd-nav-title">Client Portal</span></div>`;
       const homeActive = pub.view==='home';
-      const homeBtn = `<div style="margin-bottom:16px">
-          <button type="button" class="pd-nav-group ${homeActive?'active':''}" data-pdhome="1" style="${homeActive?`color:${accent}`:''}">
-            <span class="pd-nav-group-icon" style="${homeActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg></span>
-            <span class="pd-nav-group-label">Home</span>
-          </button>
-        </div>`;
+      const homeBtn = `<button type="button" class="pd-nav-group ${homeActive?'active':''}" data-pdhome="1" style="${homeActive?`color:${accent}`:''}">
+          <span class="pd-nav-group-icon" style="${homeActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-6h5v6"/></svg></span>
+          <span class="pd-nav-group-label">Home</span>
+        </button>`;
+      const timelineActive = pub.view==='timeline';
+      const timelineBtn = projects.length ? `<button type="button" class="pd-nav-group ${timelineActive?'active':''}" data-pdtimeline="1" style="${timelineActive?`color:${accent}`:''}">
+          <span class="pd-nav-group-icon" style="${timelineActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
+          <span class="pd-nav-group-label">Timeline</span>
+        </button>` : '';
+      const globalNav = `<div style="margin-bottom:18px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}</div>`;
       const footerLink = `<a class="pd-nav-footer-link" href="${esc(websiteHref)}" target="_blank" rel="noopener">${LINK_ICONS.link} Reciprocal Space</a>`;
-      if(!projects.length) return `${brand}${homeBtn}<div class="pd-section-title">Tasks</div>${retainerRailHtml}${footerLink}`;
-      const tree = `<div class="pd-nav-tree">${projects.map(p=>{
+      if(!projects.length) return `${brand}${globalNav}<div class="pd-section-title">Tasks</div>${retainerRailHtml}${footerLink}`;
+      const tree = `<div class="pd-nav-tree" style="border-top:1px solid var(--line);padding-top:14px">${projects.map(p=>{
         const active = pub.view==='project' && p.id===pub.projectId;
         const pStages = stagesFor(p.id);
-        const pPct = pStages.length? Math.round(pStages.filter(s=>stageStatus(s.id)==='Complete').length/pStages.length*100) : null;
+        const pDone = pStages.filter(s=>stageStatus(s.id)==='Complete').length;
         return `<div class="pd-nav-project">
             <button type="button" class="pd-nav-group ${active?'active':''}" data-pdtab="${p.id}" style="${active?`color:${accent}`:''}">
               <span class="pd-nav-group-icon" style="${active?`color:${accent}`:''}">${projectTypeIconHtml(p.project_type, 15)}</span>
               <span class="pd-nav-group-label">${esc(p.project_type)}</span>
-              ${pPct!==null? `<span class="pd-nav-group-pct">${pPct}%</span>`:''}
+              ${pStages.length? `<span class="pd-nav-group-pill">${pDone}/${pStages.length}</span>`:''}
             </button>
           </div>`;
       }).join('')}</div>`;
-      return `${brand}${homeBtn}${tree}${footerLink}`;
+      return `${brand}${globalNav}${tree}${footerLink}`;
     }
 
     const projId = proj ? proj.id : null;
@@ -5765,13 +5776,11 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
     // Scope pill — just the project's scope figure (e.g. "12 slides",
     // "60s length"), sourced from the same rs_projects.details the internal
-    // app uses. Type/label/review-window are no longer shown here — the
-    // type now has its own icon+label in the nav, and this is deliberately
-    // just the one number a client actually wants to see.
+    // app uses. Sits inline next to the title now (e.g. "Branding [Refresh
+    // branding]"), not as its own block below — type/label/review-window
+    // still aren't shown here, the type already has its own icon+label in
+    // the nav and this is deliberately just the one number a client wants.
     const scopeBit = proj ? projectDetailsSummary(proj) : null;
-    const scopePillsHtml = scopeBit
-      ? `<div class="pd-brief" style="margin:8px 0 0"><span class="pd-brief-item">${esc(scopeBit)}</span></div>`
-      : '';
 
     // Stage Materials — every brief/proofing/general/vault link, flattened
     // into one grid of cards, no outer frame — the cards themselves (white
@@ -5867,21 +5876,59 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     // Project view — one project's stage materials. Reciprocal Space moved
     // out of this header into the nav footer, so the cheat-sheet button (when
     // it applies) is the only thing that can occupy the header's right side.
+    // The scope pill sits inline with the title (e.g. "Branding [Refresh
+    // branding]") rather than as its own line, and the header carries extra
+    // bottom margin so the tab strip below it isn't crowded against it.
     const projectHtml = proj ? `
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
-        <h2 style="margin-bottom:0;flex:1;min-width:0">${esc(proj.project_type)}</h2>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:24px">
+        <h2 style="margin-bottom:0;flex:1;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px">
+          <span>${esc(proj.project_type)}</span>
+          ${scopeBit? `<span class="pd-brief-item">${esc(scopeBit)}</span>`:''}
+        </h2>
         ${cheatsheetHref? `<a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a>`:''}
       </div>
       ${pdStageTabsHtml(stages, currentStage)}
       ${viewedStageDateHtml}
       ${stageMismatchWarningHtml}
-      ${scopePillsHtml}
       <div class="pd-divider"></div>
       ${materialsSectionHtml}
       ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
     ` : '';
 
-    const contentHtml = (pub.view==='project' && proj) ? projectHtml : homeHtml;
+    // Timeline — every dated stage across every active project, earliest
+    // first, so a client can see what's coming up without hopping between
+    // projects. Reuses .pd-stage-row (same look as the old per-project
+    // stage list) and the existing data-pdstage/-pdstageproj click handler,
+    // so clicking a row jumps straight into that project's stage — no new
+    // wiring needed. Respects hide_due_date_from_client the same way the
+    // rest of the page does: hidden rows are skipped for a client (a
+    // date-less row in a date-ordered list would be confusing) but shown to
+    // admin with a "Hidden" label.
+    const timelineRows = projects
+      .flatMap(p=> stagesFor(p.id).map(s=>({ s, p })))
+      .filter(({s})=> s.due_date)
+      .sort((a,b)=> a.s.due_date.localeCompare(b.s.due_date))
+      .map(({s,p})=>{
+        const hidden = !!s.hide_due_date_from_client;
+        if(hidden && !isAdmin) return '';
+        const done = stageStatus(s.id)==='Complete';
+        const overdue = !done && s.due_date < todayIso;
+        const dateLabel = hidden ? '<span style="font-style:italic">Hidden</span>' : esc(fmtDate(new Date(s.due_date+'T00:00')));
+        return `<div class="pd-stage-row" data-pdstage="${s.id}" data-pdstageproj="${p.id}">
+          <div class="pd-stage-dot" style="${done?`background:${accent};color:#fff`:''}">${done?'✓':'•'}</div>
+          <div class="pd-stage-label">${esc(p.project_type)} <span style="color:var(--muted);font-weight:400">· ${esc(s.name)}</span></div>
+          <div class="pd-stage-date" style="${overdue?'color:var(--red)':''}">${dateLabel}</div>
+        </div>`;
+      }).filter(Boolean).join('');
+    const timelineHtml = `
+      <h2 style="margin-bottom:0">Timeline</h2>
+      <p class="sub" style="margin:10px 0 22px">Every scheduled date across your active projects, earliest first.</p>
+      ${timelineRows || `<div class="empty" style="padding:20px 0">No dates scheduled yet.</div>`}
+    `;
+
+    const contentHtml = (pub.view==='project' && proj) ? projectHtml
+      : (pub.view==='timeline' && projects.length) ? timelineHtml
+      : homeHtml;
 
     document.body.innerHTML = `
       <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink);display:flex;flex-direction:column">
@@ -5889,18 +5936,18 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
           <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
-        <div style="max-width:1280px;margin:0 auto;padding:32px 24px 40px;flex:1;display:flex;flex-direction:column">
-          <div id="pdMainGrid" style="display:grid;grid-template-columns:240px 1fr;gap:32px;flex:1">
+        <div style="max-width:1600px;margin:0 auto;padding:32px 24px 40px;flex:1;display:flex;flex-direction:column">
+          <div id="pdMainGrid" style="display:grid;grid-template-columns:260px 1fr;gap:32px;flex:1">
             <div class="pd-nav-col">${pdNavHtml()}</div>
             <div>${contentHtml}</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:center;padding:20px;opacity:.5;font-size:12px;color:var(--muted)">Reciprocal Space</div>
       </div>
       <div id="modalRoot"></div>
       <div class="toast" id="toast"></div>`;
 
     document.querySelectorAll('[data-pdhome]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='home'; paint(); }));
+    document.querySelectorAll('[data-pdtimeline]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='timeline'; paint(); }));
     document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-pdopenproj]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdopenproj; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; if(el.dataset.pdstageproj) pub.projectId = el.dataset.pdstageproj; pub.view='project'; paint(); }));
