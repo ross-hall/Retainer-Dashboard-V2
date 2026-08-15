@@ -4857,7 +4857,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.45.0';
+const APP_VERSION = '0.45.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5503,16 +5503,17 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
      stage, but the client can click any other one) is always the one open;
      every other stage renders collapsed, header only. Each stage is its own
      card (see .pd-accordion-item) so 5 stages read as 5 distinct things, not
-     one continuous list. Header shows "Stage N", the stage name and a
-     three-state status pill on one line, the due date on a second line (a
-     plain <span>, not a nested <button> — the header itself is a <button>,
-     and a <button> can't contain another one, which is also why the admin
-     Hide/Show due-date toggle stays inside the panel rather than moving up
-     here) so the date is visible even collapsed, and a +/− toggle on the
-     right. panelHtml (materials + notes + due date w/ the Hide/Show toggle +
-     mismatch warning, assembled once in paint() since it's the same content
-     regardless of which row it's nested under) is injected into whichever
-     stage is currently open. */
+     one continuous list. Header: a numbered circle (just "1", "2", … — no
+     "Stage" label), the stage name, and the due date (with the admin
+     Hide/Show toggle inline — a real nested <button>, which is why the
+     header itself is a <div data-pdstage>, not a <button>) on the left; the
+     status pill and the +/− toggle on the right. The click target is the
+     whole header (data-pdstage, wired the same as any other clickable div
+     on this page) — Hide/Show stops propagation so it doesn't also toggle
+     the accordion. panelHtml (materials + notes, assembled once in paint()
+     since it's identical regardless of which row it's nested under) is
+     injected into whichever stage is currently open; the due date does NOT
+     repeat there any more — the header already shows it. */
   function pdStageAccordionHtml(stages, currentStage, panelHtml){
     if(!stages.length) return '';
     return `<div class="pd-accordion">${stages.map((s,i)=>{
@@ -5527,18 +5528,21 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       const dateText = hidden
         ? (isAdmin? 'Hidden from client' : '')
         : (s.due_date? `Due ${fmtDate(new Date(s.due_date+'T00:00'))}` : (isAdmin? 'No due date set' : ''));
+      const hideShowBtn = isAdmin && s.due_date
+        ? `<button type="button" class="btn small ghost" data-toggledate="${s.id}" style="padding:1px 7px;font-size:10px">${hidden?'Show':'Hide'}</button>`
+        : '';
       return `<div class="pd-accordion-item">
-        <button type="button" class="pd-accordion-header" data-pdstage="${s.id}">
+        <div class="pd-accordion-header" data-pdstage="${s.id}">
+          <span class="pd-accordion-num-circle">${i+1}</span>
           <div class="pd-accordion-header-main">
-            <div class="pd-accordion-line1">
-              <span class="pd-accordion-num">Stage ${i+1}</span>
-              <span class="pd-accordion-name">${esc(s.name)}</span>
-              <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
-            </div>
-            ${dateText? `<div class="pd-accordion-line2">${esc(dateText)}</div>`:''}
+            <div class="pd-accordion-name">${esc(s.name)}</div>
+            ${(dateText || hideShowBtn) ? `<div class="pd-accordion-line2">${dateText? `<span>${esc(dateText)}</span>`:''}${hideShowBtn}</div>` : ''}
           </div>
-          <span class="pd-accordion-toggle">${viewed?'−':'+'}</span>
-        </button>
+          <div class="pd-accordion-right">
+            <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
+            <span class="pd-accordion-toggle">${viewed?'−':'+'}</span>
+          </div>
+        </div>
         ${viewed? `<div class="pd-accordion-panel">${panelHtml}</div>` : ''}
       </div>`;
     }).join('')}</div>`;
@@ -5877,42 +5881,14 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ` : ''}
     `;
 
-    // Due date (+ admin hide/show toggle) for whichever stage is currently
-    // being viewed — sits at the top of that stage's open accordion panel.
-    const viewedStageDateHtml = (()=>{
-      if(!viewedStage) return '';
-      const hidden = !!viewedStage.hide_due_date_from_client;
-      const dateLabel = hidden
-        ? (isAdmin? '<span style="font-style:italic">Hidden from client</span>' : '')
-        : (viewedStage.due_date? esc(fmtDate(new Date(viewedStage.due_date+'T00:00'))) : '');
-      if(!dateLabel && !isAdmin) return '';
-      return `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)">
-        <span>${dateLabel? `Due ${dateLabel}` : 'No due date set'}</span>
-        ${isAdmin && viewedStage.due_date? `<button type="button" class="btn small ghost" data-toggledate="${viewedStage.id}" style="padding:1px 7px;font-size:10px">${hidden?'Show':'Hide'}</button>`:''}
-      </div>`;
-    })();
-
-    // Warns when the client is looking at a stage other than the one the
-    // team is actually working on — e.g. browsing back through an already-
-    // delivered stage — so it doesn't read as "this is what's happening now".
-    // Belt-and-suspenders alongside the accordion's own Current/Pending
-    // pills, which already communicate this but less explicitly. The whole
-    // sentence is one <span> (not raw text/<strong> mixed directly inside
-    // the flex container) — flex treats every text run and every element
-    // child as its own separate flex item, so unwrapped mixed content here
-    // used to fragment into several independently-wrapping columns on
-    // narrow screens instead of one normal paragraph.
-    const stageMismatchWarningHtml = (viewedStage && currentStage && viewedStage.id!==currentStage.id) ? `
-      <div class="pd-stage-warning"><span>⚠️</span><span>You're viewing <strong>${esc(viewedStage.name)}</strong> — the team is currently working on <strong>${esc(currentStage.name)}</strong>.</span></div>
-    ` : '';
-
     // Everything that used to sit below the tab strip now lives inside
     // whichever stage's accordion panel is open — assembled once here since
-    // it's identical regardless of which row it's nested under.
+    // it's identical regardless of which row it's nested under. The due
+    // date (+ admin Hide/Show toggle) and the "viewing a different stage"
+    // warning both used to live here too — removed since the accordion
+    // header already shows the date on every row, and the status pill
+    // (Current/Pending) already communicates the mismatch.
     const stagePanelHtml = `
-      ${viewedStageDateHtml}
-      ${stageMismatchWarningHtml}
-      <div class="pd-divider" style="margin:16px 0"></div>
       ${materialsSectionHtml}
       ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
     `;
