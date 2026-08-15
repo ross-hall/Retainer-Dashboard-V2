@@ -4857,7 +4857,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.41.0';
+const APP_VERSION = '0.42.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5493,35 +5493,22 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true); }
 
-  /* Vertical stage list — rendered flush (no indent) directly under each
-     project's group header in the combined nav tree (pdNavHtml, below);
-     every project's list is always shown, there's no collapse/expand any
-     more. Reuses .pd-stage-row (shared with the retainer task list) so the
-     two rails look identical — and so this can't drift from it. Rendered
-     with no card wrapper: the only framed surface on the page is the
-     content-materials column. Carries the owning project's id on each row
-     (data-pdstageproj) so clicking a stage from any project also switches
-     pub.projectId, keeping the content column (materials/pills/title) in
-     sync with whichever stage was clicked. The currently-highlighted row
-     (accent background/text) is pub.viewedStageId, which defaults to the
-     first incomplete stage — i.e. "the stage we're on" — until the admin
-     or client clicks a different one. */
-  function pdStageListHtml(stages, projectId){
-    if(!stages.length) return `<div class="empty" style="padding:6px 0 6px 2px;font-size:12.5px">No stages yet.</div>`;
-    return stages.map((s,i)=>{
-      const done = stageStatus(s.id)==='Complete';
-      const current = s.id===pub.viewedStageId;
-      const hidden = !!s.hide_due_date_from_client;
-      const dateLabel = hidden
-        ? (isAdmin? '<span style="font-style:italic">Hidden</span>' : '')
-        : (s.due_date? esc(fmtDate(new Date(s.due_date+'T00:00'))) : '');
-      return `<div class="pd-stage-row" data-pdstage="${s.id}" data-pdstageproj="${projectId}" style="${current?`background:${accent}14`:''}">
-        <div class="pd-stage-dot" style="${done||current?`background:${accent};color:#fff`:''}">${done?'✓':i+1}</div>
-        <div class="pd-stage-label" style="${current?`color:${accent};font-weight:600`:''}">${esc(s.name)}</div>
-        ${dateLabel? `<div class="pd-stage-date">${dateLabel}</div>`:''}
-        ${isAdmin && s.due_date? `<button type="button" class="btn small ghost" data-toggledate="${s.id}" style="padding:1px 7px;font-size:10px" title="${hidden?'Show this date to the client':'Hide this date from the client'}">${hidden?'Show':'Hide'}</button>`:''}
-      </div>`;
-    }).join('');
+  /* Horizontal stage tabs — sits at the top of a project's page in the right
+     content column now, not the left nav (which only lists projects to
+     switch between any more). "Current" (green pill) marks whichever stage
+     is actually first-incomplete — the team's real progress — which is
+     independent from the highlighted/active tab (pub.viewedStageId, what
+     the client is currently looking at, defaults to the current stage but
+     can be clicked elsewhere). paint() renders a warning banner when those
+     two diverge, so a client browsing an old delivered stage doesn't mistake
+     it for what's happening right now. */
+  function pdStageTabsHtml(stages, currentStage){
+    if(!stages.length) return '';
+    return `<div class="pd-tabs">${stages.map(s=>{
+      const viewed = s.id===pub.viewedStageId;
+      const isCurrent = currentStage && s.id===currentStage.id;
+      return `<button type="button" class="pd-tab ${viewed?'active':''}" data-pdstage="${s.id}" style="${viewed?`color:${accent};border-color:${accent}`:''}">${esc(s.name)}${isCurrent? `<span class="pd-current-pill">Current</span>`:''}</button>`;
+    }).join('')}</div>`;
   }
 
   /* Book a Call / Submit New Request / Contact us. The mailto is promoted out
@@ -5607,18 +5594,28 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <a class="btn pd-material-open" style="background:${accent}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${openLabel} ↗</a>
     </div>`;
   }
-  /* One card per project on the Home page — same pd-material-card shape as
-     everything else on this page, but the "Open" button navigates into that
-     project's stage view (data-pdopenproj) instead of an external link. */
+  /* One card per project on the Home page — its own .pd-project-card shape
+     (not .pd-material-card): whole card is the click target (data-pdopenproj,
+     no separate Open button), left-aligned, hover-lifts like .client-card on
+     the All Projects page. Progress is stage-count segments (e.g. 2/5), not
+     a percentage — deliberately coarser, since 5 stages hitting 60% reads as
+     more precise than the underlying data actually is. */
   function pdProjectCardHtml(proj){
     const pStages = stagesFor(proj.id);
     const pDone = pStages.filter(s=>stageStatus(s.id)==='Complete').length;
-    const pPct = pStages.length? Math.round(pDone/pStages.length*100) : 0;
-    return `<div class="pd-material-card">
-      <div class="pd-material-icon" style="color:${accent}">${projectTypeIconHtml(proj.project_type, 22)}</div>
-      <div class="pd-material-title">${esc(proj.project_type)}</div>
-      <div class="pd-material-desc">${proj.label? esc(proj.label)+' · ':''}${pPct}% complete</div>
-      <button type="button" class="btn pd-material-open" style="background:${accent}" data-pdopenproj="${proj.id}">Open ↗</button>
+    const progressHtml = pStages.length
+      ? `<div class="pd-seg-bar">${pStages.map((s,i)=>`<div class="pd-seg" style="${i<pDone?`background:${accent}`:''}"></div>`).join('')}</div>
+         <div class="pd-seg-label">${pDone}/${pStages.length} stages</div>`
+      : `<div class="pd-seg-label" style="margin-top:14px">No stages yet</div>`;
+    return `<div class="pd-project-card" data-pdopenproj="${proj.id}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="pd-project-card-icon" style="color:${accent}">${projectTypeIconHtml(proj.project_type, 18)}</div>
+        <div style="min-width:0">
+          <div class="pd-project-card-title">${esc(proj.project_type)}</div>
+          ${proj.label? `<div class="pd-project-card-desc">${esc(proj.label)}</div>`:''}
+        </div>
+      </div>
+      ${progressHtml}
     </div>`;
   }
   /* Meeting Notes render as rows, not cards — a Loom recording (or any
@@ -5656,6 +5653,10 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       pub.viewedStageId = (firstIncomplete||stages[stages.length-1]||{}).id || null;
     }
     const viewedStage = stages.find(s=>s.id===pub.viewedStageId) || null;
+    // The stage the team is actually on right now, independent of whatever
+    // the client happens to be looking at (viewedStage) — used for the
+    // "Current" pill on the stage tabs and the mismatch warning below.
+    const currentStage = stages.find(s=>stageStatus(s.id)!=='Complete') || stages[stages.length-1] || null;
 
     // Retainer clients aren't organized into stages — show a chronological
     // task list (previous / upcoming) plus a read-only monthly calendar of
@@ -5714,25 +5715,19 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ? `<div class="card" style="margin-top:20px"><div class="pd-section-title">Calendar</div>${calendarHtmlPd(pub.calY, pub.calM)}</div>`
       : '';
 
-    /* Combined left-hand nav. The title is just a clickable "Client Portal"
-       label (data-pdhome) that takes you back to the Home page — no more
-       explainer sentence here, that moved down to the Home page's greeting
-       block. Every project is always expanded — no accordion — each
-       rendered as a group header (type icon + label + completion %) with
-       its stages listed flush underneath, no indent. Clicking a group
-       header or one of its stages both select that project as
-       pub.projectId (so the content column follows it) and switch
-       pub.view to 'project'; "active" (highlighted) requires being on that
+    /* Combined left-hand nav — projects only now, not their stages (those
+       moved to horizontal tabs in the right content column, see
+       pdStageTabsHtml). Each project is a group header (type icon + label +
+       completion %); clicking one selects it as pub.projectId and switches
+       pub.view to 'project'. "active" (highlighted) requires being on that
        project's page specifically, not just having it selected, so nothing
-       is highlighted while on Home. A "stage we're on" highlight is
-       pub.viewedStageId, which defaults to the first incomplete stage.
-       Retainer clients (no rs_projects rows) fall back to the Tasks rail.
-       The Reciprocal Space link sits at the very bottom, pinned there via
-       .pd-nav-col's flex column + this being the last child with
-       margin-top:auto (see CSS). Home is now its own nav button (data-pdhome,
-       styled like every other .pd-nav-group entry) rather than the brand
-       title being clickable — the title is plain text again, just with a
-       one-letter client-initial badge next to it. */
+       is highlighted while on Home. Retainer clients (no rs_projects rows)
+       fall back to the Tasks rail instead. The Reciprocal Space link sits at
+       the very bottom, pinned there via .pd-nav-col's flex column + this
+       being the last child with margin-top:auto (see CSS). Home is its own
+       nav button (data-pdhome, styled like every other .pd-nav-group entry)
+       — the brand title next to the client-initial avatar is plain text,
+       not clickable. */
     function pdNavHtml(){
       const initial = esc((client.name||'?').trim().charAt(0).toUpperCase() || '?');
       const brand = `<div class="pd-nav-brand"><span class="pd-nav-avatar" style="background:${accent}">${initial}</span><span class="pd-nav-title">Client Portal</span></div>`;
@@ -5755,7 +5750,6 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
               <span class="pd-nav-group-label">${esc(p.project_type)}</span>
               ${pPct!==null? `<span class="pd-nav-group-pct">${pPct}%</span>`:''}
             </button>
-            ${pdStageListHtml(pStages, p.id)}
           </div>`;
       }).join('')}</div>`;
       return `${brand}${homeBtn}${tree}${footerLink}`;
@@ -5823,12 +5817,12 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <div style="margin-top:14px">${usefulBody}</div>` : '';
 
     // Home page — the greeting/explainer block is shared by every client
-    // type; project clients additionally get a "Your Projects" card grid
+    // type; project clients additionally get an "Active Projects" card grid
     // (each card opens that project's stage view), retainer clients instead
     // keep their existing Stage Materials/Meeting Notes/Calendar appended
     // below (they have no per-project drill-down to send those to).
     const projectsSectionHtml = projects.length ? `
-      <div class="pd-section-title" style="margin-top:28px">Your Projects</div>
+      <div class="pd-section-title" style="margin-top:28px">Active Projects</div>
       <div class="pd-materials-grid">${projects.map(pdProjectCardHtml).join('')}</div>
     ` : '';
     const homeHtml = `
@@ -5846,6 +5840,30 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ` : ''}
     `;
 
+    // Due date (+ admin hide/show toggle) for whichever stage is currently
+    // being viewed — used to live on each row of the old vertical stage
+    // list; now that stages are tabs, it sits just below the tab strip
+    // instead, scoped to the one stage actually in view.
+    const viewedStageDateHtml = (()=>{
+      if(!viewedStage) return '';
+      const hidden = !!viewedStage.hide_due_date_from_client;
+      const dateLabel = hidden
+        ? (isAdmin? '<span style="font-style:italic">Hidden from client</span>' : '')
+        : (viewedStage.due_date? esc(fmtDate(new Date(viewedStage.due_date+'T00:00'))) : '');
+      if(!dateLabel && !isAdmin) return '';
+      return `<div style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;color:var(--muted)">
+        <span>${dateLabel? `Due ${dateLabel}` : 'No due date set'}</span>
+        ${isAdmin && viewedStage.due_date? `<button type="button" class="btn small ghost" data-toggledate="${viewedStage.id}" style="padding:1px 7px;font-size:10px">${hidden?'Show':'Hide'}</button>`:''}
+      </div>`;
+    })();
+
+    // Warns when the client is looking at a stage other than the one the
+    // team is actually working on — e.g. browsing back through an already-
+    // delivered stage — so it doesn't read as "this is what's happening now".
+    const stageMismatchWarningHtml = (viewedStage && currentStage && viewedStage.id!==currentStage.id) ? `
+      <div class="pd-stage-warning">⚠️ You're viewing <strong>${esc(viewedStage.name)}</strong> — the team is currently working on <strong>${esc(currentStage.name)}</strong>.</div>
+    ` : '';
+
     // Project view — one project's stage materials. Reciprocal Space moved
     // out of this header into the nav footer, so the cheat-sheet button (when
     // it applies) is the only thing that can occupy the header's right side.
@@ -5854,6 +5872,9 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         <h2 style="margin-bottom:0;flex:1;min-width:0">${esc(proj.project_type)}</h2>
         ${cheatsheetHref? `<a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a>`:''}
       </div>
+      ${pdStageTabsHtml(stages, currentStage)}
+      ${viewedStageDateHtml}
+      ${stageMismatchWarningHtml}
       ${scopePillsHtml}
       <div class="pd-divider"></div>
       ${materialsSectionHtml}
@@ -5863,13 +5884,13 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     const contentHtml = (pub.view==='project' && proj) ? projectHtml : homeHtml;
 
     document.body.innerHTML = `
-      <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink)">
+      <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink);display:flex;flex-direction:column">
         ${isAdmin? `<div style="background:var(--accent-soft);color:var(--accent);border-bottom:1px solid var(--line);text-align:center;padding:10px 20px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
           <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
           <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
-        <div style="max-width:1280px;margin:0 auto;padding:32px 24px 40px">
-          <div id="pdMainGrid" style="display:grid;grid-template-columns:240px 1fr;gap:32px">
+        <div style="max-width:1280px;margin:0 auto;padding:32px 24px 40px;flex:1;display:flex;flex-direction:column">
+          <div id="pdMainGrid" style="display:grid;grid-template-columns:240px 1fr;gap:32px;flex:1">
             <div class="pd-nav-col">${pdNavHtml()}</div>
             <div>${contentHtml}</div>
           </div>

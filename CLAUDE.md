@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.41.0**
+Current version: **v0.42.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -349,6 +349,15 @@ Font: Inter (unchanged from v0.9.0)
 - Verified live: Radyus's Home page (project client, admin + non-admin), clicking a project card into its stage view and back out via the nav title, Athernal Bio's Home-as-whole-page (retainer, non-admin), the v29-not-yet-run degradation (both a raw insert and the real "+ Add resource" button click confirmed the same `23514` → toast path), and the mobile (`≤900px`) stack.
 - No changes to `pdMaterialCardHtml`, `pdStageListHtml`, `linksForZones`, `embedInfoFor`, `safeUrl`, or the retainer Tasks/Calendar rail — only where things are called from and what triggers `pub.view`.
 
+**What shipped in v0.42.0** (dedicated Home nav button + client-initial avatar; project/material cards restyled to match the internal app's white card look with no outer frame; Meeting Notes switched from cards to dated rows):
+- **Home is now its own nav button**, not the brand title — `pdNavHtml()` renders a `.pd-nav-brand` row (one-letter client-initial avatar in the client's accent color + plain "Client Portal" text, no longer clickable) followed by a `data-pdhome` button styled exactly like a project group (`.pd-nav-group`, house-icon SVG, highlights when `pub.view==='home'`). `initials` wasn't reused for the avatar — it's deliberately a single letter (`client.name.trim()[0]`), not the two-letter member-avatar convention.
+- **Project cards and every material-grid card now use the same "white card" component as the All Projects page** — `.pd-material-card`'s background changed from `var(--paper)` to `var(--card)` and gained `box-shadow:var(--shadow-card)`, matching `.card`/`clientCardHtml` exactly (same token, same shadow) rather than a lookalike. One CSS change covers Stage Materials, Useful Information, and the new project cards at once, since they all share this class.
+- **Stage Materials and Useful Information lost their outer `.card` frame** — previously each was `<div class="card">${grid}</div>`; now it's just the grid, no wrapping surface, so the individual white cards are the only framed elements on the page. "Your Projects" already worked this way (no change needed there).
+- **Meeting Notes switched from the card grid to rows** (`pdMeetingRowHtml`, new `.pd-meeting-row` family) — icon, title + description, a **date column**, then Open/Edit. `rs_stage_links` gained an optional `link_date` column (migration `outputs/v30_link_date.sql`, not yet run) since a Loom recording is usually added after the meeting happened, so the date can't be inferred from `created_at`. The field is generic (available on every link via the ordinary link modal, `openStageLinkModal`'s new "Date" input) but only Meeting Notes rows actually display it.
+- **`openStageLinkModal`'s save handler degrades gracefully around `link_date`** specifically: it tries the insert/update with the date included, and only on a `PGRST204` (column missing) retries without it — so link add/edit keeps working pre-migration, just silently dropping the date (with a toast saying so), rather than blocking link editing entirely the way a naive "always include the new column" approach would have.
+- Verified live: Radyus (admin) — Home page shows the avatar+Home button+white project cards+frameless Useful Information; a project view shows frameless white Stage Materials; a mocked Meeting Notes row (real DB write blocked by the still-pending v28 'notes' zone migration, so verified by calling `renderPublicDashboard` directly with an in-memory fake category/link instead) rendered correctly with icon, title, description, "10 Aug" date column, and working Open/Edit buttons.
+- No changes to `pdNavHtml`'s project/stage tree logic, `pdQuickActionsHtml`, `ensureMaterialsCategory`'s zone handling, or `pub.view` semantics — only card styling, frame removal, the Meeting Notes row format, and where the Home entry point lives in the nav.
+
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
 Prior versions recoverable via git history: v0.12.x/v0.11.x (Retainers page still present) are recent commits before this session; v0.10.0 (no dark mode/command palette/inline editing) and v0.9.0 (sharp 3px corners) are further back; v0.8.2 (original top nav, Rubik, 14px radius) is `5664307` or earlier for the pre-redesign baseline.
@@ -367,6 +376,7 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - `outputs/v22_internal_task_multi_assignee.sql` has not been run yet — the Internal Tasks assignee picker degrades gracefully (toasts "run migration v22") until `rs_internal_tasks.assignee_ids` exists. **This is the only genuinely-pending migration below v27** — v19/v20/v23/v23b/v24/v25/v26/v27 have all been confirmed run live (see the Migration status note near the top of this file); do not trust older "not yet run" claims for those without re-checking the live schema.
 - `outputs/v28_meeting_notes_zone.sql` has not been run yet — the "+ Add note" button on the public dashboard fails (toast "Run migration v28 to enable meeting notes") until the `rs_stage_categories_zone_check` constraint allows `zone='notes'`. Everything else (Stage Materials, stages, calendar) is unaffected.
 - `outputs/v29_useful_info_zone.sql` has not been run yet — the Home page's "+ Add resource" button fails (toast "Run migration v29 to enable this section") until the same constraint allows `zone='useful'`. Confirmed live: raw insert with `zone='useful'` returns Postgres `23514` (check_violation), and the toast fires correctly through the real button click, not just the raw query. Everything else on the Home page (greeting, project cards) is unaffected.
+- `outputs/v30_link_date.sql` has not been run yet — the link modal's new "Date" field silently fails to save (`openStageLinkModal`'s save handler retries the insert/update without `link_date` on a `PGRST204`, so the link itself still saves — only the date is dropped, with a toast saying so). Meeting Notes rows just show no date until this runs.
 
 ---
 
@@ -390,3 +400,4 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - v27: rs_stage_categories.zone + .client_id, rs_stage_links.embed, rs_clients.dash_booking_url/dash_request_url/dash_message_url (public dashboard zones data model) — **run**
 - v28: extends rs_stage_categories_zone_check to allow `zone='notes'` (backs the Meeting Notes grid) — **not yet run**, do this in the Supabase SQL editor when convenient
 - v29: extends rs_stage_categories_zone_check to allow `zone='useful'` (backs the Home page's Useful Information grid) — **not yet run**, do this in the Supabase SQL editor when convenient
+- v30: `rs_stage_links.link_date` (optional date on any link; only Meeting Notes displays it, as the "date of meeting" column) — **not yet run**, do this in the Supabase SQL editor when convenient
