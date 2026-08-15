@@ -3595,8 +3595,8 @@ function renderProjDetail(){
     }, { withTime:true, currentTime:s.due_time });
   }));
   // Renaming writes straight to rs_project_stages.name — the same field/row
-  // the public dashboard reads (pdStageTabsHtml), so a rename here shows up
-  // there on its next load with no separate sync step.
+  // the public dashboard reads (pdStageAccordionHtml), so a rename here
+  // shows up there on its next load with no separate sync step.
   main.querySelectorAll('[data-stagename]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     const stageId = el.dataset.stagename;
@@ -5498,21 +5498,34 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true); }
 
-  /* Horizontal stage tabs — sits at the top of a project's page in the right
-     content column now, not the left nav (which only lists projects to
-     switch between any more). "Current" (green pill) marks whichever stage
-     is actually first-incomplete — the team's real progress — which is
-     independent from the highlighted/active tab (pub.viewedStageId, what
-     the client is currently looking at, defaults to the current stage but
-     can be clicked elsewhere). paint() renders a warning banner when those
-     two diverge, so a client browsing an old delivered stage doesn't mistake
-     it for what's happening right now. */
-  function pdStageTabsHtml(stages, currentStage){
+  /* Stages as a single-expand accordion in the right content column — the
+     viewed stage (pub.viewedStageId, defaults to the current/first-incomplete
+     stage, but the client can click any other one) is always the one open;
+     every other stage renders collapsed, header only. Each header carries
+     "Stage N" plus a three-state status pill (Completed/Current/Pending) so
+     the state is legible without opening anything. panelHtml (materials +
+     notes + due date + mismatch warning, assembled once in paint() since
+     it's the same content regardless of which row it's nested under) is
+     injected into whichever stage is currently open. */
+  function pdStageAccordionHtml(stages, currentStage, panelHtml){
     if(!stages.length) return '';
-    return `<div class="pd-tabs">${stages.map(s=>{
+    return `<div class="pd-accordion">${stages.map((s,i)=>{
       const viewed = s.id===pub.viewedStageId;
+      const done = stageStatus(s.id)==='Complete';
       const isCurrent = currentStage && s.id===currentStage.id;
-      return `<button type="button" class="pd-tab ${viewed?'active':''}" data-pdstage="${s.id}" style="${viewed?`color:${accent};border-color:${accent}`:''}">${esc(s.name)}${isCurrent? `<span class="pd-current-pill">Current</span>`:''}</button>`;
+      const statusLabel = done ? 'Completed' : isCurrent ? 'Current' : 'Pending';
+      const statusStyle = done ? `background:var(--green-bg);color:var(--green)`
+        : isCurrent ? `background:${mutedBg(accent)};color:${accent}`
+        : `background:var(--track);color:var(--muted)`;
+      return `<div class="pd-accordion-item">
+        <button type="button" class="pd-accordion-header" data-pdstage="${s.id}">
+          <svg class="pd-accordion-chevron ${viewed?'open':''}" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M9 6l6 6-6 6"/></svg>
+          <span class="pd-accordion-num">Stage ${i+1}</span>
+          <span class="pd-accordion-name">${esc(s.name)}</span>
+          <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
+        </button>
+        ${viewed? `<div class="pd-accordion-panel">${panelHtml}</div>` : ''}
+      </div>`;
     }).join('')}</div>`;
   }
 
@@ -5721,9 +5734,9 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       : '';
 
     /* Combined left-hand nav — projects only now, not their stages (those
-       moved to horizontal tabs in the right content column, see
-       pdStageTabsHtml). Each project is a group header (type icon + label +
-       a stage-count pill, e.g. "2/5"); clicking one selects it as
+       moved to an accordion in the right content column, see
+       pdStageAccordionHtml). Each project is a group header (type icon +
+       label + a stage-count pill, e.g. "2/5"); clicking one selects it as
        pub.projectId and switches pub.view to 'project'. "active" (highlighted)
        requires being on that project's page specifically, not just having it
        selected, so nothing is highlighted while on Home. Retainer clients
@@ -5732,9 +5745,9 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
        .pd-nav-col's flex column + this being the last child with
        margin-top:auto (see CSS). Home and Timeline are global pages (not
        tied to a project), grouped together and set apart from the projects
-       list below by a border-top divider, so the two groups read as
-       distinct — the brand title next to the client-initial avatar is plain
-       text, not clickable. */
+       list below by spacing and a small "Projects" label — no rule line —
+       the brand title next to the client-initial avatar is plain text, not
+       clickable. */
     function pdNavHtml(){
       const initial = esc((client.name||'?').trim().charAt(0).toUpperCase() || '?');
       const brand = `<div class="pd-nav-brand"><span class="pd-nav-avatar" style="background:${accent}">${initial}</span><span class="pd-nav-title">Client Portal</span></div>`;
@@ -5748,10 +5761,10 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <span class="pd-nav-group-icon" style="${timelineActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
           <span class="pd-nav-group-label">Timeline</span>
         </button>` : '';
-      const globalNav = `<div style="margin-bottom:18px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}</div>`;
+      const globalNav = `<div style="margin-bottom:26px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}</div>`;
       const footerLink = `<a class="pd-nav-footer-link" href="${esc(websiteHref)}" target="_blank" rel="noopener">${LINK_ICONS.link} Reciprocal Space</a>`;
       if(!projects.length) return `${brand}${globalNav}<div class="pd-section-title">Tasks</div>${retainerRailHtml}${footerLink}`;
-      const tree = `<div class="pd-nav-tree" style="border-top:1px solid var(--line);padding-top:14px">${projects.map(p=>{
+      const tree = `<div class="pd-cat-label" style="margin-bottom:6px">Projects</div><div class="pd-nav-tree">${projects.map(p=>{
         const active = pub.view==='project' && p.id===pub.projectId;
         const pStages = stagesFor(p.id);
         const pDone = pStages.filter(s=>stageStatus(s.id)==='Complete').length;
@@ -5850,9 +5863,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     `;
 
     // Due date (+ admin hide/show toggle) for whichever stage is currently
-    // being viewed — used to live on each row of the old vertical stage
-    // list; now that stages are tabs, it sits just below the tab strip
-    // instead, scoped to the one stage actually in view.
+    // being viewed — sits at the top of that stage's open accordion panel.
     const viewedStageDateHtml = (()=>{
       if(!viewedStage) return '';
       const hidden = !!viewedStage.hide_due_date_from_client;
@@ -5860,7 +5871,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         ? (isAdmin? '<span style="font-style:italic">Hidden from client</span>' : '')
         : (viewedStage.due_date? esc(fmtDate(new Date(viewedStage.due_date+'T00:00'))) : '');
       if(!dateLabel && !isAdmin) return '';
-      return `<div style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;color:var(--muted)">
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)">
         <span>${dateLabel? `Due ${dateLabel}` : 'No due date set'}</span>
         ${isAdmin && viewedStage.due_date? `<button type="button" class="btn small ghost" data-toggledate="${viewedStage.id}" style="padding:1px 7px;font-size:10px">${hidden?'Show':'Hide'}</button>`:''}
       </div>`;
@@ -5869,16 +5880,29 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     // Warns when the client is looking at a stage other than the one the
     // team is actually working on — e.g. browsing back through an already-
     // delivered stage — so it doesn't read as "this is what's happening now".
+    // Belt-and-suspenders alongside the accordion's own Current/Pending
+    // pills, which already communicate this but less explicitly.
     const stageMismatchWarningHtml = (viewedStage && currentStage && viewedStage.id!==currentStage.id) ? `
       <div class="pd-stage-warning">⚠️ You're viewing <strong>${esc(viewedStage.name)}</strong> — the team is currently working on <strong>${esc(currentStage.name)}</strong>.</div>
     ` : '';
 
-    // Project view — one project's stage materials. Reciprocal Space moved
+    // Everything that used to sit below the tab strip now lives inside
+    // whichever stage's accordion panel is open — assembled once here since
+    // it's identical regardless of which row it's nested under.
+    const stagePanelHtml = `
+      ${viewedStageDateHtml}
+      ${stageMismatchWarningHtml}
+      <div class="pd-divider" style="margin:16px 0"></div>
+      ${materialsSectionHtml}
+      ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
+    `;
+
+    // Project view — one project's stage accordion. Reciprocal Space moved
     // out of this header into the nav footer, so the cheat-sheet button (when
     // it applies) is the only thing that can occupy the header's right side.
     // The scope pill sits inline with the title (e.g. "Branding [Refresh
     // branding]") rather than as its own line, and the header carries extra
-    // bottom margin so the tab strip below it isn't crowded against it.
+    // bottom margin so the accordion below it isn't crowded against it.
     const projectHtml = proj ? `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:24px">
         <h2 style="margin-bottom:0;flex:1;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px">
@@ -5887,12 +5911,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         </h2>
         ${cheatsheetHref? `<a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a>`:''}
       </div>
-      ${pdStageTabsHtml(stages, currentStage)}
-      ${viewedStageDateHtml}
-      ${stageMismatchWarningHtml}
-      <div class="pd-divider"></div>
-      ${materialsSectionHtml}
-      ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
+      ${pdStageAccordionHtml(stages, currentStage, stagePanelHtml)}
     ` : '';
 
     // Timeline — every dated stage across every active project, earliest
