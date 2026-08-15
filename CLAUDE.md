@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.39.0**
+Current version: **v0.40.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -332,6 +332,13 @@ Font: Inter (unchanged from v0.9.0)
 - **Removed the admin-only "No quick actions set…" hint** — already done in v0.38.0, unaffected by this version.
 - **New "Animation cheat sheet" button**, far-right of the header row (after "Reciprocal Space", so it's the true rightmost element) — gated on both `isAnimationType(proj.project_type)` and a real URL: `ANIMATION_CHEATSHEET_URL` (`index.html:814`, next to `DASH_EXPLAINER`) is currently `''`, so the button renders for nobody, admin included, until a real `https://` PDF URL is pasted into that one constant. Global (not per-client) by design — it's a reference doc the team maintains, not client-specific content, so it doesn't need a DB column or a Settings field.
 - No schema change. `pdMaterialCardHtml`, `linksForZones`, `ensureMaterialsCategory`, `pdQuickActionsHtml`, the retainer Tasks/Calendar rail, and `.pd-divider` section dividers are all unchanged from v0.38.0.
+
+**What shipped in v0.40.0** (stage rename + add-stage on the internal project page — both write straight to the table the public dashboard already reads, so there was never a separate "sync" step to build):
+- **Confirmed there is no internal/public stage-name divergence to fix**: `renderProjDetail` (internal) and `pdStageListHtml` (public dashboard) both read `rs_project_stages.name` off the same rows, straight from the DB — `rs_project_types.stage_template` is only ever consulted once, at project-creation time, to seed the initial rows. The two pages were already guaranteed to agree; the actual gap was that the internal page had no way to *create* or *rename* a stage after that initial seed, despite its own empty-state copy claiming "click Add stage" — a button that didn't exist.
+- **Stage names are now rename-in-place** on the internal project page (`renderProjDetail`, `index.html:4197`) — click a stage's name (now wrapped in `.inline-editable` with `data-stagename`) to turn it into a text input, Enter/blur to save, Escape to cancel. Copies the exact pattern already used for task-title rename (`data-taskname`) rather than inventing a new one: same input class, same keydown/blur wiring, just pointed at `rs_project_stages.name` instead of `rs_proj_tasks.title`.
+- **New "+ Add stage" button**, both in the empty state (replacing the old dead copy) and after the last stage when a project already has some — appends a new `rs_project_stages` row at `position: stages.length` (i.e. always last). Uses a plain `prompt()` for the name, matching the existing "+ Add department" convention (`openDepartmentPopover`) rather than building a new modal for one text field.
+- **Verified live**: inserted a test stage on Radyus's Branding project via the new button's code path, renamed it via the new inline-rename path, confirmed both changes in the DB and on the public dashboard (`?client=radyus&admin=1`) without any extra action, then deleted the test row to leave the real data untouched.
+- No schema change, no new migration. No delete-stage or reorder-stage UI was added — out of scope for this request; only whole-project cascade delete exists for removing a stage, same as before.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

@@ -580,10 +580,11 @@
      Tasks for a retainer client) — Notion-style menu with a vertical rule
      separating it from the content column. border-right (not the grid gap)
      carries the line so it reaches full column height under
-     align-items:stretch. */
-  .pd-nav-col{border-right:1px solid var(--line);padding-right:20px}
-  .pd-nav-title{font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin-bottom:5px}
-  .pd-nav-sub{font-size:12px;line-height:1.5;color:var(--muted);margin:0 0 22px}
+     align-items:stretch. flex column + the footer link's margin-top:auto
+     pins Reciprocal Space to the bottom of the (stretched) column. */
+  .pd-nav-col{border-right:1px solid var(--line);padding-right:20px;display:flex;flex-direction:column}
+  .pd-nav-title{font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-.01em;margin-bottom:14px;border:none;background:transparent;padding:0;text-align:left;cursor:pointer;font-family:'Inter',sans-serif}
+  .pd-nav-title:hover{color:var(--accent)}
   .pd-nav-project{margin-bottom:16px}
   .pd-nav-project:last-child{margin-bottom:0}
   .pd-nav-group{display:flex;align-items:center;gap:8px;width:100%;padding:8px;border:none;background:transparent;border-radius:9px;cursor:pointer;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;color:var(--ink);text-align:left}
@@ -592,6 +593,9 @@
   .pd-nav-group-icon{flex:none;display:flex;color:var(--muted)}
   .pd-nav-group-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pd-nav-group-pct{font-size:11.5px;font-weight:700;color:var(--muted)}
+  .pd-nav-footer-link{margin-top:auto;padding-top:20px;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);text-decoration:none}
+  .pd-nav-footer-link:hover{color:var(--ink)}
+  .pd-nav-footer-link svg{width:14px;height:14px;flex:none}
   .pd-divider{border-top:1px solid var(--line);margin:26px 0}
 
   @media(max-width:900px){
@@ -678,7 +682,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.39.0</div>
+    <div id="versionBadge" class="version-badge">v0.41.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -4228,7 +4232,7 @@ function renderProjDetail(){
     <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
 
   if(!stages.length){
-    html += `<div class="empty">No stages yet — click "Add stage" to get started.</div>`;
+    html += `<div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="addStageBtn">+ Add stage</button></div>`;
   } else {
     stages.forEach((s,idx)=>{
       const tasks = state.projTasks.filter(t=>t.stage_id===s.id).sort((a,b)=>(a.position||0)-(b.position||0));
@@ -4239,7 +4243,7 @@ function renderProjDetail(){
         : 'Set due date';
       html += `<div class="stage-section" data-stagesection="${s.id}">
         <div class="stage-head">
-          <h4><span class="stage-num">Stage ${idx}</span>${esc(s.name)}${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
+          <h4><span class="stage-num">Stage ${idx}</span><span class="inline-editable" data-stagename="${s.id}" title="Click to rename">${esc(s.name)}</span>${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
           <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px">
             <button type="button" class="stage-date-btn" data-stagedate="${s.id}" style="margin-top:0">${dateLabel}</button>
             ${idx>0 && s.due_date ? `<span style="font-size:11px;color:var(--muted)">${reviewWindowLabel(s.due_date, p.review_days)}</span>` : ''}
@@ -4249,6 +4253,7 @@ function renderProjDetail(){
         <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
       </div>`;
     });
+    html += `<div style="margin:4px 0 20px"><button class="btn small ghost" id="addStageBtn">+ Add stage</button></div>`;
   }
   main.innerHTML = html;
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
@@ -4268,6 +4273,41 @@ function renderProjDetail(){
       await refreshProjectView();
     }, { withTime:true, currentTime:s.due_time });
   }));
+  // Renaming writes straight to rs_project_stages.name — the same field/row
+  // the public dashboard reads (pdStageListHtml), so a rename here shows up
+  // there on its next load with no separate sync step.
+  main.querySelectorAll('[data-stagename]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const stageId = el.dataset.stagename;
+    const original = el.textContent;
+    const input = document.createElement('input');
+    input.type = 'text'; input.value = original; input.className = 'inline-rename-input';
+    el.replaceWith(input); input.focus(); input.select();
+    input.addEventListener('click', ev=> ev.stopPropagation());
+    input.addEventListener('keydown', ev=>{
+      if(ev.key==='Enter') input.blur();
+      if(ev.key==='Escape'){ input.dataset.cancel='1'; input.blur(); }
+    });
+    input.addEventListener('blur', async ()=>{
+      const val = input.value.trim();
+      if(input.dataset.cancel || !val || val===original){ input.replaceWith(el); return; }
+      const { error } = await db.from('rs_project_stages').update({ name: val }).eq('id', stageId);
+      if(error){ toast('Could not rename stage'); input.replaceWith(el); return; }
+      toast('Stage renamed');
+      await refreshProjectView();
+    }, { once:true });
+  }));
+  // New stage appends at the end (position = current stage count) — same
+  // rs_project_stages table the public dashboard reads, so it appears there
+  // immediately too, no separate sync step needed.
+  const addStageBtn = $('#addStageBtn');
+  if(addStageBtn) addStageBtn.onclick = async ()=>{
+    const name = prompt('New stage name');
+    if(!name || !name.trim()) return;
+    const { error } = await db.from('rs_project_stages').insert({ project_id:p.id, name:name.trim(), position:stages.length });
+    if(error){ toast('Could not add stage'); return; }
+    toast('Stage added'); await refreshProjectView();
+  };
 
   // drag-and-drop task reordering, scoped per stage
   main.querySelectorAll('[data-stagesection]').forEach(sectionEl=>{
@@ -5496,7 +5536,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.39.0';
+const APP_VERSION = '0.41.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6121,7 +6161,10 @@ async function bootPublicDashboard(slug, isAdmin){
 function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks){
   retainerTasks = retainerTasks || [];
   const now = new Date();
-  const pub = { projectId: projects[0]?.id || null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
+  // 'home' is the landing page (greeting, project cards, useful info); 'project'
+  // drills into one project's stage materials. No project is pre-selected —
+  // the client lands on Home and picks a project from the nav or its card.
+  const pub = { view:'home', projectId: null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
   const accent = client.dash_accent_color || '#2383e2';
   // The header is now a plain "Hello, {name}" greeting with no logo tile, so
   // client.dash_logo_url is no longer rendered anywhere on this page — the
@@ -6208,11 +6251,12 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       zone: defaultZone, name: defaultZone==='notes'?'Meeting notes':'Materials', position:0
     }).select().single();
     if(error){
-      // A check-constraint violation (23514) on zone='notes' means v28 hasn't
-      // run yet — PGRST204 (column missing) is the only other case that maps
-      // to a migration hint, kept for defensiveness against a bare Supabase.
-      const needsMigration = defaultZone==='notes' && (error.code==='23514' || error.code==='PGRST204');
-      toast(needsMigration ? 'Run migration v28 to enable meeting notes' : 'Could not add');
+      // A check-constraint violation (23514) on a new zone means its migration
+      // hasn't run yet — PGRST204 (column missing) is the only other case that
+      // maps to a migration hint, kept for defensiveness against a bare Supabase.
+      const migrationFor = { notes:'v28', useful:'v29' }[defaultZone];
+      const needsMigration = migrationFor && (error.code==='23514' || error.code==='PGRST204');
+      toast(needsMigration ? `Run migration ${migrationFor} to enable this section` : 'Could not add');
       console.error(error);
       return null;
     }
@@ -6220,9 +6264,9 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   }
   /* One material — icon on top, title, optional description, one big Open
      button. Every link on the dashboard (brief docs, proofs, working files,
-     final delivery, meeting notes) renders identically now; embedInfoFor is
-     only consulted for a nicer button label ("Open in Figma ↗"), nothing is
-     embedded inline any more. */
+     final delivery, meeting notes, useful-info resources) renders identically
+     now; embedInfoFor is only consulted for a nicer button label ("Open in
+     Figma ↗"), nothing is embedded inline any more. */
   function pdMaterialCardHtml(l){
     const href = safeUrl(l.url);
     const info = embedInfoFor(l.url);
@@ -6242,9 +6286,24 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <a class="btn pd-material-open" style="background:${accent}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${openLabel} ↗</a>
     </div>`;
   }
+  /* One card per project on the Home page — same pd-material-card shape as
+     everything else on this page, but the "Open" button navigates into that
+     project's stage view (data-pdopenproj) instead of an external link. */
+  function pdProjectCardHtml(proj){
+    const pStages = stagesFor(proj.id);
+    const pDone = pStages.filter(s=>stageStatus(s.id)==='Complete').length;
+    const pPct = pStages.length? Math.round(pDone/pStages.length*100) : 0;
+    return `<div class="pd-material-card">
+      <div class="pd-material-icon" style="color:${accent}">${projectTypeIconHtml(proj.project_type, 22)}</div>
+      <div class="pd-material-title">${esc(proj.project_type)}</div>
+      <div class="pd-material-desc">${proj.label? esc(proj.label)+' · ':''}${pPct}% complete</div>
+      <button type="button" class="btn pd-material-open" style="background:${accent}" data-pdopenproj="${proj.id}">Open ↗</button>
+    </div>`;
+  }
 
   function paint(){
-    const proj = projects.find(p=>p.id===pub.projectId) || projects[0] || null;
+    let proj = projects.find(p=>p.id===pub.projectId) || null;
+    if(pub.view==='project' && !proj) pub.view = 'home';
     const stages = proj ? stagesFor(proj.id) : [];
     if(!pub.viewedStageId || !stages.some(s=>s.id===pub.viewedStageId)){
       const firstIncomplete = stages.find(s=>stageStatus(s.id)!=='Complete');
@@ -6309,21 +6368,28 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ? `<div class="card" style="margin-top:20px"><div class="pd-section-title">Calendar</div>${calendarHtmlPd(pub.calY, pub.calM)}</div>`
       : '';
 
-    /* Combined left-hand nav. Every project is always expanded — no
-       accordion any more — each rendered as a group header (type icon +
-       label + completion %) with its stages listed flush underneath, no
-       indent. Clicking a group header or one of its stages both select
-       that project as pub.projectId (so the content column's title/pills/
-       materials follow it) and, for a stage click, set pub.viewedStageId —
-       which is what actually gets the accent highlight, i.e. "the stage
-       we're on" (defaults to the first incomplete stage on load). Retainer
-       clients (no rs_projects rows) fall back to the Tasks rail instead. */
+    /* Combined left-hand nav. The title is just a clickable "Client Portal"
+       label (data-pdhome) that takes you back to the Home page — no more
+       explainer sentence here, that moved down to the Home page's greeting
+       block. Every project is always expanded — no accordion — each
+       rendered as a group header (type icon + label + completion %) with
+       its stages listed flush underneath, no indent. Clicking a group
+       header or one of its stages both select that project as
+       pub.projectId (so the content column follows it) and switch
+       pub.view to 'project'; "active" (highlighted) requires being on that
+       project's page specifically, not just having it selected, so nothing
+       is highlighted while on Home. A "stage we're on" highlight is
+       pub.viewedStageId, which defaults to the first incomplete stage.
+       Retainer clients (no rs_projects rows) fall back to the Tasks rail.
+       The Reciprocal Space link sits at the very bottom, pinned there via
+       .pd-nav-col's flex column + this being the last child with
+       margin-top:auto (see CSS). */
     function pdNavHtml(){
-      const portalHeader = `<div class="pd-nav-title">${esc(client.name)} Client Portal</div>
-        <p class="pd-nav-sub">${esc(DASH_EXPLAINER)}</p>`;
-      if(!projects.length) return `${portalHeader}<div class="pd-section-title">Tasks</div>${retainerRailHtml}`;
-      return `${portalHeader}<div class="pd-nav-tree">${projects.map(p=>{
-        const active = p.id===pub.projectId;
+      const portalHeader = `<button type="button" class="pd-nav-title" data-pdhome="1">Client Portal</button>`;
+      const footerLink = `<a class="pd-nav-footer-link" href="${esc(websiteHref)}" target="_blank" rel="noopener">${LINK_ICONS.link} Reciprocal Space</a>`;
+      if(!projects.length) return `${portalHeader}<div class="pd-section-title">Tasks</div>${retainerRailHtml}${footerLink}`;
+      const tree = `<div class="pd-nav-tree">${projects.map(p=>{
+        const active = pub.view==='project' && p.id===pub.projectId;
         const pStages = stagesFor(p.id);
         const pPct = pStages.length? Math.round(pStages.filter(s=>stageStatus(s.id)==='Complete').length/pStages.length*100) : null;
         return `<div class="pd-nav-project">
@@ -6335,6 +6401,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
             ${pdStageListHtml(pStages, p.id)}
           </div>`;
       }).join('')}</div>`;
+      return `${portalHeader}${tree}${footerLink}`;
     }
 
     const projId = proj ? proj.id : null;
@@ -6382,6 +6449,60 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>
       <div class="card" style="margin-top:14px">${notesBody}</div>` : '';
 
+    // Useful Information — a client-wide (not project/stage-scoped) grid of
+    // reference PDFs/links, same card shape as everything else. Lives on the
+    // Home page for every client type, project or retainer alike.
+    const usefulLinks = linksForZones(['useful'], null, null);
+    const usefulBody = usefulLinks.length
+      ? `<div class="pd-materials-grid">${usefulLinks.map(pdMaterialCardHtml).join('')}</div>`
+      : `<div class="empty" style="padding:20px 0">${isAdmin?'No resources added yet.':'Nothing shared yet.'}</div>`;
+    const usefulSectionHtml = (usefulLinks.length || isAdmin) ? `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:28px">
+        <div class="pd-section-title" style="margin-bottom:0">Useful Information</div>
+        ${isAdmin? `<button class="btn small ghost" data-addresource="1">+ Add resource</button>`:''}
+      </div>
+      <div class="card" style="margin-top:14px">${usefulBody}</div>` : '';
+
+    // Home page — the greeting/explainer block is shared by every client
+    // type; project clients additionally get a "Your Projects" card grid
+    // (each card opens that project's stage view), retainer clients instead
+    // keep their existing Stage Materials/Meeting Notes/Calendar appended
+    // below (they have no per-project drill-down to send those to).
+    const projectsSectionHtml = projects.length ? `
+      <div class="pd-section-title" style="margin-top:28px">Your Projects</div>
+      <div class="pd-materials-grid">${projects.map(pdProjectCardHtml).join('')}</div>
+    ` : '';
+    const homeHtml = `
+      <h2 style="margin-bottom:0">Hello, ${esc(client.name)}</h2>
+      <p class="sub" style="margin:10px 0 0;max-width:640px">${esc(DASH_EXPLAINER)}</p>
+      ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
+      ${pdQuickActionsHtml()}
+      ${projectsSectionHtml}
+      ${usefulSectionHtml}
+      ${!projects.length? `
+        <div class="pd-divider"></div>
+        ${materialsSectionHtml}
+        ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
+        ${retainerCalendarHtml}
+      ` : ''}
+    `;
+
+    // Project view — one project's stage materials. Reciprocal Space moved
+    // out of this header into the nav footer, so the cheat-sheet button (when
+    // it applies) is the only thing that can occupy the header's right side.
+    const projectHtml = proj ? `
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <h2 style="margin-bottom:0;flex:1;min-width:0">${esc(proj.project_type)}</h2>
+        ${cheatsheetHref? `<a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a>`:''}
+      </div>
+      ${scopePillsHtml}
+      <div class="pd-divider"></div>
+      ${materialsSectionHtml}
+      ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
+    ` : '';
+
+    const contentHtml = (pub.view==='project' && proj) ? projectHtml : homeHtml;
+
     document.body.innerHTML = `
       <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink)">
         ${isAdmin? `<div style="background:var(--accent-soft);color:var(--accent);border-bottom:1px solid var(--line);text-align:center;padding:10px 20px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
@@ -6391,22 +6512,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         <div style="max-width:1280px;margin:0 auto;padding:32px 24px 40px">
           <div id="pdMainGrid" style="display:grid;grid-template-columns:240px 1fr;gap:32px">
             <div class="pd-nav-col">${pdNavHtml()}</div>
-            <div>
-              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
-                <h2 style="margin-bottom:0;flex:1;min-width:0">${proj? esc(proj.project_type) : esc(client.name)}</h2>
-                <div style="display:flex;gap:8px;flex-wrap:wrap">
-                  <a class="btn small ghost" href="${esc(websiteHref)}" target="_blank" rel="noopener">Reciprocal Space</a>
-                  ${cheatsheetHref? `<a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a>`:''}
-                </div>
-              </div>
-              ${scopePillsHtml}
-              ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
-              ${pdQuickActionsHtml()}
-              <div class="pd-divider"></div>
-              ${materialsSectionHtml}
-              ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
-              ${retainerCalendarHtml}
-            </div>
+            <div>${contentHtml}</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;justify-content:center;padding:20px;opacity:.5;font-size:12px;color:var(--muted)">Reciprocal Space</div>
@@ -6414,8 +6520,10 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <div id="modalRoot"></div>
       <div class="toast" id="toast"></div>`;
 
-    document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; paint(); }));
-    document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; if(el.dataset.pdstageproj) pub.projectId = el.dataset.pdstageproj; paint(); }));
+    document.querySelectorAll('[data-pdhome]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='home'; paint(); }));
+    document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; pub.view='project'; paint(); }));
+    document.querySelectorAll('[data-pdopenproj]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdopenproj; pub.viewedStageId = null; pub.view='project'; paint(); }));
+    document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; if(el.dataset.pdstageproj) pub.projectId = el.dataset.pdstageproj; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-calnav]').forEach(el=>el.addEventListener('click', ()=>{
       let m = pub.calM + (+el.dataset.calnav);
       let y = pub.calY;
@@ -6442,6 +6550,13 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       const addNoteBtn = document.querySelector('[data-addnote]');
       if(addNoteBtn) addNoteBtn.addEventListener('click', async ()=>{
         const cat = await ensureMaterialsCategory(['notes'], 'notes', projId, stageId, client.id);
+        if(cat) openStageLinkModal(cat.id, null, reload);
+      });
+      // Useful Information is always client-scoped (no project/stage), unlike
+      // materials/notes which follow whatever's currently being viewed.
+      const addResourceBtn = document.querySelector('[data-addresource]');
+      if(addResourceBtn) addResourceBtn.addEventListener('click', async ()=>{
+        const cat = await ensureMaterialsCategory(['useful'], 'useful', null, null, client.id);
         if(cat) openStageLinkModal(cat.id, null, reload);
       });
       document.querySelectorAll('[data-editlink]').forEach(el=>{
