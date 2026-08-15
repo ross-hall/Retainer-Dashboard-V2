@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.45.0**
+Current version: **v0.45.1**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -392,6 +392,13 @@ Font: Inter (unchanged from v0.9.0)
 - **Fixed a real mobile bug found while verifying**: the mismatch warning banner mixed raw text and `<strong>` tags directly inside a `display:flex` container. Per the flexbox spec, every contiguous text run *and* every element child of a flex container becomes its own separate flex item — so on a narrow screen the sentence fragmented into several independently word-wrapping columns instead of reading as one paragraph. Fixed by wrapping the whole sentence in one `<span>` (two flex items total: the icon, and the text) so only normal in-element text wrapping happens. Worth remembering as a general rule for any future flex container holding mixed text/inline-element content on this page.
 - **Nav spacing**: `.pd-nav-project` margin-bottom `16px → 4px` (tighter list), and the `border-top` divider between the Home/Timeline group and the projects list is gone — replaced by a small `.pd-cat-label` "Projects" heading (same small-uppercase-muted style already used for "Previous"/"Upcoming" in the retainer task rail) plus spacing alone to mark the separation, no rule line.
 - Verified live: Radyus — accordion expand/collapse (clicking a completed stage correctly closes the current one and opens it instead), the mismatch warning, dark mode, and the `≤900px` mobile stack (where the flex-item bug above was actually caught). Athernal Bio (retainer, non-admin) confirmed unaffected.
+
+**What shipped in v0.45.1** (each accordion stage is now its own white card with clear separation; +/− toggle moved to the right; due date now visible on every collapsed row; two-line header):
+- **Each `.pd-accordion-item` is now a real card** — `background:var(--card)`, border, `box-shadow:var(--shadow-card)` (same token as every other card on this page), stacked with a `12px` gap (`.pd-accordion{display:flex;flex-direction:column;gap:12px}`) instead of sharing a border between rows. 5 stages now read as 5 distinct boxes, not one continuous list.
+- **+/− toggle replaces the chevron, moved to the header's right edge** — plain text character swap (`+` collapsed, `−` open when `s.id===pub.viewedStageId`), no rotation needed.
+- **Header is now two lines**: line 1 is "Stage N" + stage name + the status pill (moved to sit right next to the name, not pushed to the far right — the toggle owns that spot now); line 2 is the due date, shown on *every* row now (not just the one that happens to be open), so a client can see roughly when each stage lands without expanding anything. The admin Hide/Show due-date toggle stays inside the expanded panel rather than moving up next to it — a `<button>` (the header) can't contain another `<button>`, so an interactive control couldn't live on the collapsed row regardless.
+- Verified live: Radyus — card separation, the +/− swap when switching stages (collapsing the previous one, matching the single-expand rule from v0.45.0 unchanged), the due date showing on collapsed rows, dark mode, and the `≤900px` mobile stack.
+- No changes to the single-expand behavior itself, the mismatch warning, `pdMaterialCardHtml`, or `pub.view` semantics — purely a visual pass on the accordion component from v0.45.0.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
