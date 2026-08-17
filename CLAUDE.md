@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.45.1**
+Current version: **v0.45.2**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -399,6 +399,13 @@ Font: Inter (unchanged from v0.9.0)
 - **Header is now two lines**: line 1 is "Stage N" + stage name + the status pill (moved to sit right next to the name, not pushed to the far right — the toggle owns that spot now); line 2 is the due date, shown on *every* row now (not just the one that happens to be open), so a client can see roughly when each stage lands without expanding anything. The admin Hide/Show due-date toggle stays inside the expanded panel rather than moving up next to it — a `<button>` (the header) can't contain another `<button>`, so an interactive control couldn't live on the collapsed row regardless.
 - Verified live: Radyus — card separation, the +/− swap when switching stages (collapsing the previous one, matching the single-expand rule from v0.45.0 unchanged), the due date showing on collapsed rows, dark mode, and the `≤900px` mobile stack.
 - No changes to the single-expand behavior itself, the mismatch warning, `pdMaterialCardHtml`, or `pub.view` semantics — purely a visual pass on the accordion component from v0.45.0.
+
+**What shipped in v0.45.2** (removed the duplicate due-date line and the mismatch warning from the accordion panel; status pill moved to the header's right side; stage number is now a plain digit in a circle):
+- **The panel no longer repeats the due date.** It used to show its own "Due X [Hide]" block at the top of the open stage's panel, directly under a header that already says the same thing — `stagePanelHtml` now goes straight to Stage Materials. The admin Hide/Show toggle moved up into the header's second line instead of being dropped: `.pd-accordion-header` changed from a `<button>` to a `<div data-pdstage>` specifically so it could contain a real nested `<button>` (a `<button>` can't contain another `<button>`), with `data-toggledate`'s existing `e.stopPropagation()` (unchanged) keeping a Hide/Show click from also toggling the accordion — verified live by clicking Hide/Show and confirming the open stage didn't change.
+- **Removed the "you're viewing a different stage" warning banner** (`stageMismatchWarningHtml` and `.pd-stage-warning` both deleted) — redundant now that every row's status pill already says Current/Completed/Pending.
+- **Status pill moved to the header's right side**, next to the +/− toggle, instead of sitting inline next to the stage name.
+- **"Stage N" text replaced with a plain number in a circle** (`.pd-accordion-num-circle`) — just "1", "2", etc., no "Stage" label.
+- Verified live: Radyus — the Hide/Show toggle's stopPropagation behavior, the restyled header on both an expanded and collapsed row, dark mode, and the `≤900px` mobile stack. Toggled a stage's date visibility twice to test and confirmed the DB was left in its original state (`hide_due_date_from_client: false` on all 5 Branding stages) afterward.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
