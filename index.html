@@ -653,8 +653,9 @@
 
   @media(max-width:900px){
     #pdMainGrid{grid-template-columns:1fr !important;flex:0 1 auto !important}
-    .pd-nav-col{border-right:none;border-bottom:1px solid var(--line);padding-right:0;padding-bottom:16px;margin-bottom:22px}
+    .pd-nav-col{border-right:none;border-bottom:1px solid var(--line);padding:32px 0 16px;margin-bottom:22px}
     .pd-stages-col{border-right:none;border-bottom:1px solid var(--line);padding:0 0 16px;margin-bottom:22px}
+    .pd-content-col{padding:0 0 32px}
   }
   @media(max-width:760px){ .pd-cal-chip{display:none} }
   .year-row:last-child{border-bottom:none}
@@ -6688,9 +6689,9 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         </div>` : ''}
         <div style="max-width:1600px;width:100%;box-sizing:border-box;margin:0 auto;padding:0 24px;flex:1;display:flex;flex-direction:column;min-width:0">
           <div id="pdMainGrid" style="display:grid;grid-template-columns:${gridCols};gap:28px;flex:1;min-width:0;width:100%">
-            <div class="pd-nav-col" style="padding-top:32px;padding-bottom:40px">${pdNavHtml()}</div>
-            ${showStagesCol? `<div class="pd-stages-col" style="padding-top:32px;padding-bottom:40px">${pdStagesColumnHtml(stages, currentStage)}</div>` : ''}
-            <div style="min-width:0;padding-top:32px;padding-bottom:40px">${contentHtml}</div>
+            <div class="pd-nav-col">${pdNavHtml()}</div>
+            ${showStagesCol? `<div class="pd-stages-col">${pdStagesColumnHtml(stages, currentStage)}</div>` : ''}
+            <div class="pd-content-col">${contentHtml}</div>
           </div>
         </div>
       </div>
