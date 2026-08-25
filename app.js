@@ -4857,7 +4857,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.45.1';
+const APP_VERSION = '0.45.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5498,25 +5498,18 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true); }
 
-  /* Stages as a single-expand accordion in the right content column — the
-     viewed stage (pub.viewedStageId, defaults to the current/first-incomplete
-     stage, but the client can click any other one) is always the one open;
-     every other stage renders collapsed, header only. Each stage is its own
-     card (see .pd-accordion-item) so 5 stages read as 5 distinct things, not
-     one continuous list. Header: a numbered circle (just "1", "2", … — no
-     "Stage" label), the stage name, and the due date (with the admin
-     Hide/Show toggle inline — a real nested <button>, which is why the
-     header itself is a <div data-pdstage>, not a <button>) on the left; the
-     status pill and the +/− toggle on the right. The click target is the
-     whole header (data-pdstage, wired the same as any other clickable div
-     on this page) — Hide/Show stops propagation so it doesn't also toggle
-     the accordion. panelHtml (materials + notes, assembled once in paint()
-     since it's identical regardless of which row it's nested under) is
-     injected into whichever stage is currently open; the due date does NOT
-     repeat there any more — the header already shows it. */
-  function pdStageAccordionHtml(stages, currentStage, panelHtml){
-    if(!stages.length) return '';
-    return `<div class="pd-accordion">${stages.map((s,i)=>{
+  /* Stages are their own nav-like column (the middle of three: main nav |
+     stages | content) rather than an accordion inside the content column.
+     Each stage is a plain button — number circle, name, and a status pill
+     (Completed/Current/Pending, same three states and colors as before) —
+     clicking one sets pub.viewedStageId and the content column (materials/
+     notes for that stage) updates. The due date and the admin Hide/Show
+     toggle moved to the content column's own stage sub-header instead of
+     living on this row, since a narrow column has no room for an inline
+     interactive control alongside the row's own click target. */
+  function pdStagesColumnHtml(stages, currentStage){
+    if(!stages.length) return '<div class="empty" style="padding:12px 0">No stages yet.</div>';
+    return stages.map((s,i)=>{
       const viewed = s.id===pub.viewedStageId;
       const done = stageStatus(s.id)==='Complete';
       const isCurrent = currentStage && s.id===currentStage.id;
@@ -5524,28 +5517,12 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       const statusStyle = done ? `background:var(--green-bg);color:var(--green)`
         : isCurrent ? `background:${mutedBg(accent)};color:${accent}`
         : `background:var(--track);color:var(--muted)`;
-      const hidden = !!s.hide_due_date_from_client;
-      const dateText = hidden
-        ? (isAdmin? 'Hidden from client' : '')
-        : (s.due_date? `Due ${fmtDate(new Date(s.due_date+'T00:00'))}` : (isAdmin? 'No due date set' : ''));
-      const hideShowBtn = isAdmin && s.due_date
-        ? `<button type="button" class="btn small ghost" data-toggledate="${s.id}" style="padding:1px 7px;font-size:10px">${hidden?'Show':'Hide'}</button>`
-        : '';
-      return `<div class="pd-accordion-item">
-        <div class="pd-accordion-header" data-pdstage="${s.id}">
-          <span class="pd-accordion-num-circle">${i+1}</span>
-          <div class="pd-accordion-header-main">
-            <div class="pd-accordion-name">${esc(s.name)}</div>
-            ${(dateText || hideShowBtn) ? `<div class="pd-accordion-line2">${dateText? `<span>${esc(dateText)}</span>`:''}${hideShowBtn}</div>` : ''}
-          </div>
-          <div class="pd-accordion-right">
-            <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
-            <span class="pd-accordion-toggle">${viewed?'−':'+'}</span>
-          </div>
-        </div>
-        ${viewed? `<div class="pd-accordion-panel">${panelHtml}</div>` : ''}
-      </div>`;
-    }).join('')}</div>`;
+      return `<button type="button" class="pd-stage-item ${viewed?'active':''}" data-pdstage="${s.id}" style="${viewed?`border-color:${accent}`:''}">
+        <span class="pd-accordion-num-circle">${i+1}</span>
+        <span class="pd-stage-item-name">${esc(s.name)}</span>
+        <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
+      </button>`;
+    }).join('');
   }
 
   /* Book a Call / Submit New Request / Contact us. The mailto is promoted out
@@ -5881,24 +5858,33 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ` : ''}
     `;
 
-    // Everything that used to sit below the tab strip now lives inside
-    // whichever stage's accordion panel is open — assembled once here since
-    // it's identical regardless of which row it's nested under. The due
-    // date (+ admin Hide/Show toggle) and the "viewing a different stage"
-    // warning both used to live here too — removed since the accordion
-    // header already shows the date on every row, and the status pill
-    // (Current/Pending) already communicates the mismatch.
-    const stagePanelHtml = `
-      ${materialsSectionHtml}
-      ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
-    `;
+    // Sub-header for whichever stage is currently viewed (its name, status
+    // pill, due date, and — admin only — the Hide/Show toggle) — sits above
+    // Stage Materials in the content column now that stages live in their
+    // own middle column rather than an accordion nested in content.
+    const viewedStageSubHeaderHtml = viewedStage ? (()=>{
+      const hidden = !!viewedStage.hide_due_date_from_client;
+      const dateLabel = hidden
+        ? (isAdmin? 'Hidden from client' : '')
+        : (viewedStage.due_date? `Due ${esc(fmtDate(new Date(viewedStage.due_date+'T00:00')))}` : (isAdmin? 'No due date set' : ''));
+      const done = stageStatus(viewedStage.id)==='Complete';
+      const isCurrentV = currentStage && viewedStage.id===currentStage.id;
+      const statusLabel = done ? 'Completed' : isCurrentV ? 'Current' : 'Pending';
+      const statusStyle = done ? `background:var(--green-bg);color:var(--green)`
+        : isCurrentV ? `background:${mutedBg(accent)};color:${accent}`
+        : `background:var(--track);color:var(--muted)`;
+      return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:22px">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--ink)">${esc(viewedStage.name)}</h3>
+        <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
+        ${dateLabel? `<span style="font-size:12.5px;color:var(--muted)">${dateLabel}</span>`:''}
+        ${isAdmin && viewedStage.due_date? `<button type="button" class="btn small ghost" data-toggledate="${viewedStage.id}" style="padding:1px 7px;font-size:10px">${hidden?'Show':'Hide'}</button>`:''}
+      </div>`;
+    })() : '';
 
-    // Project view — one project's stage accordion. Reciprocal Space moved
-    // out of this header into the nav footer, so the cheat-sheet button (when
-    // it applies) is the only thing that can occupy the header's right side.
-    // The scope pill sits inline with the title (e.g. "Branding [Refresh
-    // branding]") rather than as its own line, and the header carries extra
-    // bottom margin so the accordion below it isn't crowded against it.
+    // Project view — header (title + inline scope pill + cheat-sheet button),
+    // then the viewed stage's sub-header, then its materials/notes. The
+    // stage list itself is a sibling column now (pdStagesColumnHtml, wired
+    // into #pdMainGrid directly below), not part of this content block.
     const projectHtml = proj ? `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:24px">
         <h2 style="margin-bottom:0;flex:1;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px">
@@ -5907,7 +5893,9 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         </h2>
         ${cheatsheetHref? `<a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a>`:''}
       </div>
-      ${pdStageAccordionHtml(stages, currentStage, stagePanelHtml)}
+      ${viewedStageSubHeaderHtml}
+      ${materialsSectionHtml}
+      ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
     ` : '';
 
     // Timeline — every dated stage across every active project, earliest
@@ -5945,6 +5933,13 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       : (pub.view==='timeline' && projects.length) ? timelineHtml
       : homeHtml;
 
+    // Three columns in project view (main nav | stages | content); the
+    // stages column only exists when there's an actual project with stages
+    // to show, so Home/Timeline/retainer clients keep the plain two-column
+    // layout instead of an empty middle gap.
+    const showStagesCol = pub.view==='project' && !!proj;
+    const gridCols = showStagesCol ? '260px 220px 1fr' : '260px 1fr';
+
     // The padded wrapper and #pdMainGrid both get explicit width:100% (not
     // just relying on flex's align-items:stretch default) plus min-width:0.
     // Without width:100%, the wrapper's cross-axis size was shrinking to fit
@@ -5964,8 +5959,9 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
         <div style="max-width:1600px;width:100%;box-sizing:border-box;margin:0 auto;padding:32px 24px 40px;flex:1;display:flex;flex-direction:column;min-width:0">
-          <div id="pdMainGrid" style="display:grid;grid-template-columns:260px 1fr;gap:32px;flex:1;min-width:0;width:100%">
+          <div id="pdMainGrid" style="display:grid;grid-template-columns:${gridCols};gap:28px;flex:1;min-width:0;width:100%">
             <div class="pd-nav-col">${pdNavHtml()}</div>
+            ${showStagesCol? `<div class="pd-stages-col">${pdStagesColumnHtml(stages, currentStage)}</div>` : ''}
             <div style="min-width:0">${contentHtml}</div>
           </div>
         </div>
