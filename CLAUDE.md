@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.47.0**
+Current version: **v0.47.1**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -428,6 +428,12 @@ Font: Inter (unchanged from v0.9.0)
 - **Admin's Edit button is nested inside the now-clickable card** — its click handler gained `e.stopPropagation()` (it didn't need one before, when the card itself wasn't a click target) so clicking Edit opens the edit modal without also opening the link in a new tab. Verified live by stubbing `window.open` and confirming Edit never called it while the card itself did.
 - `.pd-project-card` gained `position:relative` (for the Edit button, which anchors to the card's corner via `.pd-material-edit`'s existing absolute positioning) — harmless for Active Projects cards, which have no absolutely-positioned children.
 - Verified live: Radyus — card click opens the link, Edit click doesn't, dark mode, and the `≤900px` mobile stack. Home's Active Projects cards and Useful Information confirmed visually identical/unaffected in behavior (same component, so no separate check needed beyond confirming nothing regressed).
+
+**What shipped in v0.47.1** (dividers between Home page sections; the vertical column dividers now genuinely touch the page's top/bottom edges):
+- **Added `.pd-divider` between every Home page section** — after the greeting/quick-actions block, between "Active Projects" and "Useful Information", and (retainer clients) again before Stage Materials — each section's own `margin-top` was removed in favor of the divider's margin, so spacing isn't doubled up.
+- **Fixed the vertical column dividers to be truly edge-to-edge.** They already stretched to match the row's height (fixed in v0.44.1), but the outer wrapper's own `padding:32px 24px 40px` still left a 32px/40px gap between the divider and the actual page top/bottom — a `border-right` sits at the outer edge of a box, outside its padding, so padding living on the *wrapper around* the columns, rather than inside them, was exactly that leftover gap. Moved the vertical padding onto each column individually (`.pd-nav-col`, `.pd-stages-col`, new `.pd-content-col`) and stripped it from the wrapper (which now only keeps horizontal padding) — verified live via `getBoundingClientRect()`: the nav column now starts at the exact pixel the admin banner ends and ends at the exact pixel the viewport does, zero gap either side.
+- Mobile (`≤900px`) media query updated in lockstep for all three columns so the stacked layout keeps sensible spacing without the desktop-sized top/bottom padding.
+- Verified live: Radyus (admin) — Home page section dividers, the 2-column and 3-column (project view) vertical dividers both edge-to-edge, and the `≤900px` mobile stack. Athernal Bio (retainer, non-admin) confirmed unaffected.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
