@@ -4857,7 +4857,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.46.1';
+const APP_VERSION = '0.47.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5824,7 +5824,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ? `<div class="pd-materials-grid">${usefulLinks.map(pdMaterialCardHtml).join('')}</div>`
       : `<div class="empty" style="padding:20px 0">${isAdmin?'No resources added yet.':'Nothing shared yet.'}</div>`;
     const usefulSectionHtml = (usefulLinks.length || isAdmin) ? `
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:28px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
         <div class="pd-section-title" style="margin-bottom:0">Useful Information</div>
         ${isAdmin? `<button class="btn small ghost" data-addresource="1">+ Add resource</button>`:''}
       </div>
@@ -5834,9 +5834,12 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     // type; project clients additionally get an "Active Projects" card grid
     // (each card opens that project's stage view), retainer clients instead
     // keep their existing Stage Materials/Meeting Notes/Calendar appended
-    // below (they have no per-project drill-down to send those to).
+    // below (they have no per-project drill-down to send those to). A
+    // .pd-divider separates every section from the next (each section's own
+    // top margin was removed in favor of the divider's, so spacing isn't
+    // doubled up).
     const projectsSectionHtml = projects.length ? `
-      <div class="pd-section-title" style="margin-top:28px">Active Projects</div>
+      <div class="pd-section-title">Active Projects</div>
       <div class="pd-materials-grid">${projects.map(pdProjectCardHtml).join('')}</div>
     ` : '';
     const homeHtml = `
@@ -5844,8 +5847,8 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <p class="sub" style="margin:10px 0 0;max-width:640px">${esc(DASH_EXPLAINER)}</p>
       ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
       ${pdQuickActionsHtml()}
-      ${projectsSectionHtml}
-      ${usefulSectionHtml}
+      ${projectsSectionHtml? `<div class="pd-divider"></div>${projectsSectionHtml}`:''}
+      ${usefulSectionHtml? `<div class="pd-divider"></div>${usefulSectionHtml}`:''}
       ${!projects.length? `
         <div class="pd-divider"></div>
         ${materialsSectionHtml}
@@ -5922,17 +5925,24 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     // what moved). min-width:0 additionally stops any single wide,
     // unbreakable child (like a long .pd-tabs strip) from forcing its column
     // wider than its fair share once width is otherwise fixed.
+    //
+    // The vertical padding lives on each column individually (32px top /
+    // 40px bottom), not on this wrapper — a border-right sits at the outer
+    // edge of a box, outside its padding, so padding on the *wrapper* was
+    // exactly the gap the divider lines stopped short by at the top and
+    // bottom before reaching the page's actual edges. Horizontal padding
+    // stays here since it doesn't affect divider height.
     document.body.innerHTML = `
       <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink);display:flex;flex-direction:column">
         ${isAdmin? `<div style="background:var(--accent-soft);color:var(--accent);border-bottom:1px solid var(--line);text-align:center;padding:10px 20px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
           <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
           <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
-        <div style="max-width:1600px;width:100%;box-sizing:border-box;margin:0 auto;padding:32px 24px 40px;flex:1;display:flex;flex-direction:column;min-width:0">
+        <div style="max-width:1600px;width:100%;box-sizing:border-box;margin:0 auto;padding:0 24px;flex:1;display:flex;flex-direction:column;min-width:0">
           <div id="pdMainGrid" style="display:grid;grid-template-columns:${gridCols};gap:28px;flex:1;min-width:0;width:100%">
             <div class="pd-nav-col">${pdNavHtml()}</div>
             ${showStagesCol? `<div class="pd-stages-col">${pdStagesColumnHtml(stages, currentStage)}</div>` : ''}
-            <div style="min-width:0">${contentHtml}</div>
+            <div class="pd-content-col">${contentHtml}</div>
           </div>
         </div>
       </div>
