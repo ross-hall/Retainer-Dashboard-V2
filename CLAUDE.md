@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.45.2**
+Current version: **v0.46.1**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -406,6 +406,21 @@ Font: Inter (unchanged from v0.9.0)
 - **Status pill moved to the header's right side**, next to the +/− toggle, instead of sitting inline next to the stage name.
 - **"Stage N" text replaced with a plain number in a circle** (`.pd-accordion-num-circle`) — just "1", "2", etc., no "Stage" label.
 - Verified live: Radyus — the Hide/Show toggle's stopPropagation behavior, the restyled header on both an expanded and collapsed row, dark mode, and the `≤900px` mobile stack. Toggled a stage's date visibility twice to test and confirmed the DB was left in its original state (`hide_due_date_from_client: false` on all 5 Branding stages) afterward.
+
+**What shipped in v0.46.0** (stages changed from an accordion back to a real third column — supersedes v0.45.x's accordion; nav is now nav | stages | content):
+- **`pdStageAccordionHtml` replaced by `pdStagesColumnHtml`**, a plain vertical list of buttons (number circle, name, status pill) rendered as its own grid column between the main nav and the content column, not nested inside content any more. Clicking a stage sets `pub.viewedStageId` (same `data-pdstage` wiring as before — Timeline's rows and the old accordion both already used it, so this needed zero new click-handling code) and the content column's materials/notes update to match.
+- **`#pdMainGrid` is now conditionally 2 or 3 columns**: `260px 1fr` on Home/Timeline/retainer clients (no project selected, nothing to show a stages column for), `260px 220px 1fr` in project view. Avoids an empty middle gap on the pages that don't need one.
+- **Kept exactly what was asked to keep**: the three-state Completed/Current/Pending status pill, now shown on each stages-column row. The content column gained a small stage sub-header (name + the same status pill + due date + admin Hide/Show) above Stage Materials, since that information no longer has an accordion row to live on.
+- **`.pd-stages-col` mirrors `.pd-nav-col`'s divider treatment** — `border-right` on desktop, `border-bottom` in the `≤900px` mobile stack (nav → stages → content, each separated the same way).
+- Dead CSS from the accordion (`.pd-accordion`, `-item`, `-header`, `-header-main`, `-line2`, `-right`, `-toggle`, `-panel`) removed; `.pd-accordion-num-circle` and `.pd-stage-status-pill` were kept and reused since both still apply.
+- Verified live: Radyus (admin) — 3-column project view, clicking between stages, Home falling back to 2 columns with no gap, dark mode, and the `≤900px` mobile stack (nav/stages/content stacking in order with dividers). Athernal Bio (retainer, non-admin) confirmed unaffected — still exactly 2 columns.
+
+**What shipped in v0.46.1** (fixed uneven spacing in the stages column; removed duplicate project/stage detail from the content column):
+- **Stages column padding fixed to match the nav column.** `.pd-stages-col` had its own `padding:0 20px` on top of the grid's column gap, on top of the nav column's own `padding-right:20px` — stacking to a much bigger visual inset before stage text than before nav text. Changed to `padding-right:20px` only (mirroring `.pd-nav-col`'s pattern exactly: padding only on the divider side, none on the leading side).
+- **Fixed uneven row-to-row gaps** — a stage name + status pill that didn't both fit on one line wrapped to two, making that one row taller and throwing off the otherwise-constant gap between rows. `.pd-stage-item` is now `flex-wrap:nowrap` with the name `text-overflow:ellipsis`-truncated instead, so every row is the same height.
+- **Removed the content column's project title, scope pill, and stage sub-header** (name + status pill + due date) — all three duplicated what the nav column (which project) and stages column (which stage, with its own status pill) already show. Project view now goes straight from the (optional) Animation cheat-sheet button into Stage Materials.
+- **Known trade-off, called out rather than silently dropped**: the admin Hide/Show due-date-visibility toggle lived in the now-removed stage sub-header and has no replacement home yet — it's not surfaced anywhere on the public portal at the moment. `hide_due_date_from_client` and the underlying due dates are unaffected and still editable from the internal app's project page; only this one public-portal toggle is currently unreachable. `data-toggledate`'s click wiring was left in place (harmless, matches zero elements today) in case this gets a new spot.
+- Verified live: Radyus — stages-column/nav-column left-inset alignment, uniform row heights across 5 stages, a project with the cheat-sheet button (Animation) and one without (Deck) both rendering a clean content-column start, dark mode, and the `≤900px` mobile stack.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

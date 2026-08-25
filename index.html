@@ -565,20 +565,12 @@
   .pd-brief{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
   .pd-brief-item{background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12.5px;color:var(--ink)}
 
-  /* One card per link, icon-on-top, stacked in a grid — Stage Materials and
-     Useful Information use this (Active Projects has its own .pd-project-card
-     below, since it dropped the Open button and centered layout these keep).
-     Same "white card" (var(--card), not var(--paper)) + shadow as .card on
-     the All Projects page, so these read as the same component, not a
-     bespoke lookalike. Rendered with no outer frame around the grid — the
-     cards themselves are the only surface, nothing wraps them. */
+  /* Stage Materials, Useful Information, and Active Projects all share one
+     grid; every card in it is .pd-project-card (below) now — no separate
+     "material card" component any more. Same "white card" (var(--card)) +
+     shadow as .card on the All Projects page. Rendered with no outer frame
+     around the grid — the cards themselves are the only surface. */
   .pd-materials-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
-  .pd-material-card{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:22px 16px 18px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-card)}
-  .pd-material-icon{width:46px;height:46px;border-radius:12px;background:var(--track);display:flex;align-items:center;justify-content:center}
-  .pd-material-icon svg{width:24px;height:24px}
-  .pd-material-title{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.3}
-  .pd-material-desc{font-size:11.5px;color:var(--muted);margin-top:-4px}
-  .pd-material-open{width:100%;justify-content:center;margin-top:4px;padding:9px 14px;font-size:13px}
   .pd-material-edit{position:absolute;top:8px;right:8px;padding:2px 7px;font-size:10px}
 
   /* Meeting Notes — rows instead of cards, with a date column (a Loom link is
@@ -594,11 +586,12 @@
   .pd-meeting-open{flex:none;padding:6px 12px;font-size:12.5px}
   .pd-meeting-edit{flex:none;padding:6px 10px;font-size:11px}
 
-  /* Project cards on the Home page — deliberately a separate class from
-     .pd-material-card rather than a shared/overridden one: the whole card is
-     the click target (no Open button), left-aligned, and hover-lifts like
-     .client-card on the All Projects page (same shadow/transform values). */
-  .pd-project-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:18px;text-align:left;cursor:pointer;transition:box-shadow var(--dur) var(--ease),border-color var(--dur) var(--ease),transform var(--dur) var(--ease)}
+  /* One card component for everything on this page now — project cards,
+     Stage Materials, Useful Information: the whole card is the click target
+     (no Open button anywhere), left-aligned, and hover-lifts like
+     .client-card on the All Projects page (same shadow/transform values).
+     position:relative is for the admin Edit button material cards nest. */
+  .pd-project-card{position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:18px;text-align:left;cursor:pointer;transition:box-shadow var(--dur) var(--ease),border-color var(--dur) var(--ease),transform var(--dur) var(--ease)}
   .pd-project-card:hover{box-shadow:0 2px 4px rgba(20,18,15,.04),0 8px 20px rgba(20,18,15,.07);transform:translateY(-1px)}
   .pd-project-card-icon{width:34px;height:34px;border-radius:9px;background:var(--track);display:flex;align-items:center;justify-content:center;flex:none}
   .pd-project-card-icon svg{width:18px;height:18px}
@@ -614,14 +607,20 @@
   /* Stages column — the middle of three (nav | stages | content). Plain
      buttons, not cards: this column is nav-like (pick a stage), the white
      card treatment stays reserved for the content column's material links.
-     Row can wrap to two lines (name, then the pill) if a long name and the
-     pill don't both fit in the ~220px column. */
-  .pd-stages-col{border-right:1px solid var(--line);padding:0 20px;display:flex;flex-direction:column;gap:6px}
-  .pd-stage-item{width:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 10px;border:1px solid transparent;border-radius:9px;background:transparent;cursor:pointer;text-align:left;font-family:'Inter',sans-serif}
+     No left padding on the column itself (matching .pd-nav-col, which only
+     pads on its divider side) — the grid's own column gap already spaces it
+     from the nav divider, so adding column-level padding on top of that
+     doubled up the inset and made it look uneven next to the nav column.
+     Rows never wrap (name is ellipsis-truncated instead) so every row is
+     the same height — a wrapped pill was the other source of uneven
+     spacing, since the gap between rows is constant but a taller wrapped
+     row reads as a bigger gap above/below it. */
+  .pd-stages-col{border-right:1px solid var(--line);padding-right:20px;display:flex;flex-direction:column;gap:6px}
+  .pd-stage-item{width:100%;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;padding:9px 10px;border:1px solid transparent;border-radius:9px;background:transparent;cursor:pointer;text-align:left;font-family:'Inter',sans-serif}
   .pd-stage-item:hover{background:var(--track)}
   .pd-stage-item.active{background:var(--track)}
   .pd-accordion-num-circle{width:26px;height:26px;border-radius:50%;background:var(--track);color:var(--ink);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:none}
-  .pd-stage-item-name{flex:1;min-width:60px;font-size:13px;font-weight:600;color:var(--ink)}
+  .pd-stage-item-name{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pd-stage-status-pill{font-size:10px;font-weight:700;padding:3px 9px;border-radius:99px;flex:none;text-transform:uppercase;letter-spacing:.02em}
 
   /* Combined left-hand nav (projects only — their stages live as tabs in the
@@ -736,7 +735,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.46.0</div>
+    <div id="versionBadge" class="version-badge">v0.47.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -5605,7 +5604,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.46.0';
+const APP_VERSION = '0.47.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6332,29 +6331,32 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     }
     return data;
   }
-  /* One material — icon on top, title, optional description, one big Open
-     button. Every link on the dashboard (brief docs, proofs, working files,
-     final delivery, meeting notes, useful-info resources) renders identically
-     now; embedInfoFor is only consulted for a nicer button label ("Open in
-     Figma ↗"), nothing is embedded inline any more. */
+  /* One material — same .pd-project-card shape as the Active Projects cards
+     (icon + title/desc row, left-aligned, no button): the whole card is the
+     click target (data-openlink, opens the URL in a new tab) with only a
+     hover lift to signal it's clickable, matching the Home page cards
+     exactly rather than keeping a separate bespoke "Open" button. The admin
+     Edit button is the one interactive child nested inside a click-handled
+     div — its own handler stops propagation so Edit doesn't also open the
+     link. embedInfoFor is unused now that there's no button label to
+     customize ("Open in Figma ↗" etc. is gone along with the button). */
   function pdMaterialCardHtml(l){
     const href = safeUrl(l.url);
-    const info = embedInfoFor(l.url);
-    const iconHtml = `<div class="pd-material-icon" style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</div>`;
+    const iconHtml = `<div class="pd-project-card-icon" style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</div>`;
     const editBtn = isAdmin? `<button type="button" class="btn small ghost pd-material-edit" data-editlink="${l.id}">Edit</button>`:'';
+    const bodyHtml = `<div style="display:flex;align-items:center;gap:10px">
+      ${iconHtml}
+      <div style="min-width:0">
+        <div class="pd-project-card-title">${esc(l.label)}</div>
+        ${!href? `<div class="pd-project-card-desc" style="color:var(--red)">Needs an https:// URL</div>`
+          : l.description? `<div class="pd-project-card-desc">${esc(l.description)}</div>` : ''}
+      </div>
+    </div>`;
     if(!href){
       if(!isAdmin) return '';
-      return `<div class="pd-material-card">${editBtn}${iconHtml}
-        <div class="pd-material-title">${esc(l.label)}</div>
-        <div class="pd-material-desc" style="color:var(--red)">Needs an https:// URL</div>
-      </div>`;
+      return `<div class="pd-project-card">${editBtn}${bodyHtml}</div>`;
     }
-    const openLabel = info? `Open in ${esc(info.label)}` : 'Open';
-    return `<div class="pd-material-card">${editBtn}${iconHtml}
-      <div class="pd-material-title">${esc(l.label)}</div>
-      ${l.description? `<div class="pd-material-desc">${esc(l.description)}</div>`:''}
-      <a class="btn pd-material-open" style="background:${accent}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${openLabel} ↗</a>
-    </div>`;
+    return `<div class="pd-project-card" data-openlink="${esc(href)}">${editBtn}${bodyHtml}</div>`;
   }
   /* One card per project on the Home page — its own .pd-project-card shape
      (not .pd-material-card): whole card is the click target (data-pdopenproj,
@@ -6531,13 +6533,6 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     // there's never a dead button for admin or client.
     const cheatsheetHref = proj && isAnimationType(proj.project_type) ? safeUrl(ANIMATION_CHEATSHEET_URL) : null;
 
-    // Scope pill — just the project's scope figure (e.g. "12 slides",
-    // "60s length"), sourced from the same rs_projects.details the internal
-    // app uses. Sits inline next to the title now (e.g. "Branding [Refresh
-    // branding]"), not as its own block below — type/label/review-window
-    // still aren't shown here, the type already has its own icon+label in
-    // the nav and this is deliberately just the one number a client wants.
-    const scopeBit = proj ? projectDetailsSummary(proj) : null;
 
     // Stage Materials — every brief/proofing/general/vault link, flattened
     // into one grid of cards, no outer frame — the cards themselves (white
@@ -6606,42 +6601,16 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ` : ''}
     `;
 
-    // Sub-header for whichever stage is currently viewed (its name, status
-    // pill, due date, and — admin only — the Hide/Show toggle) — sits above
-    // Stage Materials in the content column now that stages live in their
-    // own middle column rather than an accordion nested in content.
-    const viewedStageSubHeaderHtml = viewedStage ? (()=>{
-      const hidden = !!viewedStage.hide_due_date_from_client;
-      const dateLabel = hidden
-        ? (isAdmin? 'Hidden from client' : '')
-        : (viewedStage.due_date? `Due ${esc(fmtDate(new Date(viewedStage.due_date+'T00:00')))}` : (isAdmin? 'No due date set' : ''));
-      const done = stageStatus(viewedStage.id)==='Complete';
-      const isCurrentV = currentStage && viewedStage.id===currentStage.id;
-      const statusLabel = done ? 'Completed' : isCurrentV ? 'Current' : 'Pending';
-      const statusStyle = done ? `background:var(--green-bg);color:var(--green)`
-        : isCurrentV ? `background:${mutedBg(accent)};color:${accent}`
-        : `background:var(--track);color:var(--muted)`;
-      return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:22px">
-        <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--ink)">${esc(viewedStage.name)}</h3>
-        <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
-        ${dateLabel? `<span style="font-size:12.5px;color:var(--muted)">${dateLabel}</span>`:''}
-        ${isAdmin && viewedStage.due_date? `<button type="button" class="btn small ghost" data-toggledate="${viewedStage.id}" style="padding:1px 7px;font-size:10px">${hidden?'Show':'Hide'}</button>`:''}
-      </div>`;
-    })() : '';
-
-    // Project view — header (title + inline scope pill + cheat-sheet button),
-    // then the viewed stage's sub-header, then its materials/notes. The
-    // stage list itself is a sibling column now (pdStagesColumnHtml, wired
-    // into #pdMainGrid directly below), not part of this content block.
+    // Project view — content column only. Project title, scope pill, and
+    // the viewed stage's name/status/due-date all used to repeat here, but
+    // that's exactly the same information the nav column (which project)
+    // and the stages column (which stage, plus its status pill) already
+    // show — removed as duplicate detail, per explicit direction. The
+    // Hide/Show due-date-visibility toggle doesn't have a home in this view
+    // any more as a result (it lived in the sub-header that was removed);
+    // due dates are still manageable from the internal app's project page.
     const projectHtml = proj ? `
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:24px">
-        <h2 style="margin-bottom:0;flex:1;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px">
-          <span>${esc(proj.project_type)}</span>
-          ${scopeBit? `<span class="pd-brief-item">${esc(scopeBit)}</span>`:''}
-        </h2>
-        ${cheatsheetHref? `<a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a>`:''}
-      </div>
-      ${viewedStageSubHeaderHtml}
+      ${cheatsheetHref? `<div style="display:flex;justify-content:flex-end;margin-bottom:20px"><a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a></div>` : ''}
       ${materialsSectionHtml}
       ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
     ` : '';
@@ -6721,6 +6690,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     document.querySelectorAll('[data-pdtimeline]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='timeline'; paint(); }));
     document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-pdopenproj]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdopenproj; pub.viewedStageId = null; pub.view='project'; paint(); }));
+    document.querySelectorAll('[data-openlink]').forEach(el=>el.addEventListener('click', ()=> window.open(el.dataset.openlink, '_blank', 'noopener,noreferrer')));
     document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; if(el.dataset.pdstageproj) pub.projectId = el.dataset.pdstageproj; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-calnav]').forEach(el=>el.addEventListener('click', ()=>{
       let m = pub.calM + (+el.dataset.calnav);
@@ -6759,7 +6729,10 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       });
       document.querySelectorAll('[data-editlink]').forEach(el=>{
         const link = allLinks.find(l=>l.id===el.dataset.editlink);
-        el.addEventListener('click', ()=> openStageLinkModal(link.category_id, link.id, reload));
+        // Nested inside the now-clickable material card (data-openlink) —
+        // stop the click reaching the card's own handler, or Edit would
+        // also open the link in a new tab.
+        el.addEventListener('click', (e)=>{ e.stopPropagation(); openStageLinkModal(link.category_id, link.id, reload); });
       });
       document.querySelectorAll('[data-toggledate]').forEach(el=>el.addEventListener('click', async (e)=>{
         e.stopPropagation();

@@ -4857,7 +4857,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.45.2';
+const APP_VERSION = '0.46.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5584,29 +5584,32 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     }
     return data;
   }
-  /* One material — icon on top, title, optional description, one big Open
-     button. Every link on the dashboard (brief docs, proofs, working files,
-     final delivery, meeting notes, useful-info resources) renders identically
-     now; embedInfoFor is only consulted for a nicer button label ("Open in
-     Figma ↗"), nothing is embedded inline any more. */
+  /* One material — same .pd-project-card shape as the Active Projects cards
+     (icon + title/desc row, left-aligned, no button): the whole card is the
+     click target (data-openlink, opens the URL in a new tab) with only a
+     hover lift to signal it's clickable, matching the Home page cards
+     exactly rather than keeping a separate bespoke "Open" button. The admin
+     Edit button is the one interactive child nested inside a click-handled
+     div — its own handler stops propagation so Edit doesn't also open the
+     link. embedInfoFor is unused now that there's no button label to
+     customize ("Open in Figma ↗" etc. is gone along with the button). */
   function pdMaterialCardHtml(l){
     const href = safeUrl(l.url);
-    const info = embedInfoFor(l.url);
-    const iconHtml = `<div class="pd-material-icon" style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</div>`;
+    const iconHtml = `<div class="pd-project-card-icon" style="color:${accent}">${LINK_ICONS[l.icon]||LINK_ICONS.link}</div>`;
     const editBtn = isAdmin? `<button type="button" class="btn small ghost pd-material-edit" data-editlink="${l.id}">Edit</button>`:'';
+    const bodyHtml = `<div style="display:flex;align-items:center;gap:10px">
+      ${iconHtml}
+      <div style="min-width:0">
+        <div class="pd-project-card-title">${esc(l.label)}</div>
+        ${!href? `<div class="pd-project-card-desc" style="color:var(--red)">Needs an https:// URL</div>`
+          : l.description? `<div class="pd-project-card-desc">${esc(l.description)}</div>` : ''}
+      </div>
+    </div>`;
     if(!href){
       if(!isAdmin) return '';
-      return `<div class="pd-material-card">${editBtn}${iconHtml}
-        <div class="pd-material-title">${esc(l.label)}</div>
-        <div class="pd-material-desc" style="color:var(--red)">Needs an https:// URL</div>
-      </div>`;
+      return `<div class="pd-project-card">${editBtn}${bodyHtml}</div>`;
     }
-    const openLabel = info? `Open in ${esc(info.label)}` : 'Open';
-    return `<div class="pd-material-card">${editBtn}${iconHtml}
-      <div class="pd-material-title">${esc(l.label)}</div>
-      ${l.description? `<div class="pd-material-desc">${esc(l.description)}</div>`:''}
-      <a class="btn pd-material-open" style="background:${accent}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${openLabel} ↗</a>
-    </div>`;
+    return `<div class="pd-project-card" data-openlink="${esc(href)}">${editBtn}${bodyHtml}</div>`;
   }
   /* One card per project on the Home page — its own .pd-project-card shape
      (not .pd-material-card): whole card is the click target (data-pdopenproj,
@@ -5783,13 +5786,6 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     // there's never a dead button for admin or client.
     const cheatsheetHref = proj && isAnimationType(proj.project_type) ? safeUrl(ANIMATION_CHEATSHEET_URL) : null;
 
-    // Scope pill — just the project's scope figure (e.g. "12 slides",
-    // "60s length"), sourced from the same rs_projects.details the internal
-    // app uses. Sits inline next to the title now (e.g. "Branding [Refresh
-    // branding]"), not as its own block below — type/label/review-window
-    // still aren't shown here, the type already has its own icon+label in
-    // the nav and this is deliberately just the one number a client wants.
-    const scopeBit = proj ? projectDetailsSummary(proj) : null;
 
     // Stage Materials — every brief/proofing/general/vault link, flattened
     // into one grid of cards, no outer frame — the cards themselves (white
@@ -5858,42 +5854,16 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ` : ''}
     `;
 
-    // Sub-header for whichever stage is currently viewed (its name, status
-    // pill, due date, and — admin only — the Hide/Show toggle) — sits above
-    // Stage Materials in the content column now that stages live in their
-    // own middle column rather than an accordion nested in content.
-    const viewedStageSubHeaderHtml = viewedStage ? (()=>{
-      const hidden = !!viewedStage.hide_due_date_from_client;
-      const dateLabel = hidden
-        ? (isAdmin? 'Hidden from client' : '')
-        : (viewedStage.due_date? `Due ${esc(fmtDate(new Date(viewedStage.due_date+'T00:00')))}` : (isAdmin? 'No due date set' : ''));
-      const done = stageStatus(viewedStage.id)==='Complete';
-      const isCurrentV = currentStage && viewedStage.id===currentStage.id;
-      const statusLabel = done ? 'Completed' : isCurrentV ? 'Current' : 'Pending';
-      const statusStyle = done ? `background:var(--green-bg);color:var(--green)`
-        : isCurrentV ? `background:${mutedBg(accent)};color:${accent}`
-        : `background:var(--track);color:var(--muted)`;
-      return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:22px">
-        <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--ink)">${esc(viewedStage.name)}</h3>
-        <span class="pd-stage-status-pill" style="${statusStyle}">${statusLabel}</span>
-        ${dateLabel? `<span style="font-size:12.5px;color:var(--muted)">${dateLabel}</span>`:''}
-        ${isAdmin && viewedStage.due_date? `<button type="button" class="btn small ghost" data-toggledate="${viewedStage.id}" style="padding:1px 7px;font-size:10px">${hidden?'Show':'Hide'}</button>`:''}
-      </div>`;
-    })() : '';
-
-    // Project view — header (title + inline scope pill + cheat-sheet button),
-    // then the viewed stage's sub-header, then its materials/notes. The
-    // stage list itself is a sibling column now (pdStagesColumnHtml, wired
-    // into #pdMainGrid directly below), not part of this content block.
+    // Project view — content column only. Project title, scope pill, and
+    // the viewed stage's name/status/due-date all used to repeat here, but
+    // that's exactly the same information the nav column (which project)
+    // and the stages column (which stage, plus its status pill) already
+    // show — removed as duplicate detail, per explicit direction. The
+    // Hide/Show due-date-visibility toggle doesn't have a home in this view
+    // any more as a result (it lived in the sub-header that was removed);
+    // due dates are still manageable from the internal app's project page.
     const projectHtml = proj ? `
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:24px">
-        <h2 style="margin-bottom:0;flex:1;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px">
-          <span>${esc(proj.project_type)}</span>
-          ${scopeBit? `<span class="pd-brief-item">${esc(scopeBit)}</span>`:''}
-        </h2>
-        ${cheatsheetHref? `<a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a>`:''}
-      </div>
-      ${viewedStageSubHeaderHtml}
+      ${cheatsheetHref? `<div style="display:flex;justify-content:flex-end;margin-bottom:20px"><a class="btn small ghost" href="${esc(cheatsheetHref)}" target="_blank" rel="noopener">${LINK_ICONS.pdf} Animation cheat sheet</a></div>` : ''}
       ${materialsSectionHtml}
       ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
     ` : '';
@@ -5973,6 +5943,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     document.querySelectorAll('[data-pdtimeline]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='timeline'; paint(); }));
     document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-pdopenproj]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdopenproj; pub.viewedStageId = null; pub.view='project'; paint(); }));
+    document.querySelectorAll('[data-openlink]').forEach(el=>el.addEventListener('click', ()=> window.open(el.dataset.openlink, '_blank', 'noopener,noreferrer')));
     document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; if(el.dataset.pdstageproj) pub.projectId = el.dataset.pdstageproj; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-calnav]').forEach(el=>el.addEventListener('click', ()=>{
       let m = pub.calM + (+el.dataset.calnav);
@@ -6011,7 +5982,10 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       });
       document.querySelectorAll('[data-editlink]').forEach(el=>{
         const link = allLinks.find(l=>l.id===el.dataset.editlink);
-        el.addEventListener('click', ()=> openStageLinkModal(link.category_id, link.id, reload));
+        // Nested inside the now-clickable material card (data-openlink) —
+        // stop the click reaching the card's own handler, or Edit would
+        // also open the link in a new tab.
+        el.addEventListener('click', (e)=>{ e.stopPropagation(); openStageLinkModal(link.category_id, link.id, reload); });
       });
       document.querySelectorAll('[data-toggledate]').forEach(el=>el.addEventListener('click', async (e)=>{
         e.stopPropagation();
