@@ -747,7 +747,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.48.0</div>
+    <div id="versionBadge" class="version-badge">v0.49.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -5687,7 +5687,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.48.0';
+const APP_VERSION = '0.49.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6587,14 +6587,36 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>
       <div class="pd-cal-grid">${dowLabels.map(d=>`<div class="pd-cal-dow">${d}</div>`).join('')}${cells}</div>`;
     }
-    // Retainer clients have no stages, so the left rail carries their task
-    // timeline instead, and the calendar sits under the content column.
-    const retainerRailHtml = client.is_retainer
-      ? `<div style="display:flex;flex-direction:column;gap:2px">${tasksListHtml}</div>`
-      : '<div class="empty" style="padding:12px 0">No stages yet.</div>';
-    const retainerCalendarHtml = client.is_retainer
-      ? `<div class="card" style="margin-top:20px"><div class="pd-section-title">Calendar</div>${calendarHtmlPd(pub.calY, pub.calM)}</div>`
-      : '';
+    // Retainer clients get three of their own nav pages instead of a
+    // project tree: Home, All Tasks (the full Previous/Upcoming list, moved
+    // out of the nav rail into its own page), and Calendar (moved out of
+    // Home into its own page). No financial content here (hours/usage stay
+    // internal-only, per earlier decision) — just the renewal date.
+    const allTasksHtml = `
+      <h2 style="margin-bottom:0">All Tasks</h2>
+      <p class="sub" style="margin:10px 0 22px">Every task for your retainer, organized by due date.</p>
+      ${tasksListHtml}
+    `;
+    const calendarPageHtml = `
+      <h2 style="margin-bottom:0">Calendar</h2>
+      <p class="sub" style="margin:10px 0 22px">Task due dates for your retainer, by month.</p>
+      <div class="card">${calendarHtmlPd(pub.calY, pub.calM)}</div>
+    `;
+    const renewalLineHtml = client.is_retainer && client.renewal_day ? (()=>{
+      const cyc = cycleFor(client.renewal_day);
+      return `<p class="sub" style="margin:8px 0 0;max-width:640px">${renewsInDays(cyc.next)} · ${esc(fmtDate(cyc.next))}</p>`;
+    })() : '';
+    // A short preview (5 max) of what's coming up, with a link through to
+    // the full All Tasks page — the Home-page equivalent of Active Projects.
+    const activeTasksSectionHtml = !projects.length ? `
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+        <div class="pd-section-title" style="margin-bottom:0">Active Tasks</div>
+        <button type="button" class="btn small ghost" data-pdalltasks="1">View all →</button>
+      </div>
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:2px">
+        ${upcomingTasks.length? upcomingTasks.slice(0,5).map(taskRowHtmlPd).join('') : `<div class="empty" style="padding:20px 0">No upcoming tasks.</div>`}
+      </div>
+    ` : '';
 
     /* Combined left-hand nav — projects only now, not their stages (those
        moved to an accordion in the right content column, see
@@ -6603,14 +6625,17 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
        pub.projectId and switches pub.view to 'project'. "active" (highlighted)
        requires being on that project's page specifically, not just having it
        selected, so nothing is highlighted while on Home. Retainer clients
-       (no rs_projects rows) fall back to the Tasks rail instead. The
-       Reciprocal Space link sits at the very bottom, pinned there via
-       .pd-nav-col's flex column + this being the last child with
-       margin-top:auto (see CSS). Home and Timeline are global pages (not
-       tied to a project), grouped together and set apart from the projects
-       list below by spacing and a small "Projects" label — no rule line —
-       the brand title next to the client-initial avatar is plain text, not
-       clickable. */
+       (no rs_projects rows) get All Tasks + Calendar as their own nav pages
+       instead of a project tree — both used to live inline (the task rail
+       sat directly in the nav, the calendar sat at the bottom of Home);
+       moving them out keeps Home focused on a short preview + the pages
+       full-size. The Reciprocal Space link sits at the very bottom, pinned
+       there via .pd-nav-col's flex column + this being the last child with
+       margin-top:auto (see CSS). Home/Timeline/All Tasks/Calendar are global
+       pages (not tied to a project), grouped together and set apart from the
+       projects list below (project clients only) by spacing and a small
+       "Projects" label — no rule line — the brand title next to the
+       client-initial avatar is plain text, not clickable. */
     function pdNavHtml(){
       const initial = esc((client.name||'?').trim().charAt(0).toUpperCase() || '?');
       const brand = `<div class="pd-nav-brand"><span class="pd-nav-avatar" style="background:${accent}">${initial}</span><span class="pd-nav-title">Client Portal</span></div>`;
@@ -6624,9 +6649,19 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <span class="pd-nav-group-icon" style="${timelineActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
           <span class="pd-nav-group-label">Timeline</span>
         </button>` : '';
-      const globalNav = `<div style="margin-bottom:26px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}</div>`;
+      const allTasksActive = pub.view==='alltasks';
+      const allTasksBtn = !projects.length ? `<button type="button" class="pd-nav-group ${allTasksActive?'active':''}" data-pdalltasks="1" style="${allTasksActive?`color:${accent}`:''}">
+          <span class="pd-nav-group-icon" style="${allTasksActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M8 6h12M8 12h12M8 18h12"/><path d="m4 6 .01.01M4 12l.01.01M4 18l.01.01" stroke-width="2.4" stroke-linecap="round"/></svg></span>
+          <span class="pd-nav-group-label">All Tasks</span>
+        </button>` : '';
+      const calendarActive = pub.view==='calendar';
+      const calendarBtn = !projects.length ? `<button type="button" class="pd-nav-group ${calendarActive?'active':''}" data-pdcalendar="1" style="${calendarActive?`color:${accent}`:''}">
+          <span class="pd-nav-group-icon" style="${calendarActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
+          <span class="pd-nav-group-label">Calendar</span>
+        </button>` : '';
+      const globalNav = `<div style="margin-bottom:26px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}${allTasksBtn}${calendarBtn}</div>`;
       const footerLink = `<a class="pd-nav-footer-link" href="${esc(websiteHref)}" target="_blank" rel="noopener">${LINK_ICONS.link} Reciprocal Space</a>`;
-      if(!projects.length) return `${brand}${globalNav}<div class="pd-section-title">Tasks</div>${retainerRailHtml}${footerLink}`;
+      if(!projects.length) return `${brand}${globalNav}${footerLink}`;
       const tree = `<div class="pd-cat-label" style="margin-bottom:6px">Projects</div><div class="pd-nav-tree">${projects.map(p=>{
         const active = pub.view==='project' && p.id===pub.projectId;
         const pStages = stagesFor(p.id);
@@ -6694,14 +6729,17 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>
       <div style="margin-top:14px">${usefulBody}</div>` : '';
 
-    // Home page — the greeting/explainer block is shared by every client
-    // type; project clients additionally get an "Active Projects" card grid
-    // (each card opens that project's stage view), retainer clients instead
-    // keep their existing Stage Materials/Meeting Notes/Calendar appended
-    // below (they have no per-project drill-down to send those to). A
-    // .pd-divider separates every section from the next (each section's own
-    // top margin was removed in favor of the divider's, so spacing isn't
-    // doubled up).
+    // Home page — the greeting/explainer/renewal-line block is shared by
+    // every client type; project clients get an "Active Projects" card grid
+    // (each card opens that project's stage view), retainer clients get an
+    // "Active Tasks" preview instead (full list lives on its own All Tasks
+    // page now — see pdNavHtml). Stage Materials/Meeting Notes/Calendar are
+    // no longer on Home at all for retainer clients — Materials/Notes felt
+    // like project-page concepts that didn't fit a client with no projects,
+    // and the calendar has its own page now too; Useful Information is the
+    // one resource section that stays. A .pd-divider separates every
+    // section from the next (each section's own top margin was removed in
+    // favor of the divider's, so spacing isn't doubled up).
     const projectsSectionHtml = projects.length ? `
       <div class="pd-section-title">Active Projects</div>
       <div class="pd-materials-grid">${projects.map(pdProjectCardHtml).join('')}</div>
@@ -6709,16 +6747,12 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     const homeHtml = `
       <h2 style="margin-bottom:0">Hello, ${esc(client.name)}</h2>
       <p class="sub" style="margin:10px 0 0;max-width:640px">${esc(DASH_EXPLAINER)}</p>
+      ${renewalLineHtml}
       ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
       ${pdQuickActionsHtml()}
       ${projectsSectionHtml? `<div class="pd-divider"></div>${projectsSectionHtml}`:''}
+      ${activeTasksSectionHtml? `<div class="pd-divider"></div>${activeTasksSectionHtml}`:''}
       ${usefulSectionHtml? `<div class="pd-divider"></div>${usefulSectionHtml}`:''}
-      ${!projects.length? `
-        <div class="pd-divider"></div>
-        ${materialsSectionHtml}
-        ${notesSectionHtml? `<div class="pd-divider"></div>${notesSectionHtml}`:''}
-        ${retainerCalendarHtml}
-      ` : ''}
     `;
 
     // Project view — content column only. Project title, scope pill, and
@@ -6768,6 +6802,8 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
     const contentHtml = (pub.view==='project' && proj) ? projectHtml
       : (pub.view==='timeline' && projects.length) ? timelineHtml
+      : (pub.view==='alltasks' && !projects.length) ? allTasksHtml
+      : (pub.view==='calendar' && !projects.length) ? calendarPageHtml
       : homeHtml;
 
     // Three columns in project view (main nav | stages | content); the
@@ -6815,6 +6851,8 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
     document.querySelectorAll('[data-pdhome]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='home'; paint(); }));
     document.querySelectorAll('[data-pdtimeline]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='timeline'; paint(); }));
+    document.querySelectorAll('[data-pdalltasks]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='alltasks'; paint(); }));
+    document.querySelectorAll('[data-pdcalendar]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='calendar'; paint(); }));
     document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-pdopenproj]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdopenproj; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-openlink]').forEach(el=>el.addEventListener('click', ()=> window.open(el.dataset.openlink, '_blank', 'noopener,noreferrer')));
