@@ -5011,7 +5011,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.54.1';
+const APP_VERSION = '0.54.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6942,13 +6942,13 @@ function renderAnimSchedule(){
 
   const markersHtml = deliverables.map(d=>`
     <div class="anim-sched-marker" style="grid-row:1 / ${shots.length+4};grid-column:${d.col+1}"></div>
-    <div class="anim-sched-marker-label" style="grid-row:1;grid-column:${d.col+1}" title="${esc(d.name)} — due ${fmtDate(new Date(d.due_date+'T00:00'))}">🚩 ${esc(d.name)}</div>
+    <div class="anim-sched-marker-label" style="grid-row:1;grid-column:${d.col+1}" title="${esc(d.name)} — due ${fmtDate(new Date(d.due_date+'T00:00'))}">${esc(d.name)}</div>
   `).join('');
 
   html += `<div class="card" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
       <button type="button" class="btn small ghost" id="animSchedToday">Today</button>
-      <div style="font-size:11.5px;color:var(--muted)">🚩 Client deliverable dates from this project's stages · click a bar to edit dates · drag to move · drag an edge to resize · drag across an empty row to schedule a shot</div>
+      <div style="font-size:11.5px;color:var(--muted)">Client deliverable dates from this project's stages · click a bar to edit dates · drag to move · drag an edge to resize · drag across an empty row to schedule a shot</div>
     </div>
     <div style="overflow-x:auto" id="animSchedWrap">
       <div class="anim-sched-grid" style="grid-template-columns:200px repeat(${totalDays}, minmax(30px,1fr));min-width:${200+totalDays*32}px">

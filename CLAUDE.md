@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.54.2**
+Current version: **v0.54.3**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -520,6 +520,11 @@ Font: Inter (unchanged from v0.9.0)
 - **Sticky-header masking fixed**: the month-band and day-number rows had nothing occupying column 1, so as the grid scrolled horizontally, scrolled-under date/month text was visible right where the sticky shot-name column sits for every row below — visually "bleeding into" the label area. Every shot row already avoided this via its own opaque `position:sticky` label; three new `.anim-sched-corner` filler cells (one per header row) give the month-band and day-number rows the same treatment.
 - **Bug caught before shipping**: the first version of the shared auto-scroll cleanup called `updateAutoScroll(-9999)` on pointerup intending to force-clear the timer, but the left-edge check (`x - rect.left < edge`) is satisfied by any sufficiently negative `x` — so it would have started a *new* leftward auto-scroll instead of stopping. Changed `makeAutoScroller` to return a function with its own `.stop()` method instead of relying on an out-of-range coordinate.
 - Verified live: screenshot confirmed no button/grid overlap; dragging across LOGO's empty row (a genuinely unscheduled shot, confirmed by id before touching it this time) created `work_start_date`/`work_end_date` matching exactly the cells dragged across, then reverted; a plain click on an empty cell opened the "Schedule LOGO" modal; scrolling 400px right showed the label column's white background fully masking the month-band and day-numbers scrolled underneath, with no bleed-through; dark mode confirmed via computed `background-color` on a creatable cell matching `--track` (an initial screenshot mid-repaint looked wrong but the computed style was already correct, confirmed by a second screenshot).
+
+**What shipped in v0.54.3** (deliverable-marker polish on Work Schedule — flag emoji removed, marker line moved to the cell boundary):
+- **`🚩` dropped from both the per-marker label and the legend hint above the grid** — plain text now (`Kickoff`, `Concept`, etc.), no emoji prefix anywhere in this component.
+- **The vertical deadline line now sits at the boundary between its due date's column and the next**, not centered through the middle of the day cell — `justify-self:center` → `justify-self:end` on both `.anim-sched-marker` and `.anim-sched-marker-label`. Reads as "due by the end of this day" rather than ambiguously bisecting the day square.
+- Verified live: computed `getBoundingClientRect()` on the marker line and its day cell confirmed the marker's right edge exactly matches the cell's right edge (both flush at the same pixel), in both light and dark mode; label text confirmed emoji-free.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
