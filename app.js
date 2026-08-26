@@ -6770,10 +6770,11 @@ function animShotTimelineStatus(shot, steps, todayIso){
 }
 
 /* Add/edit modal for a shot's work-date range (rs_anim_shots.
-   work_start_date/work_end_date, migration v32) — the only way to give a
-   shot its first schedule (via its "+ Schedule" button); after that, it
-   also opens on a plain click of the shot's bar on Work Schedule, as an
-   alternative to dragging the bar or its edge handles. */
+   work_start_date/work_end_date, migration v32) — a quick-entry alternative
+   to dragging: opens on a plain click of an unscheduled row's empty cells
+   (a real drag there schedules directly instead, no modal), and also opens
+   on a plain click of an already-scheduled shot's bar on Work Schedule, as
+   an alternative to dragging the bar or its edge handles. */
 function openAnimShotScheduleModal(shotId){
   const shot = state.animShots.find(s=>s.id===shotId);
   if(!shot) return;
@@ -6904,12 +6905,24 @@ function renderAnimSchedule(){
     return `<div class="anim-sched-daynum ${isToday?'today':''}" style="grid-row:3;grid-column:${d+1}" ${isToday?'data-schedtoday="1"':''}>${dayAt(d).getDate()}</div>`;
   }).join('');
 
+  // Sticky corner fillers — without these, the month-band and day-number
+  // header rows have nothing occupying column 1, so as the grid scrolls
+  // horizontally the scrolled-under date/month text is visible right where
+  // the (sticky) shot-name column sits for every row below. Every shot row
+  // already has its own opaque sticky .anim-sched-label doing this job;
+  // these two cells give rows 1–2 the same masking.
+  const cornerCells = `
+    <div class="anim-sched-corner" style="grid-row:1;grid-column:1"></div>
+    <div class="anim-sched-corner" style="grid-row:2;grid-column:1"></div>
+    <div class="anim-sched-corner" style="grid-row:3;grid-column:1"></div>
+  `;
+
   const rowsHtml = shots.map((s,idx)=>{
     const row = idx+4;
-    const cellsHtml = dayCols.map(d=>`<div class="anim-sched-cell" style="grid-row:${row};grid-column:${d+1}" data-schedcell="${s.id}:${dayIsoAt(d)}"></div>`).join('');
+    const unscheduled = !s.work_start_date;
+    const cellsHtml = dayCols.map(d=>`<div class="anim-sched-cell${unscheduled?' creatable':''}" style="grid-row:${row};grid-column:${d+1}" data-schedcell="${s.id}:${dayIsoAt(d)}" ${unscheduled?`data-schedcreate="${s.id}"`:''}></div>`).join('');
     const label = `<div class="anim-sched-label" style="grid-row:${row};grid-column:1">
       <b style="font-size:12.5px">${esc(s.code)}</b>
-      ${!s.work_start_date ? `<button type="button" class="btn small ghost" data-schedadd="${s.id}" style="margin-left:6px;padding:1px 8px;font-size:11px">+ Schedule</button>` : ''}
     </div>`;
     let barHtml = '';
     if(s.work_start_date && s.work_end_date){
@@ -6935,10 +6948,11 @@ function renderAnimSchedule(){
   html += `<div class="card" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
       <button type="button" class="btn small ghost" id="animSchedToday">Today</button>
-      <div style="font-size:11.5px;color:var(--muted)">🚩 Client deliverable dates from this project's stages · click a bar to edit dates · drag to move · drag an edge to resize</div>
+      <div style="font-size:11.5px;color:var(--muted)">🚩 Client deliverable dates from this project's stages · click a bar to edit dates · drag to move · drag an edge to resize · drag across an empty row to schedule a shot</div>
     </div>
     <div style="overflow-x:auto" id="animSchedWrap">
       <div class="anim-sched-grid" style="grid-template-columns:200px repeat(${totalDays}, minmax(30px,1fr));min-width:${200+totalDays*32}px">
+        ${cornerCells}
         ${monthBandHtml}
         ${headerCells}
         ${rowsHtml}
@@ -6966,7 +6980,50 @@ function renderAnimSchedule(){
   const todayBtn = $('#animSchedToday');
   if(todayBtn) todayBtn.onclick = scrollToToday;
 
-  main.querySelectorAll('[data-schedadd]').forEach(el=>el.addEventListener('click', ()=> openAnimShotScheduleModal(el.dataset.schedadd)));
+  // Shared hit-testing helpers used by every drag interaction below — both
+  // manipulating an existing bar (move/resize) and dragging out a brand
+  // new one across an unscheduled shot's empty row.
+  function cellDateAt(x, y){
+    const el = document.elementFromPoint(x, y);
+    const cellEl = el && el.closest('[data-schedcell]');
+    return cellEl ? cellEl.dataset.schedcell.split(':')[1] : null;
+  }
+  function clearCellHighlight(){ main.querySelectorAll('.anim-sched-cell.drop-target').forEach(c=>c.classList.remove('drop-target')); }
+  function highlightCellAt(x, y){
+    clearCellHighlight();
+    const el = document.elementFromPoint(x, y);
+    const cellEl = el && el.closest('[data-schedcell]');
+    if(cellEl) cellEl.classList.add('drop-target');
+  }
+  // A schedule can span months, so a single mouse motion often can't
+  // physically reach the target day within the visible width of the
+  // horizontally-scrolling grid — auto-scroll it while the cursor sits near
+  // either edge, same pattern as Trello/Notion-style drag targets. Shared
+  // by every drag below; each caller supplies its own onTick callback since
+  // what should happen on each tick (update a bar vs. a create-preview)
+  // differs.
+  function makeAutoScroller(getLastXY, onTick){
+    const wrap = document.getElementById('animSchedWrap');
+    let scrollTimer = null;
+    function updateAutoScroll(x){
+      if(!wrap) return;
+      const rect = wrap.getBoundingClientRect();
+      const edge = 50;
+      let dir = 0;
+      if(x - rect.left < edge && wrap.scrollLeft > 0) dir = -1;
+      else if(rect.right - x < edge && wrap.scrollLeft < wrap.scrollWidth - wrap.clientWidth) dir = 1;
+      if(dir!==0){
+        if(!scrollTimer) scrollTimer = setInterval(()=>{
+          wrap.scrollLeft += dir*18;
+          const [lx,ly] = getLastXY();
+          onTick(lx, ly);
+        }, 16);
+      } else if(scrollTimer){ clearInterval(scrollTimer); scrollTimer = null; }
+    }
+    updateAutoScroll.stop = function(){ if(scrollTimer){ clearInterval(scrollTimer); scrollTimer = null; } };
+    return updateAutoScroll;
+  }
+
   // Unified pointer-based interaction for every scheduled bar — a plain
   // click (pointer barely moves between down and up) opens the date-edit
   // modal; dragging the bar's body moves its whole range to start on the
@@ -6979,19 +7036,6 @@ function renderAnimSchedule(){
     const leftHandle = barEl.querySelector('[data-schedhandle="left"]');
     const rightHandle = barEl.querySelector('[data-schedhandle="right"]');
 
-    function cellDateAt(x, y){
-      const el = document.elementFromPoint(x, y);
-      const cellEl = el && el.closest('[data-schedcell]');
-      return cellEl ? cellEl.dataset.schedcell.split(':')[1] : null;
-    }
-    function clearHighlight(){ main.querySelectorAll('.anim-sched-cell.drop-target').forEach(c=>c.classList.remove('drop-target')); }
-    function highlightAt(x, y){
-      clearHighlight();
-      const el = document.elementFromPoint(x, y);
-      const cellEl = el && el.closest('[data-schedcell]');
-      if(cellEl) cellEl.classList.add('drop-target');
-    }
-
     function begin(e, mode){
       e.preventDefault(); e.stopPropagation();
       const shot = state.animShots.find(s=>s.id===shotId);
@@ -7001,8 +7045,6 @@ function renderAnimSchedule(){
       const downX = e.clientX, downY = e.clientY;
       let dragging = false;
       let lastX = e.clientX, lastY = e.clientY;
-      let scrollTimer = null;
-      const wrap = document.getElementById('animSchedWrap');
       // Every bar is hidden from hit-testing for the duration of the drag
       // so elementFromPoint sees the day cells underneath instead — a bar
       // (including this one) always visually covers its own row's cells.
@@ -7010,14 +7052,14 @@ function renderAnimSchedule(){
       allBars.forEach(b=> b.style.pointerEvents = 'none');
 
       // Re-evaluated on every real pointermove AND on every auto-scroll
-      // tick (see below) — a drag several weeks away from where it started
-      // needs the page to keep scrolling under a stationary cursor, and
+      // tick — a drag several weeks away from where it started needs the
+      // page to keep scrolling under a stationary cursor, and
       // elementFromPoint only reflects that once this re-runs against the
       // cursor's last known position.
       function applyAt(x, y){
         const dateIso = cellDateAt(x, y);
         if(!dateIso) return;
-        highlightAt(x, y);
+        highlightCellAt(x, y);
         if(mode==='move'){
           const spanDays = Math.round((new Date(origEnd+'T00:00') - new Date(origStart+'T00:00'))/86400000);
           const newStart = new Date(dateIso+'T00:00');
@@ -7031,24 +7073,7 @@ function renderAnimSchedule(){
         barEl.style.gridColumn = `${colForIso(previewStart)+1} / ${colForIso(previewEnd)+2}`;
       }
 
-      // A schedule can span months, so a single mouse motion often can't
-      // physically reach the target day within the visible width of the
-      // horizontally-scrolling grid — auto-scroll it while the cursor sits
-      // near either edge, same pattern as Trello/Notion-style drag targets.
-      function updateAutoScroll(x){
-        if(!wrap){ return; }
-        const rect = wrap.getBoundingClientRect();
-        const edge = 50;
-        let dir = 0;
-        if(x - rect.left < edge && wrap.scrollLeft > 0) dir = -1;
-        else if(rect.right - x < edge && wrap.scrollLeft < wrap.scrollWidth - wrap.clientWidth) dir = 1;
-        if(dir!==0){
-          if(!scrollTimer) scrollTimer = setInterval(()=>{
-            wrap.scrollLeft += dir*18;
-            applyAt(lastX, lastY);
-          }, 16);
-        } else if(scrollTimer){ clearInterval(scrollTimer); scrollTimer = null; }
-      }
+      const updateAutoScroll = makeAutoScroller(()=>[lastX,lastY], applyAt);
 
       function onMove(ev){
         const dx = ev.clientX-downX, dy = ev.clientY-downY;
@@ -7061,9 +7086,9 @@ function renderAnimSchedule(){
 
       async function onUp(){
         document.removeEventListener('pointermove', onMove);
-        if(scrollTimer){ clearInterval(scrollTimer); scrollTimer = null; }
+        updateAutoScroll.stop();
         allBars.forEach(b=> b.style.pointerEvents = '');
-        clearHighlight();
+        clearCellHighlight();
         if(!dragging){ openAnimShotScheduleModal(shotId); return; }
         if(previewStart===origStart && previewEnd===origEnd) return;
         const { error } = await db.from('rs_anim_shots').update({ work_start_date: previewStart, work_end_date: previewEnd }).eq('id', shotId);
@@ -7079,6 +7104,69 @@ function renderAnimSchedule(){
     barEl.addEventListener('pointerdown', e=> begin(e, 'move'));
     if(leftHandle) leftHandle.addEventListener('pointerdown', e=> begin(e, 'resize-left'));
     if(rightHandle) rightHandle.addEventListener('pointerdown', e=> begin(e, 'resize-right'));
+  });
+
+  // Unscheduled shots: drag across the row's empty cells to schedule it
+  // directly (no modal) — replaces the old "+ Schedule" button, which
+  // overflowed its 200px label column for any shot with a longer code.
+  // A plain click (no real movement) still opens the date-edit modal, same
+  // as clicking an existing bar, for anyone who'd rather type exact dates.
+  main.querySelectorAll('[data-schedcreate]').forEach(cellEl=>{
+    cellEl.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      const shotId = cellEl.dataset.schedcreate;
+      const startDateIso = cellEl.dataset.schedcell.split(':')[1];
+      let previewStart = startDateIso, previewEnd = startDateIso;
+      const downX = e.clientX, downY = e.clientY;
+      let dragging = false;
+      let lastX = e.clientX, lastY = e.clientY;
+
+      const gridEl = main.querySelector('.anim-sched-grid');
+      const previewBar = document.createElement('div');
+      previewBar.className = 'anim-sched-bar anim-sched-bar-preview';
+      previewBar.style.gridRow = cellEl.style.gridRow;
+      previewBar.style.pointerEvents = 'none';
+      previewBar.style.gridColumn = cellEl.style.gridColumn;
+      gridEl.appendChild(previewBar);
+
+      function applyAt(x, y){
+        const dateIso = cellDateAt(x, y);
+        if(!dateIso) return;
+        highlightCellAt(x, y);
+        previewEnd = dateIso;
+        const lo = previewStart < previewEnd ? previewStart : previewEnd;
+        const hi = previewStart < previewEnd ? previewEnd : previewStart;
+        previewBar.style.gridColumn = `${colForIso(lo)+1} / ${colForIso(hi)+2}`;
+      }
+
+      const updateAutoScroll = makeAutoScroller(()=>[lastX,lastY], applyAt);
+
+      function onMove(ev){
+        const dx = ev.clientX-downX, dy = ev.clientY-downY;
+        if(!dragging && Math.hypot(dx,dy) < 5) return;
+        dragging = true;
+        lastX = ev.clientX; lastY = ev.clientY;
+        applyAt(lastX, lastY);
+        updateAutoScroll(lastX);
+      }
+
+      async function onUp(){
+        document.removeEventListener('pointermove', onMove);
+        updateAutoScroll.stop();
+        clearCellHighlight();
+        previewBar.remove();
+        if(!dragging){ openAnimShotScheduleModal(shotId); return; }
+        const finalStart = previewStart < previewEnd ? previewStart : previewEnd;
+        const finalEnd = previewStart < previewEnd ? previewEnd : previewStart;
+        const { error } = await db.from('rs_anim_shots').update({ work_start_date: finalStart, work_end_date: finalEnd }).eq('id', shotId);
+        if(error){ toast(['PGRST204','42703'].includes(error.code)?'Run migration v32 to enable shot scheduling':'Could not save'); console.error(error); await loadAll(); render(); return; }
+        toast('Shot scheduled');
+        await loadAll(); render();
+      }
+
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp, { once:true });
+    });
   });
 }
 
