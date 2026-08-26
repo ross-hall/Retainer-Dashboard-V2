@@ -796,7 +796,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.54.3</div>
+    <div id="versionBadge" class="version-badge">v0.55.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -5819,7 +5819,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.54.3';
+const APP_VERSION = '0.55.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7253,45 +7253,53 @@ function animProjectHeaderHtml(p){
 }
 
 /* ── Home — where an animation project's stages (with client due dates)
-      live, plus a Recent panel. Deliberately no task list per stage (that's
-      the non-animation project page's own thing, rs_proj_tasks) — an
-      animation project's actual work is tracked shot-by-shot in Pipeline,
-      not via tasks. Stage add/rename/due-date editing all write to the
-      same rs_project_stages rows the internal project page and the public
-      dashboard already read, so nothing here is animation-specific data. */
+      AND their tasks live, plus a Recent panel. This used to deliberately
+      exclude a task list (that content lived only on the generic All
+      Projects > project page, renderProjDetail) — merged in per explicit
+      request, so a stage here is now the exact same shape as a stage on
+      that page: rename/due-date, a task table (add/checkbox/reorder), all
+      writing to the same rs_project_stages/rs_proj_tasks rows renderProjDetail
+      and the public dashboard already read. Only the surrounding chrome
+      (breadcrumb, tab bar, Recent panel) is animation-specific. */
 function renderAnimHome(){
   const p = animProjects().find(x=>x.id===state.animProjectId);
   if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
+  const c = state.clients.find(cl=>cl.id===p.client_id);
   const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
+  const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
   const todayIso = iso(new Date());
 
   let html = animProjectHeaderHtml(p);
   html += animViewToggleHtml('home');
 
-  html += `<div class="two-col-cards">`;
+  html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
 
-  html += `<div class="card">
-    <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Project stages</div>`;
   if(!stages.length){
     html += `<div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>`;
   } else {
-    html += stages.map((s,idx)=>{
+    stages.forEach((s,idx)=>{
+      const tasks = state.projTasks.filter(t=>t.stage_id===s.id).sort((a,b)=>(a.position||0)-(b.position||0));
       const overdue = s.due_date && s.due_date < todayIso;
       const sStatus = stageStatus(s.id);
       const dateLabel = s.due_date
         ? `${overdue?'⚠️ ':''}${fmtDateNatural(s.due_date)}${s.due_time?' · '+formatTime12(s.due_time):''}${overdue?' (overdue)':''}`
         : 'Set due date';
-      return `<div class="stage-head" style="padding:10px 0;border-bottom:1px solid var(--line-soft);margin-bottom:0">
-        <h4><span class="stage-num">Stage ${idx}</span><span class="inline-editable" data-animstagename="${s.id}" title="Click to rename">${esc(s.name)}</span>${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
-        <button type="button" class="stage-date-btn" data-animstagedate="${s.id}" style="margin-left:auto;margin-top:0">${dateLabel}</button>
+      html += `<div class="stage-section" data-stagesection="${s.id}">
+        <div class="stage-head">
+          <h4><span class="stage-num">Stage ${idx}</span><span class="inline-editable" data-animstagename="${s.id}" title="Click to rename">${esc(s.name)}</span>${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
+          <button type="button" class="stage-date-btn" data-animstagedate="${s.id}" style="margin-left:auto">${dateLabel}</button>
+        </div>
+        <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.', true, c?c.is_retainer:false)}</div>
+        <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
       </div>`;
-    }).join('');
-    html += `<div style="margin-top:14px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>`;
+    });
+    html += `<div style="margin:4px 0 20px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>`;
   }
-  html += `</div>`;
 
   // Recent — reuses animChangedSince (the same helper the removed Snapshot
-  // tab used), one merged feed instead of separate time buckets.
+  // tab used), one merged feed instead of separate time buckets. Full width
+  // below the stage sections now that those carry task tables, rather than
+  // sitting side-by-side with them.
   const shots = animShotsFor(p.id);
   const steps = animStepsFor(p.id);
   const recent = animChangedSince(p.id, 24*30).slice().sort((a,b)=> (b.updated_at||'').localeCompare(a.updated_at||'')).slice(0,8);
@@ -7310,10 +7318,11 @@ function renderAnimHome(){
     }).join('') : `<div class="empty" style="padding:16px 0">No recent activity in the last 30 days.</div>`}
   </div>`;
 
-  html += `</div>`;
-
   main.innerHTML = html;
   wireAnimTabsAll();
+  $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
+  main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
+  wireTaskRows(main);
   main.querySelectorAll('[data-animstagedate]').forEach(el=>el.addEventListener('click', ()=>{
     const s = stages.find(s=>s.id===el.dataset.animstagedate);
     openMiniDatePicker(el, s.due_date, async (newDate, newTime)=>{
@@ -7351,6 +7360,32 @@ function renderAnimHome(){
     if(error){ toast('Could not add stage'); return; }
     toast('Stage added'); await loadAll(); render();
   };
+
+  // Drag-and-drop task reordering, scoped per stage — same pattern
+  // renderProjDetail's non-animation task tables already use.
+  main.querySelectorAll('[data-stagesection]').forEach(sectionEl=>{
+    const stageId = sectionEl.dataset.stagesection;
+    const stageTasks = state.projTasks.filter(t=>t.stage_id===stageId).sort((a,b)=>(a.position||0)-(b.position||0));
+    sectionEl.querySelectorAll('.task-row[data-projtask]').forEach(row=>{
+      row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', row.dataset.projtask); e.dataTransfer.effectAllowed='move'; });
+      row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('drop-target-row'); });
+      row.addEventListener('dragleave', ()=> row.classList.remove('drop-target-row'));
+      row.addEventListener('drop', async e=>{
+        e.preventDefault(); row.classList.remove('drop-target-row');
+        const draggedId = e.dataTransfer.getData('text/plain');
+        const targetId = row.dataset.projtask;
+        if(!draggedId || draggedId===targetId) return;
+        const order = stageTasks.slice();
+        const fromIdx = order.findIndex(t=>t.id===draggedId);
+        const toIdx = order.findIndex(t=>t.id===targetId);
+        if(fromIdx<0 || toIdx<0) return;
+        const [moved] = order.splice(fromIdx,1);
+        order.splice(toIdx,0,moved);
+        await Promise.all(order.map((t,i)=> db.from('rs_proj_tasks').update({position:i}).eq('id',t.id)));
+        await loadAll(); render();
+      });
+    });
+  });
 }
 
 function renderAnimGrid(){

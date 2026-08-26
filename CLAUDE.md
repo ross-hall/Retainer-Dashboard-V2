@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.54.3**
+Current version: **v0.55.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -525,6 +525,13 @@ Font: Inter (unchanged from v0.9.0)
 - **`🚩` dropped from both the per-marker label and the legend hint above the grid** — plain text now (`Kickoff`, `Concept`, etc.), no emoji prefix anywhere in this component.
 - **The vertical deadline line now sits at the boundary between its due date's column and the next**, not centered through the middle of the day cell — `justify-self:center` → `justify-self:end` on both `.anim-sched-marker` and `.anim-sched-marker-label`. Reads as "due by the end of this day" rather than ambiguously bisecting the day square.
 - Verified live: computed `getBoundingClientRect()` on the marker line and its day cell confirmed the marker's right edge exactly matches the cell's right edge (both flush at the same pixel), in both light and dark mode; label text confirmed emoji-free.
+
+**What shipped in v0.55.0** (the generic project task list — add tasks, check them off, reorder — merged into the Animation page's Home tab, so it's no longer only reachable via All Projects):
+- **`renderAnimHome()` now renders the same `.stage-section` shape `renderProjDetail` (the non-animation All Projects > project page) already uses**: stage rename/due-date (unchanged from v0.53.0) plus, new here, a full task table per stage via the shared `taskTableHtml()`, a "+ Task" button (`openProjTaskModal`), inline status/priority/assignee editing and checkbox-style completion via the shared `wireTaskRows()`, drag-to-reorder tasks within a stage, and a "Columns ▾" control (`openColumnDropdown`) — all identical code paths to the generic project page, not a parallel reimplementation. This directly reverses the "no task list" decision from v0.53.0's Home page, per explicit follow-up request.
+- **`showAnimator` is hardcoded `true`** in the `taskTableHtml()` call here (unlike `renderProjDetail`'s `p.project_type==='Animations'` check) since every project reachable through `renderAnimHome` is an animation project by construction — no need to re-derive it.
+- **Layout**: stage sections are full-width (task tables need the room), so the `.two-col-cards` side-by-side split from v0.53.0 is gone from this page — Recent is now a full-width card below the last stage instead of sitting next to "Project stages". The `.two-col-cards` CSS class itself is left in place (still a generic, documented-reusable utility), just unused here now.
+- **Not touched**: the original All Projects > project page path (`renderProjDetail`) for animation-type projects still works exactly as before — this was additive (porting the missing capability into Animation Home), not a removal of the old surface. Worth a follow-up conversation if the old path should be hidden/redirected for animation projects now that Home covers the same ground.
+- Verified live: added a real task via "+ Task" on an empty stage (modal opened correctly, same "New task" flow); checked a task's status pill to "Complete" and confirmed the write in the DB, then reverted; confirmed all 6 stages render with correct task tables and the "Recent" panel still appears at the bottom (page-text extraction used in place of screenshots, which hit an unrelated harness rendering glitch this pass); light and dark mode.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
