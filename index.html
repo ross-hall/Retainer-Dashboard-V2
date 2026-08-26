@@ -561,14 +561,17 @@
   .pd-cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
   .pd-cal-navbtn{background:none;border:1px solid var(--line);border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;font-family:inherit}
   .pd-cal-navbtn:hover{background:var(--track)}
-  .pd-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-  .pd-cal-dow{font-size:10px;font-weight:600;text-transform:uppercase;color:var(--muted);text-align:center;padding-bottom:4px}
-  .pd-cal-day{position:relative;min-height:62px;border-radius:8px;padding:5px;border:1px solid var(--line-soft)}
-  .pd-cal-daynum{font-size:11px;font-weight:600;color:var(--ink);margin-bottom:3px}
-  .pd-cal-chip{font-size:9.5px;padding:2px 5px;border-radius:5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--track);color:var(--ink)}
+  .pd-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}
+  .pd-cal-dow{font-size:10px;font-weight:600;text-transform:uppercase;color:var(--muted);text-align:center;padding:4px 0 8px}
+  .pd-cal-day{position:relative;min-height:92px;border-radius:8px;padding:8px;border:1px solid var(--line-soft)}
+  .pd-cal-daynum{font-size:11px;font-weight:600;color:var(--ink);margin-bottom:6px}
+  .pd-cal-chip{font-size:10px;padding:3px 6px;border-radius:5px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--track);color:var(--ink)}
+  .pd-cal-chip[draggable="true"]{cursor:grab}
+  .pd-cal-chip:active{cursor:grabbing}
+  .pd-cal-day.drop-target{background:var(--track)}
   .pd-cal-more{font-size:10px;color:var(--muted)}
   /* Hover-reveal "+" (admin only) to add a retainer task due that day. */
-  .pd-cal-add-btn{position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;border:none;color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity var(--fast) var(--ease);padding:0}
+  .pd-cal-add-btn{position:absolute;top:5px;right:5px;width:16px;height:16px;border-radius:50%;border:none;color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity var(--fast) var(--ease);padding:0}
   .pd-cal-day:hover .pd-cal-add-btn{opacity:1}
 
   .pd-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
@@ -758,7 +761,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.50.0</div>
+    <div id="versionBadge" class="version-badge">v0.50.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -5723,7 +5726,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.50.0';
+const APP_VERSION = '0.50.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6617,10 +6620,10 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         const dayTasks = tasksByDate[dateStr] || [];
         const isToday = dateStr===todayIso;
-        cells += `<div class="pd-cal-day" style="${isToday?`border-color:${accent};border-width:2px`:''}">
+        cells += `<div class="pd-cal-day" data-caldropdate="${dateStr}" style="${isToday?`border-color:${accent};border-width:2px`:''}">
           <div class="pd-cal-daynum" style="${isToday?`color:${accent}`:''}">${d}</div>
           ${isAdmin? `<button type="button" class="pd-cal-add-btn" style="background:${accent}" data-caladdpd="${dateStr}" title="Add task">+</button>`:''}
-          ${dayTasks.slice(0,2).map(t=>`<div class="pd-cal-chip" title="${esc(t.title)}">${esc(t.title)}</div>`).join('')}
+          ${dayTasks.slice(0,2).map(t=>`<div class="pd-cal-chip" draggable="${isAdmin}" data-calchip="${t.id}" title="${esc(t.title)}${isAdmin?' — drag to reschedule':''}">${esc(t.title)}</div>`).join('')}
           ${dayTasks.length>2? `<div class="pd-cal-more">+${dayTasks.length-2} more</div>`:''}
         </div>`;
       }
@@ -6983,6 +6986,27 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         e.stopPropagation();
         openPdAddTaskModal(el.dataset.caladdpd);
       }));
+      // Drag a task chip onto another day to reschedule it — same pattern as
+      // the internal Milestones calendar's drag-to-reschedule, just against
+      // rs_proj_tasks.due_date directly (this calendar only ever shows
+      // retainer tasks, never stages).
+      document.querySelectorAll('[data-calchip]').forEach(el=>{
+        el.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', el.dataset.calchip); e.dataTransfer.effectAllowed='move'; });
+      });
+      document.querySelectorAll('[data-caldropdate]').forEach(dayEl=>{
+        dayEl.addEventListener('dragover', e=>{ e.preventDefault(); dayEl.classList.add('drop-target'); });
+        dayEl.addEventListener('dragleave', ()=> dayEl.classList.remove('drop-target'));
+        dayEl.addEventListener('drop', async e=>{
+          e.preventDefault(); dayEl.classList.remove('drop-target');
+          const taskId = e.dataTransfer.getData('text/plain');
+          const newDate = dayEl.dataset.caldropdate;
+          if(!taskId || !newDate) return;
+          const { error } = await db.from('rs_proj_tasks').update({ due_date:newDate }).eq('id', taskId);
+          if(error){ toast('Could not move'); return; }
+          toast(`Moved to ${fmtDate(new Date(newDate+'T00:00'))}`);
+          await reload();
+        });
+      });
       document.querySelectorAll('[data-editlink]').forEach(el=>{
         const link = allLinks.find(l=>l.id===el.dataset.editlink);
         // Nested inside the now-clickable material card (data-openlink) —

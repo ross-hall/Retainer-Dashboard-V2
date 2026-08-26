@@ -5847,10 +5847,10 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         const dayTasks = tasksByDate[dateStr] || [];
         const isToday = dateStr===todayIso;
-        cells += `<div class="pd-cal-day" style="${isToday?`border-color:${accent};border-width:2px`:''}">
+        cells += `<div class="pd-cal-day" data-caldropdate="${dateStr}" style="${isToday?`border-color:${accent};border-width:2px`:''}">
           <div class="pd-cal-daynum" style="${isToday?`color:${accent}`:''}">${d}</div>
           ${isAdmin? `<button type="button" class="pd-cal-add-btn" style="background:${accent}" data-caladdpd="${dateStr}" title="Add task">+</button>`:''}
-          ${dayTasks.slice(0,2).map(t=>`<div class="pd-cal-chip" title="${esc(t.title)}">${esc(t.title)}</div>`).join('')}
+          ${dayTasks.slice(0,2).map(t=>`<div class="pd-cal-chip" draggable="${isAdmin}" data-calchip="${t.id}" title="${esc(t.title)}${isAdmin?' — drag to reschedule':''}">${esc(t.title)}</div>`).join('')}
           ${dayTasks.length>2? `<div class="pd-cal-more">+${dayTasks.length-2} more</div>`:''}
         </div>`;
       }
@@ -6213,6 +6213,27 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         e.stopPropagation();
         openPdAddTaskModal(el.dataset.caladdpd);
       }));
+      // Drag a task chip onto another day to reschedule it — same pattern as
+      // the internal Milestones calendar's drag-to-reschedule, just against
+      // rs_proj_tasks.due_date directly (this calendar only ever shows
+      // retainer tasks, never stages).
+      document.querySelectorAll('[data-calchip]').forEach(el=>{
+        el.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', el.dataset.calchip); e.dataTransfer.effectAllowed='move'; });
+      });
+      document.querySelectorAll('[data-caldropdate]').forEach(dayEl=>{
+        dayEl.addEventListener('dragover', e=>{ e.preventDefault(); dayEl.classList.add('drop-target'); });
+        dayEl.addEventListener('dragleave', ()=> dayEl.classList.remove('drop-target'));
+        dayEl.addEventListener('drop', async e=>{
+          e.preventDefault(); dayEl.classList.remove('drop-target');
+          const taskId = e.dataTransfer.getData('text/plain');
+          const newDate = dayEl.dataset.caldropdate;
+          if(!taskId || !newDate) return;
+          const { error } = await db.from('rs_proj_tasks').update({ due_date:newDate }).eq('id', taskId);
+          if(error){ toast('Could not move'); return; }
+          toast(`Moved to ${fmtDate(new Date(newDate+'T00:00'))}`);
+          await reload();
+        });
+      });
       document.querySelectorAll('[data-editlink]').forEach(el=>{
         const link = allLinks.find(l=>l.id===el.dataset.editlink);
         // Nested inside the now-clickable material card (data-openlink) —
