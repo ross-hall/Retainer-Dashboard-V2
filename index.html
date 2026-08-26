@@ -557,6 +557,7 @@
      on purpose (CSS Grid supports overlapping items); the bar's opaque
      background paints over the cells beneath it. */
   .anim-sched-grid{display:grid;row-gap:3px;column-gap:2px;position:relative}
+  .anim-sched-monthband{font-size:11px;font-weight:700;color:var(--ink);padding:2px 0 6px 2px;border-bottom:1px solid var(--line)}
   .anim-sched-daynum{font-size:10px;font-weight:600;color:var(--muted);text-align:center;padding:2px 0 6px}
   .anim-sched-daynum.today{color:var(--accent)}
   .anim-sched-label{display:flex;align-items:center;padding:4px 8px 4px 0;background:var(--card);position:sticky;left:0;z-index:3;white-space:nowrap}
@@ -791,7 +792,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.54.0</div>
+    <div id="versionBadge" class="version-badge">v0.54.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -839,7 +840,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   taskColOrder:loadStoredArray('rs_task_col_order', DEFAULT_TASK_COL_ORDER),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animSchedY:null, animSchedM:null, animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
+  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[],
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
@@ -5814,7 +5815,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.54.0';
+const APP_VERSION = '0.54.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7618,7 +7619,26 @@ function openAnimShotScheduleModal(shotId){
       drag its body to move the whole range to a different day, keeping the
       same length; drag either edge handle to extend/shorten just that end.
       All three write straight to rs_anim_shots (migration v32). A shot
-      with no schedule yet shows a "+ Schedule" prompt instead of a bar. */
+      with no schedule yet shows a "+ Schedule" prompt instead of a bar.
+
+      This is one continuous horizontally-scrollable date range, not a
+      month-at-a-time page flipped with prev/next arrows (that was the
+      original design — removed per explicit request, since a schedule
+      spanning a month boundary was getting clipped at whichever single
+      month happened to be showing). The range defaults to 30 days before
+      today through 90 days after, then widens to cover every shot's actual
+      work_start_date/work_end_date (plus a few days' padding) so nothing
+      already scheduled is ever cut off, however far it sits from today.
+      Column position is now day-offset-from-range-start (colForIso), not
+      day-of-month — the old `+dateStr.slice(8,10)` arithmetic silently
+      broke across a month boundary (day 31 and day 1 would've landed in
+      the same visual column), which is the root cause of the clipping this
+      rewrite fixes. A month-band row above the day numbers (one label per
+      contiguous run of same-month days) replaces the old single "August
+      2026" header, so which month is still legible without paging. The
+      view scrolls to today on load and via a "Today" button, since a
+      120-day-wide grid otherwise starts scrolled to its leftmost day. */
+
 function renderAnimSchedule(){
   const p = animProjects().find(x=>x.id===state.animProjectId);
   if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
@@ -7638,42 +7658,70 @@ function renderAnimSchedule(){
     main.innerHTML = html; wireAnimTabsAll(); return;
   }
 
-  const now = new Date();
-  if(state.animSchedY==null){ state.animSchedY = now.getFullYear(); state.animSchedM = now.getMonth(); }
-  const y = state.animSchedY, m = state.animSchedM;
-  const daysInMonth = new Date(y, m+1, 0).getDate();
-  const monthLabel = new Date(y,m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
-  const pad2 = n=>String(n).padStart(2,'0');
-  const monthStartIso = `${y}-${pad2(m+1)}-01`;
-  const monthEndIso = `${y}-${pad2(m+1)}-${pad2(daysInMonth)}`;
-  const dayIso = d=>`${y}-${pad2(m+1)}-${pad2(d)}`;
+  // Continuous date range: 30 days back / 90 days forward from today,
+  // widened to cover every shot's actual scheduled dates (+3 days padding)
+  // so nothing already scheduled is ever clipped by the visible window.
+  const today = new Date(); today.setHours(0,0,0,0);
+  let rangeStart = new Date(today); rangeStart.setDate(rangeStart.getDate()-30);
+  let rangeEnd = new Date(today); rangeEnd.setDate(rangeEnd.getDate()+90);
+  shots.forEach(s=>{
+    if(!s.work_start_date || !s.work_end_date) return;
+    const sd = new Date(s.work_start_date+'T00:00'), ed = new Date(s.work_end_date+'T00:00');
+    if(sd < rangeStart) rangeStart = sd;
+    if(ed > rangeEnd) rangeEnd = ed;
+  });
+  rangeStart = new Date(rangeStart); rangeStart.setDate(rangeStart.getDate()-3);
+  rangeEnd = new Date(rangeEnd); rangeEnd.setDate(rangeEnd.getDate()+3);
+  const totalDays = Math.round((rangeEnd-rangeStart)/86400000)+1;
+  const dayAt = i => { const d=new Date(rangeStart); d.setDate(d.getDate()+(i-1)); return d; };
+  const dayIsoAt = i => iso(dayAt(i));
+  const colForIso = dateIso => Math.round((new Date(dateIso+'T00:00')-rangeStart)/86400000)+1;
+  const rangeStartIso = iso(rangeStart), rangeEndIso = iso(rangeEnd);
 
   // Client deliverables — this project's own stage due dates, the same
-  // ones Milestones/Gantt already read, filtered to the displayed month.
+  // ones Milestones/Gantt already read, filtered to the visible range.
   const deliverables = state.stages
-    .filter(s=>s.project_id===p.id && s.due_date && s.due_date>=monthStartIso && s.due_date<=monthEndIso)
-    .map(s=>({ day:+s.due_date.slice(8,10), name:s.name }));
+    .filter(s=>s.project_id===p.id && s.due_date && s.due_date>=rangeStartIso && s.due_date<=rangeEndIso)
+    .map(s=>({ col: colForIso(s.due_date), name:s.name, due_date:s.due_date }));
 
-  const dayCols = Array.from({length:daysInMonth},(_,i)=>i+1);
+  const dayCols = Array.from({length:totalDays},(_,i)=>i+1);
+
+  // Month-band row — one label per contiguous run of days sharing a
+  // year/month, so the client always knows which month they're looking at
+  // without a prev/next arrow.
+  const monthBands = [];
+  { let curKey=null, curStart=1, curLabel='';
+    for(let i=1;i<=totalDays;i++){
+      const d = dayAt(i);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if(key!==curKey){
+        if(curKey!==null) monthBands.push({start:curStart, end:i-1, label:curLabel});
+        curKey=key; curStart=i; curLabel = d.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+      }
+    }
+    monthBands.push({start:curStart, end:totalDays, label:curLabel});
+  }
+  const monthBandHtml = monthBands.map(b=>`<div class="anim-sched-monthband" style="grid-row:2;grid-column:${b.start+1} / ${b.end+2}">${esc(b.label)}</div>`).join('');
+
   const headerCells = dayCols.map(d=>{
-    const isToday = dayIso(d)===todayIso;
-    return `<div class="anim-sched-daynum ${isToday?'today':''}" style="grid-row:2;grid-column:${d+1}">${d}</div>`;
+    const isToday = dayIsoAt(d)===todayIso;
+    return `<div class="anim-sched-daynum ${isToday?'today':''}" style="grid-row:3;grid-column:${d+1}" ${isToday?'data-schedtoday="1"':''}>${dayAt(d).getDate()}</div>`;
   }).join('');
 
   const rowsHtml = shots.map((s,idx)=>{
-    const row = idx+3;
-    const cellsHtml = dayCols.map(d=>`<div class="anim-sched-cell" style="grid-row:${row};grid-column:${d+1}" data-schedcell="${s.id}:${dayIso(d)}"></div>`).join('');
+    const row = idx+4;
+    const cellsHtml = dayCols.map(d=>`<div class="anim-sched-cell" style="grid-row:${row};grid-column:${d+1}" data-schedcell="${s.id}:${dayIsoAt(d)}"></div>`).join('');
     const label = `<div class="anim-sched-label" style="grid-row:${row};grid-column:1">
       <b style="font-size:12.5px">${esc(s.code)}</b>
       ${!s.work_start_date ? `<button type="button" class="btn small ghost" data-schedadd="${s.id}" style="margin-left:6px;padding:1px 8px;font-size:11px">+ Schedule</button>` : ''}
     </div>`;
     let barHtml = '';
-    if(s.work_start_date && s.work_end_date && s.work_start_date<=monthEndIso && s.work_end_date>=monthStartIso){
-      const startDay = s.work_start_date < monthStartIso ? 1 : +s.work_start_date.slice(8,10);
-      const endDay = s.work_end_date > monthEndIso ? daysInMonth : +s.work_end_date.slice(8,10);
+    if(s.work_start_date && s.work_end_date){
+      const startCol = colForIso(s.work_start_date);
+      const endCol = colForIso(s.work_end_date);
       const stStatus = animShotTimelineStatus(s, steps, todayIso);
       barHtml = `<div class="anim-sched-bar" data-schedbar="${s.id}"
-        style="grid-row:${row};grid-column:${startDay+1} / ${endDay+2};background:${stStatus.color};color:${stStatus.text}"
+        style="grid-row:${row};grid-column:${startCol+1} / ${endCol+2};background:${stStatus.color};color:${stStatus.text}"
         title="${esc(s.code)} · ${stStatus.label} · ${fmtDate(new Date(s.work_start_date+'T00:00'))}–${fmtDate(new Date(s.work_end_date+'T00:00'))} · click to edit dates, drag to move, drag an edge to resize">
         <div class="anim-sched-handle left" data-schedhandle="left"></div>
         <span class="anim-sched-bar-label">${esc(s.code)}</span>
@@ -7684,21 +7732,18 @@ function renderAnimSchedule(){
   }).join('');
 
   const markersHtml = deliverables.map(d=>`
-    <div class="anim-sched-marker" style="grid-row:1 / ${shots.length+3};grid-column:${d.day+1}"></div>
-    <div class="anim-sched-marker-label" style="grid-row:1;grid-column:${d.day+1}" title="${esc(d.name)} — due ${fmtDate(new Date(dayIso(d.day)+'T00:00'))}">🚩 ${esc(d.name)}</div>
+    <div class="anim-sched-marker" style="grid-row:1 / ${shots.length+4};grid-column:${d.col+1}"></div>
+    <div class="anim-sched-marker-label" style="grid-row:1;grid-column:${d.col+1}" title="${esc(d.name)} — due ${fmtDate(new Date(d.due_date+'T00:00'))}">🚩 ${esc(d.name)}</div>
   `).join('');
 
   html += `<div class="card" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <button type="button" class="pd-cal-navbtn" data-schednav="-1">‹</button>
-        <div style="font-size:14px;font-weight:600">${monthLabel}</div>
-        <button type="button" class="pd-cal-navbtn" data-schednav="1">›</button>
-      </div>
+      <button type="button" class="btn small ghost" id="animSchedToday">Today</button>
       <div style="font-size:11.5px;color:var(--muted)">🚩 Client deliverable dates from this project's stages · click a bar to edit dates · drag to move · drag an edge to resize</div>
     </div>
-    <div style="overflow-x:auto">
-      <div class="anim-sched-grid" style="grid-template-columns:200px repeat(${daysInMonth}, minmax(30px,1fr));min-width:${200+daysInMonth*32}px">
+    <div style="overflow-x:auto" id="animSchedWrap">
+      <div class="anim-sched-grid" style="grid-template-columns:200px repeat(${totalDays}, minmax(30px,1fr));min-width:${200+totalDays*32}px">
+        ${monthBandHtml}
         ${headerCells}
         ${rowsHtml}
         ${markersHtml}
@@ -7713,12 +7758,18 @@ function renderAnimSchedule(){
 
   main.innerHTML = html;
   wireAnimTabsAll();
-  main.querySelectorAll('[data-schednav]').forEach(el=>el.addEventListener('click', ()=>{
-    let mm = state.animSchedM + (+el.dataset.schednav), yy = state.animSchedY;
-    if(mm<0){ mm=11; yy--; } else if(mm>11){ mm=0; yy++; }
-    state.animSchedM = mm; state.animSchedY = yy;
-    render();
-  }));
+
+  // Land scrolled to today rather than the far-left start of the 30-day-
+  // back buffer; "Today" jumps back here after scrolling away to work on a
+  // shot elsewhere in the range.
+  function scrollToToday(){
+    const todayCell = main.querySelector('[data-schedtoday]');
+    if(todayCell) todayCell.scrollIntoView({ inline:'center', block:'nearest' });
+  }
+  scrollToToday();
+  const todayBtn = $('#animSchedToday');
+  if(todayBtn) todayBtn.onclick = scrollToToday;
+
   main.querySelectorAll('[data-schedadd]').forEach(el=>el.addEventListener('click', ()=> openAnimShotScheduleModal(el.dataset.schedadd)));
   // Unified pointer-based interaction for every scheduled bar — a plain
   // click (pointer barely moves between down and up) opens the date-edit
@@ -7753,19 +7804,24 @@ function renderAnimSchedule(){
       let previewStart = origStart, previewEnd = origEnd;
       const downX = e.clientX, downY = e.clientY;
       let dragging = false;
+      let lastX = e.clientX, lastY = e.clientY;
+      let scrollTimer = null;
+      const wrap = document.getElementById('animSchedWrap');
       // Every bar is hidden from hit-testing for the duration of the drag
       // so elementFromPoint sees the day cells underneath instead — a bar
       // (including this one) always visually covers its own row's cells.
       const allBars = main.querySelectorAll('.anim-sched-bar');
       allBars.forEach(b=> b.style.pointerEvents = 'none');
 
-      function onMove(ev){
-        const dx = ev.clientX-downX, dy = ev.clientY-downY;
-        if(!dragging && Math.hypot(dx,dy) < 5) return;
-        dragging = true;
-        const dateIso = cellDateAt(ev.clientX, ev.clientY);
+      // Re-evaluated on every real pointermove AND on every auto-scroll
+      // tick (see below) — a drag several weeks away from where it started
+      // needs the page to keep scrolling under a stationary cursor, and
+      // elementFromPoint only reflects that once this re-runs against the
+      // cursor's last known position.
+      function applyAt(x, y){
+        const dateIso = cellDateAt(x, y);
         if(!dateIso) return;
-        highlightAt(ev.clientX, ev.clientY);
+        highlightAt(x, y);
         if(mode==='move'){
           const spanDays = Math.round((new Date(origEnd+'T00:00') - new Date(origStart+'T00:00'))/86400000);
           const newStart = new Date(dateIso+'T00:00');
@@ -7776,11 +7832,40 @@ function renderAnimSchedule(){
         } else if(mode==='resize-right'){
           if(dateIso >= previewStart) previewEnd = dateIso;
         }
-        barEl.style.gridColumn = `${+previewStart.slice(8,10)+1} / ${+previewEnd.slice(8,10)+2}`;
+        barEl.style.gridColumn = `${colForIso(previewStart)+1} / ${colForIso(previewEnd)+2}`;
+      }
+
+      // A schedule can span months, so a single mouse motion often can't
+      // physically reach the target day within the visible width of the
+      // horizontally-scrolling grid — auto-scroll it while the cursor sits
+      // near either edge, same pattern as Trello/Notion-style drag targets.
+      function updateAutoScroll(x){
+        if(!wrap){ return; }
+        const rect = wrap.getBoundingClientRect();
+        const edge = 50;
+        let dir = 0;
+        if(x - rect.left < edge && wrap.scrollLeft > 0) dir = -1;
+        else if(rect.right - x < edge && wrap.scrollLeft < wrap.scrollWidth - wrap.clientWidth) dir = 1;
+        if(dir!==0){
+          if(!scrollTimer) scrollTimer = setInterval(()=>{
+            wrap.scrollLeft += dir*18;
+            applyAt(lastX, lastY);
+          }, 16);
+        } else if(scrollTimer){ clearInterval(scrollTimer); scrollTimer = null; }
+      }
+
+      function onMove(ev){
+        const dx = ev.clientX-downX, dy = ev.clientY-downY;
+        if(!dragging && Math.hypot(dx,dy) < 5) return;
+        dragging = true;
+        lastX = ev.clientX; lastY = ev.clientY;
+        applyAt(lastX, lastY);
+        updateAutoScroll(lastX);
       }
 
       async function onUp(){
         document.removeEventListener('pointermove', onMove);
+        if(scrollTimer){ clearInterval(scrollTimer); scrollTimer = null; }
         allBars.forEach(b=> b.style.pointerEvents = '');
         clearHighlight();
         if(!dragging){ openAnimShotScheduleModal(shotId); return; }
