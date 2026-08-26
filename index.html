@@ -761,7 +761,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.50.1</div>
+    <div id="versionBadge" class="version-badge">v0.51.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -3941,6 +3941,22 @@ function checklistTemplateOptions(){
   return [{ key:'blank', label:'Blank', items:[] }, ...dbTemplates];
 }
 
+/* Shared by openNewChecklistModal (project page — projectId already fixed)
+   and openNewProjectChecklistModal (Checklists hub — project chosen in the
+   modal itself). Returns the new checklist row, or null on failure. */
+async function createChecklist(projectId, name, template){
+  const siblings = state.checklists.filter(c=>c.project_id===projectId);
+  const nextPos = siblings.length ? Math.max(...siblings.map(c=>c.position||0))+1 : 0;
+  const { data, error } = await db.from('rs_checklists').insert({ project_id:projectId, name, position:nextPos }).select().single();
+  if(error){ toast(error.code==='PGRST205'?'Run migration v23 to enable checklists':'Could not create checklist'); console.error(error); return null; }
+  if(template.items.length){
+    const { error: itemsErr } = await db.from('rs_checklist_items').insert(template.items.map((it,i)=>({ checklist_id:data.id, category:it.category||null, label:it.label, detail:it.detail||null, position:i })));
+    if(itemsErr) console.warn('Could not seed checklist items', itemsErr);
+  }
+  await loadAll();
+  return data;
+}
+
 function openNewChecklistModal(projectId){
   const options = checklistTemplateOptions();
   showModal(`
@@ -3961,16 +3977,51 @@ function openNewChecklistModal(projectId){
     const name = $('#ncl_name').value.trim();
     if(!name){ toast('Give the checklist a name'); return; }
     const template = options.find(o=>o.key===$('#ncl_template').value) || options[0];
-    const siblings = state.checklists.filter(c=>c.project_id===projectId);
-    const nextPos = siblings.length ? Math.max(...siblings.map(c=>c.position||0))+1 : 0;
-    const { data, error } = await db.from('rs_checklists').insert({ project_id:projectId, name, position:nextPos }).select().single();
-    if(error){ toast(error.code==='PGRST205'?'Run migration v23 to enable checklists':'Could not create checklist'); console.error(error); return; }
-    if(template.items.length){
-      const { error: itemsErr } = await db.from('rs_checklist_items').insert(template.items.map((it,i)=>({ checklist_id:data.id, category:it.category||null, label:it.label, detail:it.detail||null, position:i })));
-      if(itemsErr) console.warn('Could not seed checklist items', itemsErr);
-    }
-    await loadAll();
-    openChecklistModal(data.id);
+    const data = await createChecklist(projectId, name, template);
+    if(data) openChecklistModal(data.id);
+  };
+}
+
+/* "+ New project checklist" on the global Checklists hub — the hub has no
+   project context of its own (unlike the per-project popover), so this adds
+   a client → project cascade in front of the same name/template fields
+   openNewChecklistModal already has. Checklists require a project (rs_
+   checklists.project_id is not null), so only clients with at least one
+   active project are offered — a pure-retainer client has nowhere for this
+   to go. */
+function openNewProjectChecklistModal(){
+  const clients = state.clients.filter(c=> c.active && state.projects.some(p=>p.client_id===c.id && p.active)).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!clients.length){ toast('No clients with an active project yet'); return; }
+  const options = checklistTemplateOptions();
+  let clientId = clients[0].id;
+  function projectOptionsHtml(){
+    return state.projects.filter(p=>p.client_id===clientId && p.active)
+      .map(p=>`<option value="${p.id}">${esc(p.project_type)}${p.label?' · '+esc(p.label):''}</option>`).join('');
+  }
+  showModal(`
+    <h3>New project checklist</h3>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Client</label><select id="npc_client">${clients.map(c=>`<option value="${c.id}" ${c.id===clientId?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <div class="full"><label>Project</label><select id="npc_project">${projectOptionsHtml()}</select></div>
+      <div class="full"><label>Name</label><input type="text" id="npc_name" placeholder="e.g. Website QA" value="Website Checklist"></div>
+      <div class="full"><label>Start from</label><select id="npc_template">${options.map(o=>`<option value="${o.key}">${esc(o.label)}</option>`).join('')}</select></div>
+    </form>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="npc_cancel">Cancel</button>
+        <button class="btn" id="npc_create">Create</button>
+      </div>
+    </div>
+  `);
+  $('#npc_client').addEventListener('change', ()=>{ clientId = $('#npc_client').value; $('#npc_project').innerHTML = projectOptionsHtml(); });
+  $('#npc_cancel').onclick = closeModal;
+  $('#npc_create').onclick = async ()=>{
+    const projectId = $('#npc_project').value;
+    const name = $('#npc_name').value.trim();
+    if(!name){ toast('Give the checklist a name'); return; }
+    const template = options.find(o=>o.key===$('#npc_template').value) || options[0];
+    const data = await createChecklist(projectId, name, template);
+    if(data) openChecklistModal(data.id);
   };
 }
 
@@ -4290,12 +4341,19 @@ function renderChecklistsHub(){
     </div>`;
   }).join('');
   main.innerHTML = `
-    <h2>Checklists</h2>
-    <div class="sub">Every project with a checklist, one click away — synced live with each project's page</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div><h2>Checklists</h2><div class="sub" style="margin-bottom:0">Every project with a checklist, one click away — synced live with each project's page</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn small ghost" id="clHubTemplatesBtn">Manage master checklists</button>
+        <button type="button" class="btn small" id="clHubNewBtn">+ New project checklist</button>
+      </div>
+    </div>
     ${projectsWithChecklists.length
       ? `<div class="grid" style="margin-top:20px">${cardsHtml}</div>`
-      : emptyStateHtml({ icon:'check', title:'No checklists yet', subtitle:"Create one from any project's page — it'll show up here." })}`;
+      : `<div style="margin-top:20px">${emptyStateHtml({ icon:'check', title:'No checklists yet', subtitle:"Create one from any project's page, or use “+ New project checklist” above." })}</div>`}`;
   main.querySelectorAll('[data-hubchecklist]').forEach(el=>el.addEventListener('click', ()=> openChecklistModal(el.dataset.hubchecklist)));
+  $('#clHubTemplatesBtn').onclick = ()=>{ state.settingsSection='checklists'; state.view='settings'; render(); };
+  $('#clHubNewBtn').onclick = ()=> openNewProjectChecklistModal();
 }
 
 /* ================= Tools (external web-app launcher) ================= */
@@ -5726,7 +5784,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.50.1';
+const APP_VERSION = '0.51.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6287,7 +6345,7 @@ function openAnimCellModal(shotId, stepId){
 }
 
 /* ================= Public client dashboard (?client=slug) ================= */
-async function bootPublicDashboard(slug, isAdmin){
+async function bootPublicDashboard(slug, isAdmin, initialPub){
   const { data: client, error } = await db.from('rs_clients').select('*').eq('slug', slug).eq('active', true).maybeSingle();
   if(error || !client){
     document.body.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper);text-align:center">
@@ -6345,16 +6403,19 @@ async function bootPublicDashboard(slug, isAdmin){
   state.taskStatuses = (statusesRes.data && statusesRes.data.length) ? statusesRes.data : DEFAULT_TASK_STATUSES;
   state.stageCategories = categories;
   state.stageLinks = links;
-  renderPublicDashboard(client, projects||[], stages, categories, links, !!isAdmin, retainerTasksRes.data||[]);
+  renderPublicDashboard(client, projects||[], stages, categories, links, !!isAdmin, retainerTasksRes.data||[], initialPub);
 }
 
-function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks){
+function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks, initialPub){
   retainerTasks = retainerTasks || [];
   const now = new Date();
   // 'home' is the landing page (greeting, project cards, useful info); 'project'
-  // drills into one project's stage materials. No project is pre-selected —
-  // the client lands on Home and picks a project from the nav or its card.
-  const pub = { view:'home', projectId: null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
+  // drills into one project's stage materials. A fresh boot (no initialPub)
+  // lands on Home with nothing pre-selected — but reload() (called after
+  // every admin write: add material, toggle a date, drag a task to a new
+  // day, etc.) passes the page's current view/selection back in here so an
+  // admin action doesn't bounce the client back to Home mid-browse.
+  const pub = initialPub ? { ...initialPub } : { view:'home', projectId: null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
   // Reserve the scrollbar gutter permanently — without this, a short page
   // (Home) has no vertical scrollbar while a tall one (a project with lots
   // of materials) does, and the centered max-width container shifts a few
@@ -6365,7 +6426,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   // client.dash_logo_url is no longer rendered anywhere on this page — the
   // field is still stored and still editable, just currently unused.
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
-  async function reload(){ await bootPublicDashboard(client.slug, true); }
+  async function reload(){ await bootPublicDashboard(client.slug, true, { ...pub }); }
 
   /* Admin-only "+" on a calendar day — the client is already fixed by the
      portal we're on, so this is deliberately just a name + a date, not the
