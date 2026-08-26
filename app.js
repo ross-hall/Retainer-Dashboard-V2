@@ -1891,6 +1891,10 @@ function attachMilestoneInteractions(){
     });
     el.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', el.dataset.msitem); e.dataTransfer.effectAllowed='move'; });
   });
+  main.querySelectorAll('[data-caladd]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openMilestoneAddModal(el.dataset.caladd);
+  }));
   main.querySelectorAll('.day[data-date]').forEach(dayEl=>{
     dayEl.addEventListener('dragover', e=>{ e.preventDefault(); dayEl.classList.add('drop-target'); });
     dayEl.addEventListener('dragleave', ()=> dayEl.classList.remove('drop-target'));
@@ -1908,6 +1912,73 @@ function attachMilestoneInteractions(){
       await refreshProjectView();
     });
   });
+}
+
+/* Add-from-calendar — context aware on the chosen client: a retainer client
+   just needs a task name (no project to attach to), a project client needs
+   a project picked first since Milestones only ever shows STAGE due dates
+   for project clients (collectMilestoneItems doesn't read project-task due
+   dates at all) — so "add" for a project client always means "new stage on
+   one of their projects", not a task. The client <select>'s onchange
+   re-renders #ma_body rather than reopening the modal, so switching between
+   a retainer and a project client swaps the form in place. */
+function openMilestoneAddModal(dateIso){
+  const clients = state.clients.filter(c=>c.active).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!clients.length){ toast('No clients yet'); return; }
+  let clientId = clients[0].id;
+  function bodyHtml(){
+    const client = state.clients.find(c=>c.id===clientId);
+    if(client.is_retainer){
+      return `<div class="full"><label>Task name</label><input type="text" id="ma_title" placeholder="e.g. Send monthly report"></div>
+        <div><label>Due date</label><input type="date" id="ma_date" value="${dateIso}"></div>`;
+    }
+    const projects = state.projects.filter(p=>p.client_id===clientId && p.active);
+    if(!projects.length){
+      return `<div class="full"><div class="empty" style="padding:12px 0">This client has no active projects yet.</div></div>`;
+    }
+    return `<div class="full"><label>Project</label><select id="ma_project">${projects.map(p=>`<option value="${p.id}">${esc(p.project_type)}${p.label?' · '+esc(p.label):''}</option>`).join('')}</select></div>
+      <div class="full"><label>Stage name</label><input type="text" id="ma_title" placeholder="e.g. Client review"></div>
+      <div><label>Due date</label><input type="date" id="ma_date" value="${dateIso}"></div>`;
+  }
+  showModal(`
+    <h3>Add to ${fmtDateNatural(dateIso)}</h3>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Client</label><select id="ma_client">${clients.map(c=>`<option value="${c.id}" ${c.id===clientId?'selected':''}>${esc(c.name)}${c.is_retainer?' (Retainer)':''}</option>`).join('')}</select></div>
+      <div id="ma_body">${bodyHtml()}</div>
+    </form>
+    <div class="modal-actions">
+      <span></span>
+      <div class="right">
+        <button class="btn ghost" id="ma_cancel">Cancel</button>
+        <button class="btn" id="ma_save">Add</button>
+      </div>
+    </div>
+  `);
+  $('#ma_client').addEventListener('change', ()=>{ clientId = $('#ma_client').value; $('#ma_body').innerHTML = bodyHtml(); });
+  $('#ma_cancel').onclick = closeModal;
+  $('#ma_save').onclick = async ()=>{
+    const client = state.clients.find(c=>c.id===clientId);
+    const titleEl = $('#ma_title');
+    const title = titleEl ? titleEl.value.trim() : '';
+    if(!title){ toast(client.is_retainer? 'Give the task a name' : 'Give the stage a name'); return; }
+    const dueDate = $('#ma_date').value || dateIso;
+    if(client.is_retainer){
+      const count = state.projTasks.filter(t=>t.client_id===clientId && !t.project_id).length;
+      const { error } = await db.from('rs_proj_tasks').insert({
+        client_id: clientId, project_id:null, stage_id:null, title, status:'To do', priority:'Medium',
+        due_date: dueDate, assigned_designer_ids:[], assigned_reviewer_ids:[],
+        counts_toward_retainer:true, position: count
+      });
+      if(error){ toast('Could not add task'); console.error(error); return; }
+      closeModal(); toast('Task added'); await refreshCurrentView();
+    } else {
+      const projectId = $('#ma_project').value;
+      const stageCount = state.stages.filter(s=>s.project_id===projectId).length;
+      const { error } = await db.from('rs_project_stages').insert({ project_id: projectId, name: title, due_date: dueDate, position: stageCount });
+      if(error){ toast('Could not add stage'); console.error(error); return; }
+      closeModal(); toast('Stage added'); await refreshCurrentView();
+    }
+  };
 }
 
 function collectMilestoneItems(){
@@ -2060,7 +2131,7 @@ function renderMilestones(){
       const dIso = iso(d);
       const list = (byDay[dIso]||[]).slice().sort((a,b)=> a.time.localeCompare(b.time));
       const chips = list.map(item=>milestoneItemChip(item, true)).join('');
-      return `<div class="day ${dIso===todayIso?'today':''}" data-date="${dIso}"><div class="num">${d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric'})}</div>${chips}</div>`;
+      return `<div class="day ${dIso===todayIso?'today':''}" data-date="${dIso}"><div class="num">${d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric'})}</div><button type="button" class="cal-add-btn" data-caladd="${dIso}" title="Add">+</button>${chips}</div>`;
     }).join('');
     body = `<div class="cal-head"><button class="btn ghost small" id="mPrev">←</button><h3>${fmtDateY(start)} – ${fmtDateY(end)}</h3><button class="btn ghost small" id="mNext">→</button><button class="btn ghost small" id="mToday">Today</button></div>
       <div class="week-grid" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px">${cells}</div>`;
@@ -2094,7 +2165,7 @@ function renderMilestones(){
     const cells = monthWeekdayCells(y, mo, todayIso, (d,dIso,isToday)=>{
       const list = byDay[dIso]||[];
       const chips = list.map(item=>milestoneItemChip(item, false)).join('');
-      return `<div class="day ${isToday?'today':''}" data-date="${dIso}"><div class="num">${d}</div>${chips}</div>`;
+      return `<div class="day ${isToday?'today':''}" data-date="${dIso}"><div class="num">${d}</div><button type="button" class="cal-add-btn" data-caladd="${dIso}" title="Add">+</button>${chips}</div>`;
     });
     body = `<div class="cal-head"><button class="btn ghost small" id="mPrev">←</button><h3>${first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</h3><button class="btn ghost small" id="mNext">→</button><button class="btn ghost small" id="mToday">Today</button></div>
       <div class="cal milestones">${['Mon','Tue','Wed','Thu','Fri'].map(d=>`<div class="dow">${d}</div>`).join('')}${cells}</div>`;
@@ -4857,7 +4928,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.47.0';
+const APP_VERSION = '0.47.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5498,6 +5569,39 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true); }
 
+  /* Admin-only "+" on a calendar day — the client is already fixed by the
+     portal we're on, so this is deliberately just a name + a date, not the
+     full client/project picker the internal Milestones calendar needs. */
+  function openPdAddTaskModal(dateStr){
+    showModal(`
+      <h3>Add task</h3>
+      <form class="log" style="max-width:none">
+        <div class="full"><label>Task name</label><input type="text" id="pdt_title" placeholder="e.g. Send monthly report"></div>
+        <div><label>Due date</label><input type="date" id="pdt_date" value="${dateStr}"></div>
+      </form>
+      <div class="modal-actions">
+        <span></span>
+        <div class="right">
+          <button class="btn ghost" id="pdt_cancel">Cancel</button>
+          <button class="btn" id="pdt_save">Add</button>
+        </div>
+      </div>
+    `);
+    $('#pdt_cancel').onclick = closeModal;
+    $('#pdt_save').onclick = async ()=>{
+      const title = $('#pdt_title').value.trim();
+      const dueDate = $('#pdt_date').value;
+      if(!title){ toast('Give the task a name'); return; }
+      if(!dueDate){ toast('Pick a due date'); return; }
+      const { error } = await db.from('rs_proj_tasks').insert({
+        client_id: client.id, project_id:null, stage_id:null, title, status:'To do', priority:'Medium',
+        due_date: dueDate, assigned_designer_ids:[], assigned_reviewer_ids:[], counts_toward_retainer:true
+      });
+      if(error){ toast('Could not add task'); console.error(error); return; }
+      closeModal(); toast('Task added'); await reload();
+    };
+  }
+
   /* Stages are their own nav-like column (the middle of three: main nav |
      stages | content) rather than an accordion inside the content column.
      Each stage is a plain button — number circle, name, and a status pill
@@ -5712,6 +5816,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         const isToday = dateStr===todayIso;
         cells += `<div class="pd-cal-day" style="${isToday?`border-color:${accent};border-width:2px`:''}">
           <div class="pd-cal-daynum" style="${isToday?`color:${accent}`:''}">${d}</div>
+          ${isAdmin? `<button type="button" class="pd-cal-add-btn" style="background:${accent}" data-caladdpd="${dateStr}" title="Add task">+</button>`:''}
           ${dayTasks.slice(0,2).map(t=>`<div class="pd-cal-chip" title="${esc(t.title)}">${esc(t.title)}</div>`).join('')}
           ${dayTasks.length>2? `<div class="pd-cal-more">+${dayTasks.length-2} more</div>`:''}
         </div>`;
@@ -5990,6 +6095,10 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         const cat = await ensureMaterialsCategory(['useful'], 'useful', null, null, client.id);
         if(cat) openStageLinkModal(cat.id, null, reload);
       });
+      document.querySelectorAll('[data-caladdpd]').forEach(el=>el.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        openPdAddTaskModal(el.dataset.caladdpd);
+      }));
       document.querySelectorAll('[data-editlink]').forEach(el=>{
         const link = allLinks.find(l=>l.id===el.dataset.editlink);
         // Nested inside the now-clickable material card (data-openlink) —
