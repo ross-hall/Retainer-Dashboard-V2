@@ -93,6 +93,14 @@ const LINK_ICONS = {
   link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
 };
 
+/* Icons for the public dashboard's Recent Activity feed — only 'task' and
+   'stage' are needed here since a new file/link already has its own icon
+   via LINK_ICONS[l.icon]. */
+const ACTIVITY_ICONS = {
+  task: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8.5 12.5 2.5 2.5 5-5"/></svg>',
+  stage: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14"><path d="M6 3v18"/><path d="M6 4h11l-2.5 4L17 12H6"/></svg>'
+};
+
 /* Every URL that reaches an href/src on the client-facing dashboard goes
    through here first. esc() escapes HTML metacharacters but does nothing to a
    `javascript:` scheme, which would execute on click — and ?admin=1 has no
@@ -183,6 +191,18 @@ function fmtDateNatural(dateStr){
   return fmtDate(d);
 }
 function fmtDateY(d){ return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+/* Relative "time ago" label for a timestamp — used by the public dashboard's
+   Recent Activity feed. Only ever fed a created_at (the schema has no
+   updated_at anywhere), so this always means "added", never "changed". */
+function timeAgoLabel(dateStr){
+  const d = new Date(dateStr);
+  const diffDays = Math.floor((Date.now()-d.getTime())/86400000);
+  if(diffDays<=0) return 'Today';
+  if(diffDays===1) return 'Yesterday';
+  if(diffDays<7) return `${diffDays} days ago`;
+  if(diffDays<30) { const w=Math.floor(diffDays/7); return `${w} week${w>1?'s':''} ago`; }
+  return fmtDate(d);
+}
 function ordinal(n){ const s=['th','st','nd','rd'],v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
 function clampDay(y,m,day){ const last=new Date(y,m+1,0).getDate(); return new Date(y,m,Math.min(day,last)); }
 
@@ -908,6 +928,9 @@ function openClientEditModal(clientId){
         <div class="full"><label>Welcome message <span style="color:var(--muted);font-weight:400">(optional)</span></label><textarea id="ec_greeting" style="min-height:60px">${esc(c.dash_greeting||'')}</textarea></div>
         <div><label>Logo image URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_logourl" value="${esc(c.dash_logo_url||'')}" placeholder="https://..."></div>
         <div><label>Contact email <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="email" id="ec_contactemail" value="${esc(c.dash_contact_email||'')}" placeholder="team@reciprocal.space"></div>
+        <div class="full sub" style="margin:8px 0 4px;color:var(--muted)">Shown as a contact card at the bottom of the client's portal nav. Leave blank to hide it.</div>
+        <div><label>Contact name <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="ec_contactname" value="${esc(c.dash_contact_name||'')}" placeholder="e.g. Ross Hall"></div>
+        <div><label>Contact role <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="ec_contactrole" value="${esc(c.dash_contact_role||'')}" placeholder="e.g. Account Manager"></div>
         <div class="full"><label>Website URL <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_websiteurl" value="${esc(c.dash_website_url||'')}" placeholder="https://reciprocal.space"></div>
         <div class="full sub" style="margin:8px 0 4px;color:var(--muted)">Quick actions — these become buttons at the top of the client's dashboard. Leave blank to hide a button. Must be https.</div>
         <div><label>Book a call link <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="url" id="ec_bookingurl" value="${esc(c.dash_booking_url||'')}" placeholder="https://cal.com/..."></div>
@@ -948,6 +971,8 @@ function openClientEditModal(clientId){
     const dash_greeting = $('#ec_greeting').value.trim() || null;
     const dash_logo_url = $('#ec_logourl').value.trim() || null;
     const dash_contact_email = $('#ec_contactemail').value.trim() || null;
+    const dash_contact_name = $('#ec_contactname').value.trim() || null;
+    const dash_contact_role = $('#ec_contactrole').value.trim() || null;
     const dash_website_url = $('#ec_websiteurl').value.trim() || null;
     const dash_booking_url = $('#ec_bookingurl').value.trim() || null;
     const dash_request_url = $('#ec_requesturl').value.trim() || null;
@@ -958,8 +983,8 @@ function openClientEditModal(clientId){
       if(val && !safeUrl(val)){ toast(`${label} link must be a full https:// address`); return; }
     }
 
-    const { error: updErr } = await db.from('rs_clients').update({ color, is_retainer, retainer_hours, renewal_day, miro_link_external, miro_link_internal, slug:newSlug, dash_accent_color, dash_logo_text, dash_greeting, dash_logo_url, dash_contact_email, dash_website_url, dash_booking_url, dash_request_url, dash_message_url }).eq('id', c.id);
-    if(updErr){ toast(updErr.code==='PGRST204'?'Run migration v27 to enable quick-action links':'Save failed'); console.error(updErr); return; }
+    const { error: updErr } = await db.from('rs_clients').update({ color, is_retainer, retainer_hours, renewal_day, miro_link_external, miro_link_internal, slug:newSlug, dash_accent_color, dash_logo_text, dash_greeting, dash_logo_url, dash_contact_email, dash_contact_name, dash_contact_role, dash_website_url, dash_booking_url, dash_request_url, dash_message_url }).eq('id', c.id);
+    if(updErr){ toast(updErr.code==='PGRST204'?'Run migration v31 to enable the contact card (or v27 for quick-action links)':'Save failed'); console.error(updErr); return; }
     if(turningOn){
       await db.from('rs_client_settings_history').insert({ client_id:c.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
     } else if(changed){
@@ -4928,7 +4953,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.48.0';
+const APP_VERSION = '0.50.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5631,15 +5656,23 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
   /* Book a Call / Submit New Request / Contact us. The mailto is promoted out
      of the header so there's exactly one place to start a conversation. */
+  // Shared with pdNavHtml's contact card, so both read the same resolved
+  // link rather than each recomputing the message-link-overrides-email rule.
+  const contactMessageUrl = safeUrl(client.dash_message_url);
+  const contactHref = contactMessageUrl || (client.dash_contact_email ? `mailto:${client.dash_contact_email}` : null);
+  // Miro is where this team actually collaborates live with a client, so it
+  // gets its own branded button rather than folding into "Message the team" —
+  // miro_link_external is the client-shareable board (miro_link_internal
+  // stays internal-only, same split miroButtonsHtml already uses elsewhere).
+  const miroHref = safeUrl(client.miro_link_external);
   function pdQuickActionsHtml(){
     const booking = safeUrl(client.dash_booking_url);
     const request = safeUrl(client.dash_request_url);
-    const message = safeUrl(client.dash_message_url);
-    const contact = message || (client.dash_contact_email ? `mailto:${client.dash_contact_email}` : null);
     const btns = [
       booking? `<a class="btn small" style="background:${accent}" href="${esc(booking)}" target="_blank" rel="noopener">Book a call</a>`:'',
       request? `<a class="btn small ghost" href="${esc(request)}" target="_blank" rel="noopener">Submit a request</a>`:'',
-      contact? `<a class="btn small ghost" href="${esc(contact)}"${message?' target="_blank" rel="noopener"':''}>Message the team</a>`:''
+      contactHref? `<a class="btn small ghost" href="${esc(contactHref)}"${contactMessageUrl?' target="_blank" rel="noopener"':''}>Message the team</a>`:'',
+      miroHref? `<a class="btn small miro-btn" style="background:#FFD02F;color:#050038;border:1px solid #FFD02F;font-weight:600" href="${esc(miroHref)}" target="_blank" rel="noopener">${MIRO_ICON}Open Miro board</a>`:''
     ].filter(Boolean);
     if(!btns.length) return '';
     return `<div class="pd-quick">${btns.join('')}</div>`;
@@ -5859,6 +5892,32 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       </div>
     ` : '';
 
+    // Recent Activity — a synthesized feed, not a real activity log: nothing
+    // in this schema tracks status changes or has an updated_at column, so
+    // this only ever shows *creation* events it can actually vouch for (new
+    // task, new stage, new file/link), newest first, capped at 6. Reuses
+    // data already loaded for this render — no extra fetch.
+    const activityTaskSource = projects.length ? state.projTasks : retainerTasks;
+    const activityItems = [
+      ...activityTaskSource.map(t=>({ date:t.created_at, iconHtml:ACTIVITY_ICONS.task, label:'New task added', detail:t.title })),
+      ...(projects.length ? allStages.map(s=>{
+        const p = projects.find(pr=>pr.id===s.project_id);
+        return { date:s.created_at, iconHtml:ACTIVITY_ICONS.stage, label:'New stage added', detail: p? `${s.name} · ${p.project_type}` : s.name };
+      }) : []),
+      ...allLinks.map(l=>({ date:l.created_at, iconHtml: LINK_ICONS[l.icon]||LINK_ICONS.link, label:'New file added', detail:l.label }))
+    ].filter(it=>it.date).sort((a,b)=> new Date(b.date)-new Date(a.date)).slice(0,6);
+    const recentActivityHtml = `
+      <div class="pd-section-title">Recent Activity</div>
+      <div>
+        ${activityItems.length ? activityItems.map(it=>`
+          <div class="pd-activity-row">
+            <div class="pd-activity-icon" style="color:${accent}">${it.iconHtml}</div>
+            <div class="pd-activity-text"><span style="font-weight:600">${esc(it.label)}:</span> ${esc(it.detail)}</div>
+            <div class="pd-activity-time">${esc(timeAgoLabel(it.date))}</div>
+          </div>`).join('') : `<div class="empty" style="padding:20px 0">No recent activity yet.</div>`}
+      </div>
+    `;
+
     /* Combined left-hand nav — projects only now, not their stages (those
        moved to an accordion in the right content column, see
        pdStageAccordionHtml). Each project is a group header (type icon +
@@ -5902,7 +5961,23 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         </button>` : '';
       const globalNav = `<div style="margin-bottom:26px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}${allTasksBtn}${calendarBtn}</div>`;
       const footerLink = `<a class="pd-nav-footer-link" href="${esc(websiteHref)}" target="_blank" rel="noopener">${LINK_ICONS.link} Reciprocal Space</a>`;
-      if(!projects.length) return `${brand}${globalNav}${footerLink}`;
+      // Who's actually handling this account — optional (dash_contact_name/
+      // _role, set from the internal app's client edit modal), so this
+      // renders nothing at all until an admin fills it in, same as every
+      // other optional dash_* field on this page. Pinned above the
+      // Reciprocal Space link inside one bottom-anchored group so the group
+      // as a whole still sticks to the bottom even when the card is absent.
+      const contactInner = client.dash_contact_name ? `
+        <div class="pd-nav-contact-avatar" style="background:${accent}">${esc(client.dash_contact_name.trim().charAt(0).toUpperCase())}</div>
+        <div style="min-width:0">
+          <div class="pd-nav-contact-name">${esc(client.dash_contact_name)}</div>
+          ${client.dash_contact_role? `<div class="pd-nav-contact-role">${esc(client.dash_contact_role)}</div>`:''}
+        </div>` : '';
+      const contactCardHtml = !client.dash_contact_name ? '' : contactHref
+        ? `<a class="pd-nav-contact" href="${esc(contactHref)}"${contactMessageUrl?' target="_blank" rel="noopener"':''}>${contactInner}</a>`
+        : `<div class="pd-nav-contact" style="cursor:default">${contactInner}</div>`;
+      const footerGroup = `<div class="pd-nav-footer-group">${contactCardHtml}${footerLink}</div>`;
+      if(!projects.length) return `${brand}${globalNav}${footerGroup}`;
       const tree = `<div class="pd-cat-label" style="margin-bottom:6px">Projects</div><div class="pd-nav-tree">${projects.map(p=>{
         const active = pub.view==='project' && p.id===pub.projectId;
         const pStages = stagesFor(p.id);
@@ -5915,7 +5990,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
             </button>
           </div>`;
       }).join('')}</div>`;
-      return `${brand}${globalNav}${tree}${footerLink}`;
+      return `${brand}${globalNav}${tree}${footerGroup}`;
     }
 
     const projId = proj ? proj.id : null;
@@ -5991,6 +6066,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ${renewalLineHtml}
       ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
       ${pdQuickActionsHtml()}
+      <div class="pd-divider"></div>${recentActivityHtml}
       ${projectsSectionHtml? `<div class="pd-divider"></div>${projectsSectionHtml}`:''}
       ${activeTasksSectionHtml? `<div class="pd-divider"></div>${activeTasksSectionHtml}`:''}
       ${usefulSectionHtml? `<div class="pd-divider"></div>${usefulSectionHtml}`:''}
