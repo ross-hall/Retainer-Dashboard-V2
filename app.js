@@ -3556,15 +3556,15 @@ function renderChecklistsHub(){
       const items = state.checklistItems.filter(i=>i.checklist_id===cl.id);
       const done = items.filter(i=>i.is_done).length;
       const pct = items.length ? Math.round(done/items.length*100) : 0;
-      return `<button type="button" class="checklist-row" data-hubchecklist="${cl.id}" title="Open checklist">
+      return `<button type="button" class="checklist-hub-row" data-hubchecklist="${cl.id}" title="Open checklist">
         <div class="chr-top"><span class="chr-name">${esc(cl.name)}</span><span class="chr-count">${items.length? `${done}/${items.length} done`:'No items'}</span></div>
         ${items.length? `<div class="mini-progress"><div class="fill" style="width:${pct}%"></div></div>`:''}
       </button>`;
     }).join('');
     return `<div class="card">
       <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--muted)">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:''}</div>
-      <div style="margin-top:6px;margin-bottom:10px"><span class="type-badge">${esc(p.project_type||'')}</span></div>
-      ${rows}
+      <div style="margin-top:6px;margin-bottom:14px"><span class="type-badge">${esc(p.project_type||'')}</span></div>
+      <div class="checklist-hub-list">${rows}</div>
     </div>`;
   }).join('');
   main.innerHTML = `
@@ -5011,7 +5011,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.50.2';
+const APP_VERSION = '0.51.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;

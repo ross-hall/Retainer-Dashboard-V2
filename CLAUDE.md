@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.51.0**
+Current version: **v0.51.1**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -472,6 +472,11 @@ Font: Inter (unchanged from v0.9.0)
 - **"+ New project checklist" button** opens `openNewProjectChecklistModal()` — a client → project cascading picker (same pattern as `openMilestoneAddModal`'s client/project select) in front of the existing name + "Start from" template fields. Checklists require a project (`rs_checklists.project_id` is `not null`), so the client dropdown only lists clients with at least one active project — a pure-retainer client has nowhere for a checklist to attach and is correctly excluded (with a toast if literally none qualify).
 - **Insert logic deduped**: `createChecklist(projectId, name, template)` is now the one shared function both `openNewChecklistModal` (the existing per-project popover flow, unchanged behavior) and the new hub modal call — previously the insert-and-seed-items logic only existed inline inside `openNewChecklistModal`.
 - Verified live: "Manage master checklists" lands on the correct Settings section with the right nav item highlighted; the client→project cascade updates correctly when switching clients; created a real test checklist end-to-end (client picked, project picked, named, created, seeded with zero items since "Blank" was selected, checklist modal opened automatically) and confirmed the row in the DB before deleting it; confirmed dark mode.
+
+**What shipped in v0.51.1** (Checklists hub cards restyled — each checklist gets its own rounded box, not a shared flat list):
+- **New `.checklist-hub-row`/`.checklist-hub-list` classes**, deliberately separate from the existing `.checklist-row` (kept as-is) — that class is shared with the project header's checklists popover (`openChecklistsPopover`), a compact 280px dropdown where individual rounded boxes would look cramped, so restyling it directly would have changed both surfaces at once. The hub now uses its own classes: each checklist is `padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--paper)` inside a `gap:8px` flex column, reading as a recessed nested block against the card's `var(--card)` surface in both light and dark mode (dark mode's `--card` is lighter than `--paper`, so the "recessed" relationship holds in both themes without any per-theme override).
+- Client-card header also gained a touch more breathing room before the checklist list (`margin-bottom` on the type badge `10px→14px`).
+- Verified live: a client with two checklists (Tuari — "Deck Checklist" + "Test") now clearly reads as two distinct boxes instead of a dense stacked list; dark mode; confirmed the project header's checklists popover is visually unchanged (still the original flat compact list with thin dividers).
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

@@ -488,6 +488,14 @@
   .clpop-add:hover{background:var(--row-hover)}
   .clpop-empty{padding:10px 6px;font-size:12.5px;color:var(--muted)}
 
+  /* Checklists hub cards specifically (not the popover, which stays a flat
+     compact list) — each checklist under a client gets its own rounded,
+     bordered box so multiple checklists on one card read as distinct items
+     rather than a dense stacked list. */
+  .checklist-hub-list{display:flex;flex-direction:column;gap:8px}
+  button.checklist-hub-row{display:block;width:100%;text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--paper);cursor:pointer;font-family:inherit;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
+  button.checklist-hub-row:hover{background:var(--row-hover);border-color:var(--accent)}
+
   .view-toggle{display:flex;gap:6px;margin-bottom:14px}
   .switch-toggle{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
   .switch-toggle input{display:none}
@@ -761,7 +769,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.51.0</div>
+    <div id="versionBadge" class="version-badge">v0.51.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -4329,15 +4337,15 @@ function renderChecklistsHub(){
       const items = state.checklistItems.filter(i=>i.checklist_id===cl.id);
       const done = items.filter(i=>i.is_done).length;
       const pct = items.length ? Math.round(done/items.length*100) : 0;
-      return `<button type="button" class="checklist-row" data-hubchecklist="${cl.id}" title="Open checklist">
+      return `<button type="button" class="checklist-hub-row" data-hubchecklist="${cl.id}" title="Open checklist">
         <div class="chr-top"><span class="chr-name">${esc(cl.name)}</span><span class="chr-count">${items.length? `${done}/${items.length} done`:'No items'}</span></div>
         ${items.length? `<div class="mini-progress"><div class="fill" style="width:${pct}%"></div></div>`:''}
       </button>`;
     }).join('');
     return `<div class="card">
       <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--muted)">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:''}</div>
-      <div style="margin-top:6px;margin-bottom:10px"><span class="type-badge">${esc(p.project_type||'')}</span></div>
-      ${rows}
+      <div style="margin-top:6px;margin-bottom:14px"><span class="type-badge">${esc(p.project_type||'')}</span></div>
+      <div class="checklist-hub-list">${rows}</div>
     </div>`;
   }).join('');
   main.innerHTML = `
@@ -5784,7 +5792,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.51.0';
+const APP_VERSION = '0.51.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
