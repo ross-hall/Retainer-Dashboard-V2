@@ -551,6 +551,21 @@
   .anim-timeline-shot:hover{filter:brightness(.93)}
   .anim-timeline-shot-code{font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .anim-timeline-remainder{background:repeating-linear-gradient(45deg,var(--track),var(--track) 6px,var(--line) 6px,var(--line) 12px);color:var(--muted);font-size:10.5px;cursor:default}
+
+  /* Pipeline Timeline — one row per shot across real calendar days. Day
+     cells and a shot's scheduled bar occupy the same grid-row/column area
+     on purpose (CSS Grid supports overlapping items); the bar's opaque
+     background paints over the cells beneath it. */
+  .anim-sched-grid{display:grid;row-gap:3px;column-gap:2px;position:relative}
+  .anim-sched-daynum{font-size:10px;font-weight:600;color:var(--muted);text-align:center;padding:2px 0 6px}
+  .anim-sched-daynum.today{color:var(--accent)}
+  .anim-sched-label{display:flex;align-items:center;padding:4px 8px 4px 0;background:var(--card);position:sticky;left:0;z-index:3;white-space:nowrap}
+  .anim-sched-cell{background:var(--track);border-radius:4px;min-height:30px}
+  .anim-sched-cell.drop-target{background:var(--accent-soft)}
+  .anim-sched-bar{border-radius:6px;display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:700;cursor:grab;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:30px;z-index:2}
+  .anim-sched-bar:active{cursor:grabbing}
+  .anim-sched-marker{background:var(--red);opacity:.4;width:2px;justify-self:center;z-index:4;pointer-events:none}
+  .anim-sched-marker-label{font-size:9.5px;color:var(--red);font-weight:600;white-space:nowrap;pointer-events:none;justify-self:center;margin-bottom:2px}
   .pd-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto;margin-bottom:24px}
   .pd-tab{padding:10px 16px;border:none;border-bottom:2px solid transparent;background:transparent;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
   .pd-stage-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer}
@@ -769,7 +784,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.51.1</div>
+    <div id="versionBadge" class="version-badge">v0.52.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -817,7 +832,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   taskColOrder:loadStoredArray('rs_task_col_order', DEFAULT_TASK_COL_ORDER),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
+  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'grid', animSchedY:null, animSchedM:null, animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[],
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
@@ -5792,7 +5807,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.51.1';
+const APP_VERSION = '0.52.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7123,6 +7138,7 @@ async function boot(){
   document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{
     state.view = b.dataset.view;
     if(state.view==='projects'){ state.projView='clients'; state.projClientId=null; state.projProjectId=null; }
+    if(state.view==='animation'){ state.animProjectId=null; state.animTab='grid'; }
     render();
   }));
   $('#quickAddFab').style.display = 'flex';
@@ -7159,40 +7175,73 @@ function animChangedSince(projectId, hoursAgo){
       timeline tab, and feedback tab into the existing page ─────────────── */
 const _origRenderAnimation = renderAnimation;
 function renderAnimation(){
+  // No project selected → the card grid (below), same entry-point pattern
+  // as All Projects. The old per-client tab strip inside every sub-page is
+  // gone now that project switching happens by going back to this grid.
+  if(!state.animProjectId || !animProjects().some(p=>p.id===state.animProjectId)){
+    state.animProjectId = null;
+    renderAnimProjectsGrid();
+    return;
+  }
   if(state.animTab === 'snapshot') { renderAnimSnapshot(); return; }
   if(state.animTab === 'timeline') { renderAnimTimeline(); return; }
-  if(state.animTab === 'feedback') { renderAnimFeedbackTab(); return; }
+  if(state.animTab === 'schedule') { renderAnimSchedule(); return; }
   renderAnimGrid();
 }
 
-function renderAnimGrid(){
-  if(!state.animProjectId || !animProjects().some(p=>p.id===state.animProjectId)){
-    state.animProjectId = animProjects()[0]?.id || null;
-  }
+/* Card grid of every active animation project, same shape as the All
+   Projects client cards — click one to jump straight into its Pipeline. */
+function renderAnimProjectsGrid(){
   const projects = animProjects();
-  const p = projects.find(x=>x.id===state.animProjectId) || null;
-
-  const tabBar = (projectId)=>`
-    <div class="pd-tabs" style="padding:0;margin-bottom:20px">
-      ${projects.map(pr=>{
-        const c = state.clients.find(cl=>cl.id===pr.client_id);
-        return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
-          style="${pr.id===state.animProjectId?`color:var(--accent);border-color:var(--accent)`:''}">${esc(c?c.name:'?')}${pr.label?` · ${esc(pr.label)}`:''}</button>`;
-      }).join('')}
-    </div>
-    ${animViewToggleHtml(state.animTab)}`;
-
-  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
-    </div><div style="margin-bottom:18px"></div>`;
+  let html = `<div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2>
+    <div class="sub" style="margin-bottom:0">Every active animation project — click one to open its pipeline</div></div>
+    <div style="margin-bottom:18px"></div>`;
 
   if(!projects.length){
-    html += `<div class="empty">No active animation projects. Create a project with an animation type under All Projects and it'll appear here.</div>`;
-    main.innerHTML = html; wireAnimTabsAll(); return;
+    html += emptyStateHtml({ icon:'film', title:'No animation projects yet', subtitle:"Create a project with an animation type under All Projects and it'll appear here." });
+    main.innerHTML = html;
+    return;
   }
 
-  html += tabBar(p?.id);
-  if(!p){ main.innerHTML = html; wireAnimTabsAll(); return; }
+  html += `<div class="grid">${projects.map(p=>{
+    const c = state.clients.find(cl=>cl.id===p.client_id);
+    const shots = animShotsFor(p.id);
+    const steps = animStepsFor(p.id);
+    const approved = steps.length ? shots.filter(s=> animShotProgress(s, steps).done===steps.length).length : 0;
+    const pct = shots.length ? Math.round(approved/shots.length*100) : 0;
+    return `<div class="card client-card" data-animopen="${p.id}">
+      <h3 style="display:flex;align-items:center;gap:8px">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:'Unknown client'}</h3>
+      <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
+      <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
+        <div><span>Shots</span><span>${shots.length}</span></div>
+        <div><span>Approved</span><span>${approved}/${shots.length}</span></div>
+      </div>
+      ${shots.length? `<div class="mini-progress"><div class="fill" style="width:${pct}%"></div></div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">${pct}% approved</div>`:''}
+    </div>`;
+  }).join('')}</div>`;
+
+  main.innerHTML = html;
+  main.querySelectorAll('[data-animopen]').forEach(el=>el.addEventListener('click', ()=>{
+    state.animProjectId = el.dataset.animopen; state.animTab='grid'; render();
+  }));
+}
+
+/* Shared breadcrumb + title for every animation sub-page (Pipeline /
+   Timeline / Pipeline Timeline / Today's snapshot). */
+function animProjectHeaderHtml(p){
+  const c = state.clients.find(cl=>cl.id===p.client_id);
+  return `<div class="breadcrumb"><button data-animback="1">Animation</button><span class="sep">/</span><span class="current">${c?esc(c.name):'?'}${p.label?' · '+esc(p.label):''}</span></div>
+    <h2 style="display:flex;align-items:center;gap:8px">${projectTypeIconHtml(p.project_type,18)}${c?esc(c.name):'?'}${p.label?` <span style="font-weight:400;color:var(--muted)">· ${esc(p.label)}</span>`:''}
+      <span style="font-size:12px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px">Beta</span>
+    </h2>`;
+}
+
+function renderAnimGrid(){
+  const p = animProjects().find(x=>x.id===state.animProjectId) || null;
+  if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
+
+  let html = animProjectHeaderHtml(p);
+  html += animViewToggleHtml(state.animTab);
 
   const shots = animShotsFor(p.id);
   const steps = animStepsFor(p.id);
@@ -7360,20 +7409,13 @@ function animShotTimelineStatus(shot, steps, todayIso){
       order (position), each occupying a slice equal to its own duration. ── */
 function renderAnimTimeline(){
   const p = animProjects().find(x=>x.id===state.animProjectId);
-  if(!p){ state.animTab='grid'; renderAnimation(); return; }
+  if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
   const shots = animShotsFor(p.id);
   const steps = animStepsFor(p.id);
   const todayIso = iso(new Date());
 
-  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-    <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
-  </div><div style="margin-bottom:18px"></div>`;
-  html += `<div class="pd-tabs" style="padding:0;margin-bottom:20px">${animProjects().map(pr=>{
-    const cl = state.clients.find(c=>c.id===pr.client_id);
-    return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
-      style="${pr.id===state.animProjectId?`color:var(--accent);border-color:var(--accent)`:''}">${esc(cl?cl.name:'?')}</button>`;
-  }).join('')}</div>
-  ${animViewToggleHtml('timeline')}`;
+  let html = animProjectHeaderHtml(p);
+  html += animViewToggleHtml('timeline');
 
   if(!steps.length){
     html += `<div class="banner"><div>🎬</div><div>This project has no pipeline steps yet. Set up the pipeline from the Pipeline tab first.</div></div>`;
@@ -7440,7 +7482,181 @@ function renderAnimTimeline(){
   main.querySelectorAll('[data-animshottl]').forEach(el=>el.addEventListener('click', ()=> openAnimShotModal(p.id, el.dataset.animshottl)));
 }
 
-/* ── Feedback view — shots with outstanding (unresolved) feedback notes ── */
+/* Small add/edit modal for a shot's work-date range (rs_anim_shots.
+   work_start_date/work_end_date, migration v32) — the only way to give a
+   shot its first schedule; after that, dragging its bar moves it. */
+function openAnimShotScheduleModal(shotId){
+  const shot = state.animShots.find(s=>s.id===shotId);
+  if(!shot) return;
+  const todayIso = iso(new Date());
+  showModal(`
+    <h3>Schedule ${esc(shot.code)}</h3>
+    <form class="log" style="max-width:none">
+      <div><label>Start date</label><input type="date" id="ash_start" value="${shot.work_start_date||todayIso}"></div>
+      <div><label>End date</label><input type="date" id="ash_end" value="${shot.work_end_date||todayIso}"></div>
+    </form>
+    <div class="modal-actions">
+      <div class="right">
+        <button class="btn ghost" id="ash_cancel">Cancel</button>
+        <button class="btn" id="ash_save">Save</button>
+      </div>
+    </div>
+  `);
+  $('#ash_cancel').onclick = closeModal;
+  $('#ash_save').onclick = async ()=>{
+    const start = $('#ash_start').value, end = $('#ash_end').value;
+    if(!start || !end){ toast('Pick both dates'); return; }
+    if(end < start){ toast('End date must be on or after the start date'); return; }
+    const { error } = await db.from('rs_anim_shots').update({ work_start_date:start, work_end_date:end }).eq('id', shotId);
+    if(error){ toast(['PGRST204','42703'].includes(error.code)?'Run migration v32 to enable shot scheduling':'Could not save'); console.error(error); return; }
+    closeModal(); toast('Shot scheduled'); await loadAll(); render();
+  };
+}
+
+/* ── Pipeline Timeline — same shots as Pipeline, laid out across real
+      calendar days instead of by running screen-time (that's the Timeline
+      tab). One row per shot; a bar spans its scheduled work_start_date→
+      work_end_date, colour-coded the same as the Timeline tab's shot
+      status. Vertical flag markers overlay this project's own stage due
+      dates (the same dates Milestones/Gantt already read) so the team can
+      see client deliverables alongside the animator's own schedule.
+      Bars are drag-to-MOVE only (no resize handles) — dropping a bar on a
+      different day shifts its whole date range, keeping the same length,
+      by writing straight to rs_anim_shots (migration v32). A shot with no
+      schedule yet shows a "+ Schedule" prompt instead of a bar. */
+function renderAnimSchedule(){
+  const p = animProjects().find(x=>x.id===state.animProjectId);
+  if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
+  const shots = animShotsFor(p.id);
+  const steps = animStepsFor(p.id);
+  const todayIso = iso(new Date());
+
+  let html = animProjectHeaderHtml(p);
+  html += animViewToggleHtml('schedule');
+
+  if(!steps.length){
+    html += `<div class="banner"><div>🎬</div><div>This project has no pipeline steps yet. Set up the pipeline from the Pipeline tab first.</div></div>`;
+    main.innerHTML = html; wireAnimTabsAll(); return;
+  }
+  if(!shots.length){
+    html += `<div class="empty">No shots yet — add your first shot from the Pipeline tab to see it here.</div>`;
+    main.innerHTML = html; wireAnimTabsAll(); return;
+  }
+
+  const now = new Date();
+  if(state.animSchedY==null){ state.animSchedY = now.getFullYear(); state.animSchedM = now.getMonth(); }
+  const y = state.animSchedY, m = state.animSchedM;
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const monthLabel = new Date(y,m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const pad2 = n=>String(n).padStart(2,'0');
+  const monthStartIso = `${y}-${pad2(m+1)}-01`;
+  const monthEndIso = `${y}-${pad2(m+1)}-${pad2(daysInMonth)}`;
+  const dayIso = d=>`${y}-${pad2(m+1)}-${pad2(d)}`;
+
+  // Client deliverables — this project's own stage due dates, the same
+  // ones Milestones/Gantt already read, filtered to the displayed month.
+  const deliverables = state.stages
+    .filter(s=>s.project_id===p.id && s.due_date && s.due_date>=monthStartIso && s.due_date<=monthEndIso)
+    .map(s=>({ day:+s.due_date.slice(8,10), name:s.name }));
+
+  const dayCols = Array.from({length:daysInMonth},(_,i)=>i+1);
+  const headerCells = dayCols.map(d=>{
+    const isToday = dayIso(d)===todayIso;
+    return `<div class="anim-sched-daynum ${isToday?'today':''}" style="grid-row:2;grid-column:${d+1}">${d}</div>`;
+  }).join('');
+
+  const rowsHtml = shots.map((s,idx)=>{
+    const row = idx+3;
+    const cellsHtml = dayCols.map(d=>`<div class="anim-sched-cell" style="grid-row:${row};grid-column:${d+1}" data-schedcell="${s.id}:${dayIso(d)}"></div>`).join('');
+    const label = `<div class="anim-sched-label" style="grid-row:${row};grid-column:1">
+      <b style="font-size:12.5px">${esc(s.code)}</b>
+      ${!s.work_start_date ? `<button type="button" class="btn small ghost" data-schedadd="${s.id}" style="margin-left:6px;padding:1px 8px;font-size:11px">+ Schedule</button>` : ''}
+    </div>`;
+    let barHtml = '';
+    if(s.work_start_date && s.work_end_date && s.work_start_date<=monthEndIso && s.work_end_date>=monthStartIso){
+      const startDay = s.work_start_date < monthStartIso ? 1 : +s.work_start_date.slice(8,10);
+      const endDay = s.work_end_date > monthEndIso ? daysInMonth : +s.work_end_date.slice(8,10);
+      const spanDays = Math.round((new Date(s.work_end_date+'T00:00') - new Date(s.work_start_date+'T00:00'))/86400000) + 1;
+      const stStatus = animShotTimelineStatus(s, steps, todayIso);
+      barHtml = `<div class="anim-sched-bar" draggable="true" data-schedbar="${s.id}" data-schedspan="${spanDays}"
+        style="grid-row:${row};grid-column:${startDay+1} / ${endDay+2};background:${stStatus.color};color:${stStatus.text}"
+        title="${esc(s.code)} · ${stStatus.label} · ${fmtDate(new Date(s.work_start_date+'T00:00'))}–${fmtDate(new Date(s.work_end_date+'T00:00'))}">${esc(s.code)}</div>`;
+    }
+    return label + cellsHtml + barHtml;
+  }).join('');
+
+  const markersHtml = deliverables.map(d=>`
+    <div class="anim-sched-marker" style="grid-row:1 / ${shots.length+3};grid-column:${d.day+1}"></div>
+    <div class="anim-sched-marker-label" style="grid-row:1;grid-column:${d.day+1}" title="${esc(d.name)} — due ${fmtDate(new Date(dayIso(d.day)+'T00:00'))}">🚩 ${esc(d.name)}</div>
+  `).join('');
+
+  html += `<div class="card" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <button type="button" class="pd-cal-navbtn" data-schednav="-1">‹</button>
+        <div style="font-size:14px;font-weight:600">${monthLabel}</div>
+        <button type="button" class="pd-cal-navbtn" data-schednav="1">›</button>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted)">🚩 Client deliverable dates from this project's stages · drag a bar to reschedule</div>
+    </div>
+    <div style="overflow-x:auto">
+      <div class="anim-sched-grid" style="grid-template-columns:200px repeat(${daysInMonth}, minmax(30px,1fr));min-width:${200+daysInMonth*32}px">
+        ${headerCells}
+        ${rowsHtml}
+        ${markersHtml}
+      </div>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:11.5px;color:var(--muted)">
+      ${[['Not started','#e7e7ee'],['In progress','#4C6EF5'],['Awaiting client','#15AABF'],['Needs retakes','#E8623D'],['Overdue','#c9372c'],['Approved','#2FB380']].map(([label,color])=>
+        `<span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:${color};display:inline-block"></span>${label}</span>`
+      ).join('')}
+    </div>
+  </div>`;
+
+  main.innerHTML = html;
+  wireAnimTabsAll();
+  main.querySelectorAll('[data-schednav]').forEach(el=>el.addEventListener('click', ()=>{
+    let mm = state.animSchedM + (+el.dataset.schednav), yy = state.animSchedY;
+    if(mm<0){ mm=11; yy--; } else if(mm>11){ mm=0; yy++; }
+    state.animSchedM = mm; state.animSchedY = yy;
+    render();
+  }));
+  main.querySelectorAll('[data-schedadd]').forEach(el=>el.addEventListener('click', ()=> openAnimShotScheduleModal(el.dataset.schedadd)));
+  main.querySelectorAll('[data-schedbar]').forEach(el=>{
+    el.addEventListener('dragstart', e=>{
+      e.dataTransfer.setData('text/plain', JSON.stringify({ shotId: el.dataset.schedbar, span: +el.dataset.schedspan }));
+      e.dataTransfer.effectAllowed = 'move';
+    });
+  });
+  // A drop is read purely as "shift this shot's bar so it starts on this
+  // day" — the target cell's own row (which shot it visually belongs to)
+  // is ignored, since native drag can easily drift a row during a mostly-
+  // horizontal drag; only the column (date) matters.
+  main.querySelectorAll('[data-schedcell]').forEach(cellEl=>{
+    cellEl.addEventListener('dragover', e=>{ e.preventDefault(); cellEl.classList.add('drop-target'); });
+    cellEl.addEventListener('dragleave', ()=> cellEl.classList.remove('drop-target'));
+    cellEl.addEventListener('drop', async e=>{
+      e.preventDefault(); cellEl.classList.remove('drop-target');
+      const raw = e.dataTransfer.getData('text/plain');
+      if(!raw) return;
+      let payload; try{ payload = JSON.parse(raw); } catch { return; }
+      const [, dropDateIso] = cellEl.dataset.schedcell.split(':');
+      const newStart = new Date(dropDateIso+'T00:00');
+      const newEnd = new Date(newStart); newEnd.setDate(newEnd.getDate() + payload.span - 1);
+      const { error } = await db.from('rs_anim_shots').update({ work_start_date: iso(newStart), work_end_date: iso(newEnd) }).eq('id', payload.shotId);
+      if(error){ toast(['PGRST204','42703'].includes(error.code)?'Run migration v32 to enable shot scheduling':'Could not move'); console.error(error); return; }
+      toast('Shot rescheduled');
+      await loadAll(); render();
+    });
+  });
+}
+
+/* ── Feedback view — shots with outstanding (unresolved) feedback notes ──
+   Removed from the tab nav (animViewToggleHtml) and renderAnimation's
+   dispatch per explicit request — left defined, currently unreachable from
+   the UI, in case it comes back. Its own header still uses the old
+   per-client tab strip and was deliberately not updated since nothing
+   calls it any more. */
 function renderAnimFeedbackTab(){
   const p = animProjects().find(x=>x.id===state.animProjectId);
   if(!p){ state.animTab='grid'; renderAnimation(); return; }
@@ -7506,7 +7722,7 @@ function renderAnimFeedbackTab(){
 /* ── Snapshot view ─────────────────────────────────────────────────────── */
 function renderAnimSnapshot(){
   const p = animProjects().find(x=>x.id===state.animProjectId);
-  if(!p){ state.animTab='grid'; renderAnimation(); return; }
+  if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
   const steps = animStepsFor(p.id);
   const shots = animShotsFor(p.id);
   const todayIso = iso(new Date());
@@ -7563,15 +7779,8 @@ function renderAnimSnapshot(){
     </div>`;
   }).join('') : `<div style="padding:10px 0;color:var(--green);font-weight:600">✓ Nothing needs attention today</div>`;
 
-  let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-    <div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2></div>
-  </div><div style="margin-bottom:18px"></div>`;
-  html += `<div class="pd-tabs" style="padding:0;margin-bottom:20px">${animProjects().map(pr=>{
-    const cl = state.clients.find(cl=>cl.id===pr.client_id);
-    return `<button type="button" class="pd-tab ${pr.id===state.animProjectId?'active':''}" data-animproj="${pr.id}"
-      style="${pr.id===state.animProjectId?`color:var(--accent);border-color:var(--accent)`:''}">${esc(cl?cl.name:'?')}</button>`;
-  }).join('')}</div>
-  ${animViewToggleHtml('snapshot')}`;
+  let html = animProjectHeaderHtml(p);
+  html += animViewToggleHtml('snapshot');
 
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
     <div class="card">
@@ -7592,21 +7801,22 @@ function renderAnimSnapshot(){
   wireAnimTabsAll();
 }
 
-/* ── Shared view-toggle tab bar (Pipeline / Timeline / Today's snapshot) ── */
+/* ── Shared view-toggle tab bar (Pipeline / Timeline / Pipeline Timeline /
+      Today's snapshot). Feedback removed per explicit request — see the
+      comment on renderAnimFeedbackTab. ── */
 function animViewToggleHtml(tab){
-  const outstanding = state.animProjectId ? animOutstandingFeedback(state.animProjectId).length : 0;
   return `<div class="view-toggle" style="margin-bottom:20px">
     <button class="btn small ${!tab||tab==='grid'?'':'ghost'}" data-animtab="grid">Pipeline</button>
     <button class="btn small ${tab==='timeline'?'':'ghost'}" data-animtab="timeline">Timeline</button>
-    <button class="btn small ${tab==='feedback'?'':'ghost'}" data-animtab="feedback">Feedback${outstanding?` <span class="home-count">${outstanding}</span>`:''}</button>
+    <button class="btn small ${tab==='schedule'?'':'ghost'}" data-animtab="schedule">Pipeline Timeline</button>
     <button class="btn small ${tab==='snapshot'?'':'ghost'}" data-animtab="snapshot">Today's snapshot</button>
   </div>`;
 }
 
 /* ── Shared tab wiring ─────────────────────────────────────────────────── */
 function wireAnimTabsAll(){
-  main.querySelectorAll('[data-animproj]').forEach(el=>el.addEventListener('click', ()=>{ state.animProjectId = el.dataset.animproj; render(); }));
   main.querySelectorAll('[data-animtab]').forEach(el=>el.addEventListener('click', ()=>{ state.animTab = el.dataset.animtab; render(); }));
+  main.querySelectorAll('[data-animback]').forEach(el=>el.addEventListener('click', ()=>{ state.animProjectId = null; state.animTab='grid'; render(); }));
 }
 
 /* ── Patched cell modal — adds feedback log below status controls ──────── */
