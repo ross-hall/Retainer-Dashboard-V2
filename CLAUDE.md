@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.53.0**
+Current version: **v0.54.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -92,7 +92,7 @@ Public dashboard (no internal nav):
 | `rs_task_statuses` | v13 | Editable status names, colours, is_complete flag |
 | `rs_stage_categories` | v14+v15 | Asset link categories per stage or project |
 | `rs_stage_links` | v14 | Individual asset links within categories |
-| `rs_anim_shots` | v16, **v32** | Shots per animation project. v32 adds `work_start_date`/`work_end_date` (not yet run) |
+| `rs_anim_shots` | v16, **v32** | Shots per animation project. v32 adds `work_start_date`/`work_end_date` (**run** — confirmed live 2026-08-26) |
 | `rs_anim_steps` | v16 | Pipeline steps per animation project |
 | `rs_anim_cells` | v16 | Status per (shot, step) pair |
 | `rs_anim_feedback` | v17, **v20** | Timestamped feedback thread per cell. v20 adds `resolved` (not yet run) |
@@ -515,7 +515,6 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - `outputs/v29_useful_info_zone.sql` has not been run yet — the Home page's "+ Add resource" button fails (toast "Run migration v29 to enable this section") until the same constraint allows `zone='useful'`. Confirmed live: raw insert with `zone='useful'` returns Postgres `23514` (check_violation), and the toast fires correctly through the real button click, not just the raw query. Everything else on the Home page (greeting, project cards) is unaffected.
 - `outputs/v30_link_date.sql` has not been run yet — the link modal's new "Date" field silently fails to save (`openStageLinkModal`'s save handler retries the insert/update without `link_date` on a `PGRST204`, so the link itself still saves — only the date is dropped, with a toast saying so). Meeting Notes rows just show no date until this runs.
 - `outputs/v31_client_contact.sql` has not been run yet — saving the client edit modal fails entirely (`PGRST204`) if `dash_contact_name`/`dash_contact_role` don't exist yet, same all-or-nothing save behavior v27's fields already have. Until run, every client's contact card is simply absent (both fields read as `undefined`, which the card already treats as "not configured") — no error on the public dashboard itself, only on trying to save new contact info from the internal app.
-- `outputs/v32_anim_shot_schedule.sql` has not been run yet — the Animation page's new "Pipeline Timeline" tab can't save a shot's schedule (`+ Schedule` button, or dragging a bar) until `rs_anim_shots.work_start_date`/`work_end_date` exist. Confirmed live the error code Postgres actually returns for this case is `42703` (undefined_column), not the `PGRST204` schema-cache-miss code most other pending-migration guards check — both are now handled. Degrades safely either way: the save/drag is rejected with a toast, nothing is written, and the view just keeps showing every shot as unscheduled ("+ Schedule").
 
 ---
 
@@ -541,4 +540,4 @@ Ross Hall, Louis Rush, Yaatzil Ceballos, Ranjani Tavargeri, Myrto Tsouma, Nafisa
 - v29: extends rs_stage_categories_zone_check to allow `zone='useful'` (backs the Home page's Useful Information grid) — **not yet run**, do this in the Supabase SQL editor when convenient
 - v30: `rs_stage_links.link_date` (optional date on any link; only Meeting Notes displays it, as the "date of meeting" column) — **not yet run**, do this in the Supabase SQL editor when convenient
 - v31: `rs_clients.dash_contact_name` + `dash_contact_role` (named point-of-contact card at the bottom of the public dashboard's nav) — **not yet run**, do this in the Supabase SQL editor when convenient
-- v32: `rs_anim_shots.work_start_date` + `work_end_date` (backs the Animation page's Pipeline Timeline tab) — **not yet run**, do this in the Supabase SQL editor when convenient
+- v32: `rs_anim_shots.work_start_date` + `work_end_date` (backs the Animation page's Work Schedule tab) — **run** (confirmed live 2026-08-26)
