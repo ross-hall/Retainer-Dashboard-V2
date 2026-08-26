@@ -784,7 +784,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.52.0</div>
+    <div id="versionBadge" class="version-badge">v0.53.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -5807,7 +5807,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.52.0';
+const APP_VERSION = '0.53.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7183,7 +7183,7 @@ function renderAnimation(){
     renderAnimProjectsGrid();
     return;
   }
-  if(state.animTab === 'snapshot') { renderAnimSnapshot(); return; }
+  if(state.animTab === 'home') { renderAnimHome(); return; }
   if(state.animTab === 'timeline') { renderAnimTimeline(); return; }
   if(state.animTab === 'schedule') { renderAnimSchedule(); return; }
   renderAnimGrid();
@@ -7226,14 +7226,115 @@ function renderAnimProjectsGrid(){
   }));
 }
 
-/* Shared breadcrumb + title for every animation sub-page (Pipeline /
-   Timeline / Pipeline Timeline / Today's snapshot). */
+/* Shared breadcrumb + title for every animation sub-page (Home / Pipeline /
+   Timeline / Pipeline Timeline). The pill next to the client name is the
+   project's contracted animation scope (anim_total_seconds, set via "Set/
+   Edit total seconds" on Pipeline) rather than the old generic "Beta" tag —
+   it's the one number that actually differs project to project. */
 function animProjectHeaderHtml(p){
   const c = state.clients.find(cl=>cl.id===p.client_id);
+  const scopeLabel = p.anim_total_seconds!=null ? `${p.anim_total_seconds}s scope` : 'No scope set';
   return `<div class="breadcrumb"><button data-animback="1">Animation</button><span class="sep">/</span><span class="current">${c?esc(c.name):'?'}${p.label?' · '+esc(p.label):''}</span></div>
     <h2 style="display:flex;align-items:center;gap:8px">${projectTypeIconHtml(p.project_type,18)}${c?esc(c.name):'?'}${p.label?` <span style="font-weight:400;color:var(--muted)">· ${esc(p.label)}</span>`:''}
-      <span style="font-size:12px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px">Beta</span>
+      <span style="font-size:12px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px">${esc(scopeLabel)}</span>
     </h2>`;
+}
+
+/* ── Home — where an animation project's stages (with client due dates)
+      live, plus a Recent panel. Deliberately no task list per stage (that's
+      the non-animation project page's own thing, rs_proj_tasks) — an
+      animation project's actual work is tracked shot-by-shot in Pipeline,
+      not via tasks. Stage add/rename/due-date editing all write to the
+      same rs_project_stages rows the internal project page and the public
+      dashboard already read, so nothing here is animation-specific data. */
+function renderAnimHome(){
+  const p = animProjects().find(x=>x.id===state.animProjectId);
+  if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
+  const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
+  const todayIso = iso(new Date());
+
+  let html = animProjectHeaderHtml(p);
+  html += animViewToggleHtml('home');
+
+  html += `<div class="card" style="margin-bottom:20px">
+    <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:14px">Project stages</div>`;
+  if(!stages.length){
+    html += `<div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>`;
+  } else {
+    html += stages.map((s,idx)=>{
+      const overdue = s.due_date && s.due_date < todayIso;
+      const sStatus = stageStatus(s.id);
+      const dateLabel = s.due_date
+        ? `${overdue?'⚠️ ':''}${fmtDateNatural(s.due_date)}${s.due_time?' · '+formatTime12(s.due_time):''}${overdue?' (overdue)':''}`
+        : 'Set due date';
+      return `<div class="stage-head" style="padding:10px 0;border-bottom:1px solid var(--line-soft);margin-bottom:0">
+        <h4><span class="stage-num">Stage ${idx}</span><span class="inline-editable" data-animstagename="${s.id}" title="Click to rename">${esc(s.name)}</span>${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
+        <button type="button" class="stage-date-btn" data-animstagedate="${s.id}" style="margin-left:auto;margin-top:0">${dateLabel}</button>
+      </div>`;
+    }).join('');
+    html += `<div style="margin-top:14px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>`;
+  }
+  html += `</div>`;
+
+  // Recent — reuses animChangedSince (the same helper the removed Snapshot
+  // tab used), one merged feed instead of separate time buckets.
+  const shots = animShotsFor(p.id);
+  const steps = animStepsFor(p.id);
+  const recent = animChangedSince(p.id, 24*30).slice().sort((a,b)=> (b.updated_at||'').localeCompare(a.updated_at||'')).slice(0,8);
+  html += `<div class="card">
+    <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Recent</div>
+    ${recent.length ? recent.map(cItem=>{
+      const shot = shots.find(sh=>sh.id===cItem.shot_id);
+      const step = steps.find(st=>st.id===cItem.step_id);
+      const m = cItem.assignee_id ? state.members.find(mm=>mm.id===cItem.assignee_id) : null;
+      const cfg = animStatusRecord(cItem.status);
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft)">
+        <span style="background:${cfg.color};color:${contrastText(cfg.color)};font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap;flex-shrink:0">${esc(cfg.short)}</span>
+        <div style="flex:1;min-width:0;font-size:12.5px"><b>${shot?esc(shot.code):'?'}</b> <span style="color:var(--muted)">· ${step?esc(step.name):'?'}${m?' · '+esc(m.name):''}</span></div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap">${esc(timeAgoLabel(cItem.updated_at))}</div>
+      </div>`;
+    }).join('') : `<div class="empty" style="padding:16px 0">No recent activity in the last 30 days.</div>`}
+  </div>`;
+
+  main.innerHTML = html;
+  wireAnimTabsAll();
+  main.querySelectorAll('[data-animstagedate]').forEach(el=>el.addEventListener('click', ()=>{
+    const s = stages.find(s=>s.id===el.dataset.animstagedate);
+    openMiniDatePicker(el, s.due_date, async (newDate, newTime)=>{
+      const { error } = await db.from('rs_project_stages').update({ due_date:newDate, due_time:newDate?newTime:null }).eq('id', s.id);
+      if(error){ toast('Could not save date'); return; }
+      await loadAll(); render();
+    }, { withTime:true, currentTime:s.due_time });
+  }));
+  main.querySelectorAll('[data-animstagename]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const stageId = el.dataset.animstagename;
+    const original = el.textContent;
+    const input = document.createElement('input');
+    input.type = 'text'; input.value = original; input.className = 'inline-rename-input';
+    el.replaceWith(input); input.focus(); input.select();
+    input.addEventListener('click', ev=> ev.stopPropagation());
+    input.addEventListener('keydown', ev=>{
+      if(ev.key==='Enter') input.blur();
+      if(ev.key==='Escape'){ input.dataset.cancel='1'; input.blur(); }
+    });
+    input.addEventListener('blur', async ()=>{
+      const val = input.value.trim();
+      if(input.dataset.cancel || !val || val===original){ input.replaceWith(el); return; }
+      const { error } = await db.from('rs_project_stages').update({ name: val }).eq('id', stageId);
+      if(error){ toast('Could not rename stage'); input.replaceWith(el); return; }
+      toast('Stage renamed');
+      await loadAll(); render();
+    }, { once:true });
+  }));
+  const addStageBtn = $('#animHomeAddStage');
+  if(addStageBtn) addStageBtn.onclick = async ()=>{
+    const name = prompt('New stage name');
+    if(!name || !name.trim()) return;
+    const { error } = await db.from('rs_project_stages').insert({ project_id:p.id, name:name.trim(), position:stages.length });
+    if(error){ toast('Could not add stage'); return; }
+    toast('Stage added'); await loadAll(); render();
+  };
 }
 
 function renderAnimGrid(){
@@ -7719,97 +7820,17 @@ function renderAnimFeedbackTab(){
   }));
 }
 
-/* ── Snapshot view ─────────────────────────────────────────────────────── */
-function renderAnimSnapshot(){
-  const p = animProjects().find(x=>x.id===state.animProjectId);
-  if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
-  const steps = animStepsFor(p.id);
-  const shots = animShotsFor(p.id);
-  const todayIso = iso(new Date());
-
-  // Group changed cells by "since when" bucket
-  const buckets = [
-    { label:'Since yesterday',   hours:24 },
-    { label:'Past 3 days',       hours:72 },
-    { label:'Past week',         hours:168 }
-  ];
-
-  const renderBucket = (hours)=>{
-    const cells = animChangedSince(p.id, hours);
-    if(!cells.length) return `<div class="empty" style="padding:16px 0">No changes in this period.</div>`;
-    return cells.map(c=>{
-      const shot = shots.find(s=>s.id===c.shot_id);
-      const step = steps.find(s=>s.id===c.step_id);
-      const m = c.assignee_id ? state.members.find(mm=>mm.id===c.assignee_id) : null;
-      const cfg = animStatusRecord(c.status);
-      const fb = animFeedbackFor(c.shot_id, c.step_id);
-      const latest = fb[fb.length-1];
-      return `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
-        <span style="background:${cfg.color};color:${contrastText(cfg.color)};font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap;flex-shrink:0">${esc(cfg.short)}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:13.5px">${shot?esc(shot.code):'?'} · ${step?esc(step.name):'?'}</div>
-          <div style="font-size:12px;color:var(--muted)">${esc(c.status)}${m?` · ${esc(m.name)}`:''}${c.retakes?` · ${c.retakes} retake${c.retakes===1?'':'s'}`:''}</div>
-          ${latest?`<div style="font-size:12px;color:var(--muted);margin-top:4px;font-style:italic">"${esc(latest.body.slice(0,120))}${latest.body.length>120?'…':''}"</div>`:''}
-        </div>
-        <div style="font-size:11px;color:var(--muted);white-space:nowrap">${fmtDate(new Date(c.updated_at))}</div>
-      </div>`;
-    }).join('');
-  };
-
-  // Overdue and needing attention today
-  const attn = [];
-  shots.forEach(s=> steps.forEach(st=>{
-    const c = animCell(s.id, st.id);
-    if(!c) return;
-    const beh = animStatusBehavior(c.status);
-    if(c.due_date && c.due_date < todayIso && beh!=='done' && beh!=='omitted')
-      attn.push({ shot:s, step:st, c, type:'overdue' });
-    if(beh==='retake') attn.push({ shot:s, step:st, c, type:'retakes' });
-    if(beh==='waiting') attn.push({ shot:s, step:st, c, type:'waiting' });
-  }));
-
-  const attnHtml = attn.length ? attn.map(a=>{
-    const label = a.type==='overdue'?'⚠ Overdue': a.type==='retakes'?'↻ Retakes':'⏳ Client';
-    const color = a.type==='overdue'?'#c9372c': a.type==='retakes'?'#E8623D':'#15AABF';
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
-      <span style="color:${color};font-weight:600;font-size:12px;width:76px;flex-shrink:0">${label}</span>
-      <b>${esc(a.shot.code)}</b>
-      <span style="color:var(--muted)">${esc(a.step.name)}</span>
-      ${a.c.due_date?`<span style="font-size:12px;color:var(--muted);margin-left:auto">${fmtDateNatural(a.c.due_date)}</span>`:''}
-    </div>`;
-  }).join('') : `<div style="padding:10px 0;color:var(--green);font-weight:600">✓ Nothing needs attention today</div>`;
-
-  let html = animProjectHeaderHtml(p);
-  html += animViewToggleHtml('snapshot');
-
-  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-    <div class="card">
-      <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Needs attention today</div>
-      ${attnHtml}
-    </div>
-    <div class="card">
-      <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Changed ${buckets[0].label.toLowerCase()}</div>
-      ${renderBucket(buckets[0].hours)}
-    </div>
-  </div>
-  <div class="card" style="margin-top:20px">
-    <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Changed ${buckets[1].label.toLowerCase()}</div>
-    ${renderBucket(buckets[1].hours)}
-  </div>`;
-
-  main.innerHTML = html;
-  wireAnimTabsAll();
-}
-
-/* ── Shared view-toggle tab bar (Pipeline / Timeline / Pipeline Timeline /
-      Today's snapshot). Feedback removed per explicit request — see the
-      comment on renderAnimFeedbackTab. ── */
+/* ── Shared view-toggle tab bar (Home / Pipeline / Timeline / Pipeline
+      Timeline). Feedback removed per explicit request — see the comment on
+      renderAnimFeedbackTab. Today's snapshot removed outright (not kept
+      dead-but-defined like Feedback) — its "changed recently" content lives
+      on Home's Recent panel now, via the same animChangedSince helper. ── */
 function animViewToggleHtml(tab){
   return `<div class="view-toggle" style="margin-bottom:20px">
+    <button class="btn small ${tab==='home'?'':'ghost'}" data-animtab="home">Home</button>
     <button class="btn small ${!tab||tab==='grid'?'':'ghost'}" data-animtab="grid">Pipeline</button>
     <button class="btn small ${tab==='timeline'?'':'ghost'}" data-animtab="timeline">Timeline</button>
     <button class="btn small ${tab==='schedule'?'':'ghost'}" data-animtab="schedule">Pipeline Timeline</button>
-    <button class="btn small ${tab==='snapshot'?'':'ghost'}" data-animtab="snapshot">Today's snapshot</button>
   </div>`;
 }
 
