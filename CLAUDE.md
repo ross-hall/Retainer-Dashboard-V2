@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.55.0**
+Current version: **v0.55.1**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -532,6 +532,13 @@ Font: Inter (unchanged from v0.9.0)
 - **Layout**: stage sections are full-width (task tables need the room), so the `.two-col-cards` side-by-side split from v0.53.0 is gone from this page — Recent is now a full-width card below the last stage instead of sitting next to "Project stages". The `.two-col-cards` CSS class itself is left in place (still a generic, documented-reusable utility), just unused here now.
 - **Not touched**: the original All Projects > project page path (`renderProjDetail`) for animation-type projects still works exactly as before — this was additive (porting the missing capability into Animation Home), not a removal of the old surface. Worth a follow-up conversation if the old path should be hidden/redirected for animation projects now that Home covers the same ground.
 - Verified live: added a real task via "+ Task" on an empty stage (modal opened correctly, same "New task" flow); checked a task's status pill to "Complete" and confirmed the write in the DB, then reverted; confirmed all 6 stages render with correct task tables and the "Recent" panel still appears at the bottom (page-text extraction used in place of screenshots, which hit an unrelated harness rendering glitch this pass); light and dark mode.
+
+**What shipped in v0.55.1** (Animation Home's task list simplified back down — per explicit follow-up that the shot Pipeline, not this checklist, is the real day-to-day tracker):
+- **`renderAnimHome()` no longer renders the full `taskTableHtml()` grid.** The "Columns ▾" visibility dropdown and drag-to-reorder are both gone from this page — a bespoke, much smaller row renderer (`.anim-task-row`: checkbox, title, due-date pill, "···" menu) replaces the multi-column status/priority/assignee/hours table, modeled on the existing compact-row precedent `tasksAheadRowHtml()` rather than parameterizing the shared table (which would have needed either a global `state.taskCols` change or a broader refactor for one page).
+- **New binary-toggle interaction** (`data-taskdonetoggle`, a plain checkbox) sets a task straight to `'Complete'`/`'To do'` — deliberately not the full multi-status pill popover (`data-statusinline`) used everywhere else, since this is meant to read as a lightweight checklist. Anyone who needs an in-between status (In progress, Client review, …) still reaches it via the "···" menu's "Edit task" option, which opens the ordinary full task modal — confirmed this escape hatch still works.
+- **Still reuses shared machinery where it makes sense**: `wireTaskRows(root)` (confirmed root-agnostic — works against the new compact markup with zero changes), `dueDateBtnHtml(t)` for the date pill, and `isCompleteStatus(s)` to derive the checkbox's initial checked state.
+- **New CSS**: `.anim-task-row`/`.anim-task-check`/`.anim-task-title` (with a `.done` strikethrough-and-muted state) next to the existing `.two-col-cards` rule.
+- Verified live: checking the box wrote `status:'Complete'` to `rs_proj_tasks` and correctly cascaded the stage header to "✓ Complete" (via the existing `stageStatus()` recompute), then reverted both; the kebab menu's "Edit task" still opens the full modal; light and dark mode; the `≤760px` mobile stack (checkbox/title/date wrap cleanly, stage header wraps its date pill below the name when needed).
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

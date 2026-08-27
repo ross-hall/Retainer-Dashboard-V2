@@ -5011,7 +5011,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.54.3';
+const APP_VERSION = '0.55.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6445,26 +6445,22 @@ function animProjectHeaderHtml(p){
 }
 
 /* ── Home — where an animation project's stages (with client due dates)
-      AND their tasks live, plus a Recent panel. This used to deliberately
-      exclude a task list (that content lived only on the generic All
-      Projects > project page, renderProjDetail) — merged in per explicit
-      request, so a stage here is now the exact same shape as a stage on
-      that page: rename/due-date, a task table (add/checkbox/reorder), all
-      writing to the same rs_project_stages/rs_proj_tasks rows renderProjDetail
-      and the public dashboard already read. Only the surrounding chrome
-      (breadcrumb, tab bar, Recent panel) is animation-specific. */
+      AND their tasks live, plus a Recent panel. Tasks here are deliberately
+      a compact checklist (checkbox, title, due date, a "···" menu for the
+      rest), not the full multi-column task table renderProjDetail uses for
+      non-animation projects — per explicit follow-up request: the real
+      day-to-day tracker for an animation project is the shot Pipeline, so
+      this section exists for the occasional non-shot to-do, not as a
+      parallel Kanban. Same rs_proj_tasks rows either way — nothing about
+      the data model changed, only how much of it this view surfaces. */
 function renderAnimHome(){
   const p = animProjects().find(x=>x.id===state.animProjectId);
   if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
-  const c = state.clients.find(cl=>cl.id===p.client_id);
   const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
-  const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
   const todayIso = iso(new Date());
 
   let html = animProjectHeaderHtml(p);
   html += animViewToggleHtml('home');
-
-  html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
 
   if(!stages.length){
     html += `<div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>`;
@@ -6476,12 +6472,21 @@ function renderAnimHome(){
       const dateLabel = s.due_date
         ? `${overdue?'⚠️ ':''}${fmtDateNatural(s.due_date)}${s.due_time?' · '+formatTime12(s.due_time):''}${overdue?' (overdue)':''}`
         : 'Set due date';
+      const taskRows = tasks.map(t=>{
+        const done = isCompleteStatus(t.status);
+        return `<div class="anim-task-row">
+          <input type="checkbox" class="anim-task-check" data-taskdonetoggle="${t.id}" ${done?'checked':''} title="${done?'Mark not done':'Mark done'}">
+          <span class="inline-editable anim-task-title${done?' done':''}" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span>
+          ${dueDateBtnHtml(t)}
+          <button type="button" class="btn small ghost menu-dots" data-taskmenu="${t.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button>
+        </div>`;
+      }).join('');
       html += `<div class="stage-section" data-stagesection="${s.id}">
         <div class="stage-head">
           <h4><span class="stage-num">Stage ${idx}</span><span class="inline-editable" data-animstagename="${s.id}" title="Click to rename">${esc(s.name)}</span>${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
           <button type="button" class="stage-date-btn" data-animstagedate="${s.id}" style="margin-left:auto">${dateLabel}</button>
         </div>
-        <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.', true, c?c.is_retainer:false)}</div>
+        <div class="card" style="padding:4px 12px">${taskRows || `<div class="empty" style="padding:12px 0;font-size:12.5px">No tasks in this stage yet.</div>`}</div>
         <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
       </div>`;
     });
@@ -6512,9 +6517,20 @@ function renderAnimHome(){
 
   main.innerHTML = html;
   wireAnimTabsAll();
-  $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
   wireTaskRows(main);
+  // The checkbox is a plain binary toggle (done/not done), not the full
+  // multi-status popover data-statusinline opens elsewhere — deliberately
+  // simpler, since this is meant to be a lightweight checklist. Anyone who
+  // needs an in-between status (In progress, Client review, …) still has
+  // it via the "···" menu's "Edit task" option, which opens the full modal.
+  main.querySelectorAll('[data-taskdonetoggle]').forEach(el=>el.addEventListener('click', async (e)=>{
+    e.stopPropagation();
+    const taskId = el.dataset.taskdonetoggle;
+    const { error } = await db.from('rs_proj_tasks').update({ status: el.checked ? 'Complete' : 'To do' }).eq('id', taskId);
+    if(error){ toast('Could not update'); el.checked = !el.checked; return; }
+    await loadAll(); render();
+  }));
   main.querySelectorAll('[data-animstagedate]').forEach(el=>el.addEventListener('click', ()=>{
     const s = stages.find(s=>s.id===el.dataset.animstagedate);
     openMiniDatePicker(el, s.due_date, async (newDate, newTime)=>{
@@ -6552,32 +6568,6 @@ function renderAnimHome(){
     if(error){ toast('Could not add stage'); return; }
     toast('Stage added'); await loadAll(); render();
   };
-
-  // Drag-and-drop task reordering, scoped per stage — same pattern
-  // renderProjDetail's non-animation task tables already use.
-  main.querySelectorAll('[data-stagesection]').forEach(sectionEl=>{
-    const stageId = sectionEl.dataset.stagesection;
-    const stageTasks = state.projTasks.filter(t=>t.stage_id===stageId).sort((a,b)=>(a.position||0)-(b.position||0));
-    sectionEl.querySelectorAll('.task-row[data-projtask]').forEach(row=>{
-      row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', row.dataset.projtask); e.dataTransfer.effectAllowed='move'; });
-      row.addEventListener('dragover', e=>{ e.preventDefault(); row.classList.add('drop-target-row'); });
-      row.addEventListener('dragleave', ()=> row.classList.remove('drop-target-row'));
-      row.addEventListener('drop', async e=>{
-        e.preventDefault(); row.classList.remove('drop-target-row');
-        const draggedId = e.dataTransfer.getData('text/plain');
-        const targetId = row.dataset.projtask;
-        if(!draggedId || draggedId===targetId) return;
-        const order = stageTasks.slice();
-        const fromIdx = order.findIndex(t=>t.id===draggedId);
-        const toIdx = order.findIndex(t=>t.id===targetId);
-        if(fromIdx<0 || toIdx<0) return;
-        const [moved] = order.splice(fromIdx,1);
-        order.splice(toIdx,0,moved);
-        await Promise.all(order.map((t,i)=> db.from('rs_proj_tasks').update({position:i}).eq('id',t.id)));
-        await loadAll(); render();
-      });
-    });
-  });
 }
 
 function renderAnimGrid(){
