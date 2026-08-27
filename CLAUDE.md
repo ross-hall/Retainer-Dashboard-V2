@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.55.1**
+Current version: **v0.55.3**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -539,6 +539,17 @@ Font: Inter (unchanged from v0.9.0)
 - **Still reuses shared machinery where it makes sense**: `wireTaskRows(root)` (confirmed root-agnostic — works against the new compact markup with zero changes), `dueDateBtnHtml(t)` for the date pill, and `isCompleteStatus(s)` to derive the checkbox's initial checked state.
 - **New CSS**: `.anim-task-row`/`.anim-task-check`/`.anim-task-title` (with a `.done` strikethrough-and-muted state) next to the existing `.two-col-cards` rule.
 - Verified live: checking the box wrote `status:'Complete'` to `rs_proj_tasks` and correctly cascaded the stage header to "✓ Complete" (via the existing `stageStatus()` recompute), then reverted both; the kebab menu's "Edit task" still opens the full modal; light and dark mode; the `≤760px` mobile stack (checkbox/title/date wrap cleanly, stage header wraps its date pill below the name when needed).
+
+**What shipped in v0.55.2** (Animation Home's stage list collapsed into a single-expand accordion sitting beside Recent; the flags/budget warning banner removed from the top of Animation Pipeline):
+- **`renderAnimHome()`'s per-stage sections (one full card per stage, every task list always open) replaced by one card containing a single-expand accordion** (`.anim-acc-item`/`.anim-acc-head`/`.anim-acc-body`, new CSS) — only one stage's tasks are visible at a time, defaulting to the first incomplete stage (`state.animHomeExpandedStage`, recomputed whenever it's null or points at a since-removed stage). Clicking a collapsed stage's header opens it and closes whichever was open; clicking the open one closes it with nothing left expanded. The accordion header is a `<div>` with `data-animstagetoggle`, not a `<button>`, since it nests the stage-rename span and the due-date `<button>` — both of those keep their own `e.stopPropagation()` (the date button gained this fresh; rename already had it) so clicking either doesn't also collapse the row.
+- **Stages card now sits beside Recent** via the existing `.two-col-cards` class (already in the codebase since v0.53.0, unused since v0.55.0 added the full task table back in) instead of Recent sitting full-width below every stage — reads as one compact unit instead of a long vertical scroll.
+- **Removed the flags/budget summary banner from the top of Animation Pipeline** (`renderAnimGrid()`) — the "need retakes / overdue / awaiting client / unassigned / not started" chip row plus the allocated/approved-seconds and over/under-budget lines. The `flags` object, its per-shot/per-cell computation loop, the local `chip()` helper, and the now-unused `allocated`/`approvedSecs` locals were all removed as dead code rather than left in place; `budget`/`todayIso` were kept since both are still read further down (the Work Schedule deliverable markers and shot overdue checks).
+- Verified live: accordion single-expand behavior (opening Concept correctly closed Kickoff), the two-col-cards side-by-side layout at a wide viewport and the `≤760px` stacked fallback, a real checkbox toggle inside the accordion (`status:'Complete'` confirmed via direct DB read, then reverted), dark mode on both Animation Home and Animation Pipeline, and Animation Pipeline's toolbar/grid rendering correctly with no gap where the removed banner used to sit.
+
+**What shipped in v0.55.3** (small labeling pass on Animation Pipeline — a page title, and "Timeline" renamed "Shot Timeline"):
+- **`renderAnimGrid()` gained a small uppercase "Pipeline" label** above the `+ Shot`/`+ Pipeline step`/`Edit total seconds` toolbar — the page previously went straight from the Home/Animation Pipeline/Work Schedule tab bar into the toolbar with no heading of its own for the shot-grid section.
+- **The merged Shot Timeline section's label changed from "Timeline" to "Shot Timeline"** — same uppercase muted style, cosmetic rename only, `animShotTimelineStatus()` and everything else in that section unchanged.
+- Verified live: both labels render correctly above their sections in light and dark mode; no other layout changes.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

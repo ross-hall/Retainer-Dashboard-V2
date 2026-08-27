@@ -5011,7 +5011,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.55.0';
+const APP_VERSION = '0.55.3';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6459,13 +6459,27 @@ function renderAnimHome(){
   const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
   const todayIso = iso(new Date());
 
+  // Single-expand accordion, mirroring the public dashboard's stage accordion —
+  // one stage's tasks visible at a time instead of every stage's task list
+  // open at once, per explicit "too complex, needs reducing" follow-up.
+  // Defaults to the first incomplete stage so there's always something useful
+  // open on first visit.
+  if(state.animHomeExpandedStage==null || !stages.find(s=>s.id===state.animHomeExpandedStage)){
+    const firstIncomplete = stages.find(s=>stageStatus(s.id)!=='Complete');
+    state.animHomeExpandedStage = firstIncomplete ? firstIncomplete.id : (stages[0] ? stages[0].id : null);
+  }
+
   let html = animProjectHeaderHtml(p);
   html += animViewToggleHtml('home');
+  html += `<div class="two-col-cards">`;
 
+  // Left — one card, stages as an accordion (was one full-height card per
+  // stage with every task list always expanded).
   if(!stages.length){
-    html += `<div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>`;
+    html += `<div class="card"><div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div></div>`;
   } else {
-    stages.forEach((s,idx)=>{
+    html += `<div class="card" style="padding:6px 0">${stages.map((s,idx)=>{
+      const isOpen = s.id===state.animHomeExpandedStage;
       const tasks = state.projTasks.filter(t=>t.stage_id===s.id).sort((a,b)=>(a.position||0)-(b.position||0));
       const overdue = s.due_date && s.due_date < todayIso;
       const sStatus = stageStatus(s.id);
@@ -6481,22 +6495,26 @@ function renderAnimHome(){
           <button type="button" class="btn small ghost menu-dots" data-taskmenu="${t.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button>
         </div>`;
       }).join('');
-      html += `<div class="stage-section" data-stagesection="${s.id}">
-        <div class="stage-head">
-          <h4><span class="stage-num">Stage ${idx}</span><span class="inline-editable" data-animstagename="${s.id}" title="Click to rename">${esc(s.name)}</span>${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
-          <button type="button" class="stage-date-btn" data-animstagedate="${s.id}" style="margin-left:auto">${dateLabel}</button>
+      return `<div class="anim-acc-item">
+        <div class="anim-acc-head" data-animstagetoggle="${s.id}">
+          <span class="stage-num">${idx+1}</span>
+          <span class="inline-editable anim-acc-name" data-animstagename="${s.id}" title="Click to rename">${esc(s.name)}</span>
+          ${sStatus==='Complete'?'<span class="status-pill status-complete">✓</span>':''}
+          <button type="button" class="stage-date-btn" data-animstagedate="${s.id}">${dateLabel}</button>
+          <span class="anim-acc-toggle">${isOpen?'−':'+'}</span>
         </div>
-        <div class="card" style="padding:4px 12px">${taskRows || `<div class="empty" style="padding:12px 0;font-size:12.5px">No tasks in this stage yet.</div>`}</div>
-        <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
+        ${isOpen ? `<div class="anim-acc-body">
+          ${taskRows || `<div class="empty" style="padding:10px 0;font-size:12.5px">No tasks in this stage yet.</div>`}
+          <div style="margin-top:8px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
+        </div>` : ''}
       </div>`;
-    });
-    html += `<div style="margin:4px 0 20px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>`;
+    }).join('')}
+      <div style="padding:10px 16px 4px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>
+    </div>`;
   }
 
-  // Recent — reuses animChangedSince (the same helper the removed Snapshot
-  // tab used), one merged feed instead of separate time buckets. Full width
-  // below the stage sections now that those carry task tables, rather than
-  // sitting side-by-side with them.
+  // Right — Recent, reuses animChangedSince (the same helper the removed
+  // Snapshot tab used), now sitting beside the stages card instead of below it.
   const shots = animShotsFor(p.id);
   const steps = animStepsFor(p.id);
   const recent = animChangedSince(p.id, 24*30).slice().sort((a,b)=> (b.updated_at||'').localeCompare(a.updated_at||'')).slice(0,8);
@@ -6515,9 +6533,11 @@ function renderAnimHome(){
     }).join('') : `<div class="empty" style="padding:16px 0">No recent activity in the last 30 days.</div>`}
   </div>`;
 
+  html += `</div>`; // .two-col-cards
+
   main.innerHTML = html;
   wireAnimTabsAll();
-  main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
+  main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', (e)=>{ e.stopPropagation(); openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask }); }));
   wireTaskRows(main);
   // The checkbox is a plain binary toggle (done/not done), not the full
   // multi-status popover data-statusinline opens elsewhere — deliberately
@@ -6531,7 +6551,16 @@ function renderAnimHome(){
     if(error){ toast('Could not update'); el.checked = !el.checked; return; }
     await loadAll(); render();
   }));
-  main.querySelectorAll('[data-animstagedate]').forEach(el=>el.addEventListener('click', ()=>{
+  // Accordion header holds nested interactive children (rename, date button)
+  // so it's a div, not a button — each nested control stops propagation so
+  // clicking it doesn't also collapse/expand the row underneath it.
+  main.querySelectorAll('[data-animstagetoggle]').forEach(el=>el.addEventListener('click', ()=>{
+    const id = el.dataset.animstagetoggle;
+    state.animHomeExpandedStage = state.animHomeExpandedStage===id ? null : id;
+    render();
+  }));
+  main.querySelectorAll('[data-animstagedate]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
     const s = stages.find(s=>s.id===el.dataset.animstagedate);
     openMiniDatePicker(el, s.due_date, async (newDate, newTime)=>{
       const { error } = await db.from('rs_project_stages').update({ due_date:newDate, due_time:newDate?newTime:null }).eq('id', s.id);
@@ -6595,46 +6624,8 @@ function renderAnimGrid(){
 
   const todayIso = iso(new Date());
   const budget = p.anim_total_seconds!=null ? +p.anim_total_seconds : null;
-  const allocated = shots.reduce((n,s)=> n + (s.duration_seconds ? +s.duration_seconds : 0), 0);
-  const approvedSecs = shots.reduce((n,s)=>{
-    const pr = animShotProgress(s, steps);
-    return n + (pr.done===steps.length && steps.length ? (s.duration_seconds ? +s.duration_seconds : 0) : 0);
-  }, 0);
 
-  const flags = { retakes:[], overdue:[], clientWait:[], unassigned:[], stalled:[] };
-  shots.forEach(s=>{
-    steps.forEach(st=>{
-      const c = animCell(s.id, st.id);
-      if(!c) return;
-      const beh = animStatusBehavior(c.status);
-      if(beh==='retake')  flags.retakes.push({s,st,c});
-      if(beh==='waiting') flags.clientWait.push({s,st,c});
-      if(c.due_date && c.due_date < todayIso && beh!=='done' && beh!=='omitted') flags.overdue.push({s,st,c});
-      if(beh==='wip' && !c.assignee_id) flags.unassigned.push({s,st,c});
-    });
-    const anyTouched = steps.some(st=>animCell(s.id,st.id));
-    if(!anyTouched) flags.stalled.push({s});
-  });
-
-  const chip = (label, n, color)=> n ? `<span class="status" style="background:${color}22;color:${color};font-weight:600">${n} ${label}</span>` : '';
-  html += `<div class="card" style="margin-bottom:18px">
-    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:center">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        ${chip('need retakes', flags.retakes.length, '#E8623D')}
-        ${chip('overdue', flags.overdue.length, '#c9372c')}
-        ${chip('awaiting client', flags.clientWait.length, '#15AABF')}
-        ${chip('unassigned', flags.unassigned.length, '#e08c00')}
-        ${chip('not started', flags.stalled.length, '#7b7d92')}
-        ${!Object.values(flags).some(a=>a.length) ? '<span style="font-size:13px;color:var(--green);font-weight:600">✓ Nothing needs attention</span>' : ''}
-      </div>
-      <div style="font-size:12.5px;color:var(--muted);text-align:right">
-        <div><b style="color:var(--ink)">${allocated}s</b> across ${shots.length} shot${shots.length===1?'':'s'}${budget!=null?` of ${budget}s contracted`:''}</div>
-        <div>${approvedSecs}s fully approved${budget?` · ${Math.round(approvedSecs/budget*100)}% delivered`:''}</div>
-        ${budget!=null && allocated!==budget ? `<div style="color:var(--amber);font-weight:600">⚠ shot durations ${allocated>budget?'exceed':'fall short of'} the contracted ${budget}s</div>` : ''}
-      </div>
-    </div>
-  </div>`;
-
+  html += `<div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:4px 0 12px">Pipeline</div>`;
   html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
     <button class="btn small" id="animAddShot">+ Shot</button>
     <button class="btn small ghost" id="animAddStep">+ Pipeline step</button>
@@ -6705,7 +6696,7 @@ function renderAnimGrid(){
     const tlAllocated = timedShots.reduce((n,s)=> n + +s.duration_seconds, 0);
     const tlRemainder = budget!=null ? Math.max(0, budget - tlAllocated) : 0;
 
-    html += `<div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:28px 0 12px">Timeline</div>`;
+    html += `<div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:28px 0 12px">Shot Timeline</div>`;
     html += `<div class="card" style="margin-bottom:18px">
       <div style="font-size:12.5px;color:var(--muted)">
         <b style="color:var(--ink)">${tlAllocated}s</b> of shots laid out across the timeline${budget!=null?` · ${budget}s contracted${tlRemainder?` · ${tlRemainder}s unallocated`:''}`:''}
