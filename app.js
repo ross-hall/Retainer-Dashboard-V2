@@ -3888,6 +3888,10 @@ function openProjectModal(projectId, clientId){
       <div id="pj_extra_wrap" style="display:contents">${projExtraFieldHtml(initialType, p&&p.details)}</div>
       <div><label>Label <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="pj_label" value="${esc(p&&p.label?p.label:'')}" placeholder="e.g. Rush, Q3"></div>
       <div><label>Review days <span style="color:var(--muted);font-weight:400">(business days after a stage's due date)</span></label><input type="number" min="1" id="pj_review" value="${p&&p.review_days!=null?p.review_days:5}"></div>
+      <div class="full" id="pj_animwrap" style="${isAnimationType(initialType)?'display:none':''}">
+        <label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="pj_reqanim" ${p&&p.requires_animation?'checked':''} style="width:auto"> Requires animation pipeline</label>
+        <div class="sub" style="margin:4px 0 0">Gives this project its own shots/pipeline on the Animation page, listed under "Embedded Animation Work" — separate from full animation-type projects.</div>
+      </div>
       <div class="full sub" style="margin:0;color:var(--muted)">Miro board links are set once per client — edit them from that client's page or Settings.</div>
     </form>
     <div class="modal-actions">
@@ -3898,7 +3902,13 @@ function openProjectModal(projectId, clientId){
       </div>
     </div>
   `);
-  $('#pj_type').addEventListener('change', e=>{ $('#pj_extra_wrap').innerHTML = projExtraFieldHtml(e.target.value, {}); });
+  $('#pj_type').addEventListener('change', e=>{
+    $('#pj_extra_wrap').innerHTML = projExtraFieldHtml(e.target.value, {});
+    // Redundant for a project whose main type is already an animation type —
+    // that already gets a pipeline via animProjects()'s type-name match, so
+    // hide the flag rather than show a checkbox that does nothing new.
+    $('#pj_animwrap').style.display = isAnimationType(e.target.value) ? 'none' : '';
+  });
   $('#pj_cancel').onclick = closeModal;
   if(!isNew) $('#pj_archive').onclick = async ()=>{
     await db.from('rs_projects').update({active:!p.active}).eq('id',p.id);
@@ -3910,19 +3920,34 @@ function openProjectModal(projectId, clientId){
     const label = $('#pj_label').value.trim() || null;
     const review_days = $('#pj_review').value ? +$('#pj_review').value : 5;
     const details = projExtraFieldValue(project_type);
+    const reqAnimEl = $('#pj_reqanim');
+    const requires_animation = reqAnimEl ? reqAnimEl.checked : false;
+    // requires_animation needs v33 — try with it first, and if the column
+    // doesn't exist yet (PGRST204), retry without it so project create/edit
+    // still works and only the flag itself is silently dropped, matching the
+    // link_date/v30 degrade pattern above.
+    let flagDropped = false;
     if(isNew){
-      const { data, error } = await db.from('rs_projects').insert({ client_id:client.id, name, project_type, label, review_days, details }).select().single();
+      let { data, error } = await db.from('rs_projects').insert({ client_id:client.id, name, project_type, label, review_days, details, requires_animation }).select().single();
+      if(error && error.code==='PGRST204'){
+        flagDropped = true;
+        ({ data, error } = await db.from('rs_projects').insert({ client_id:client.id, name, project_type, label, review_days, details }).select().single());
+      }
       if(error){ toast('Could not create project'); console.error(error); return; }
       const cfg = typeConfig(project_type);
       const template = (cfg && cfg.stage_template && cfg.stage_template.length) ? cfg.stage_template : STAGE_TEMPLATES.default;
       await Promise.all(template.map((sName,i)=>db.from('rs_project_stages').insert({ project_id:data.id, name:sName, position:i })));
-      closeModal(); toast('Project created');
+      closeModal(); toast(flagDropped && requires_animation ? 'Project created (run migration v33 to enable the animation pipeline flag)' : 'Project created');
       state.projProjectId = data.id; state.projView = 'project';
       await refreshProjectView();
     } else {
-      const { error } = await db.from('rs_projects').update({ name, project_type, label, review_days, details }).eq('id', p.id);
+      let { error } = await db.from('rs_projects').update({ name, project_type, label, review_days, details, requires_animation }).eq('id', p.id);
+      if(error && error.code==='PGRST204'){
+        flagDropped = true;
+        ({ error } = await db.from('rs_projects').update({ name, project_type, label, review_days, details }).eq('id', p.id));
+      }
       if(error){ toast('Could not save'); console.error(error); return; }
-      closeModal(); toast('Project updated'); await refreshProjectView();
+      closeModal(); toast(flagDropped && requires_animation ? 'Project updated (run migration v33 to enable the animation pipeline flag)' : 'Project updated'); await refreshProjectView();
     }
   };
 }
@@ -5011,7 +5036,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.56.0';
+const APP_VERSION = '0.57.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5263,8 +5288,14 @@ function animStatusBehavior(name){ return animStatusRecord(name)?.behavior || 'n
 
 function animProjects(){
   const cfgNames = state.projectTypes.filter(t=>/anim/i.test(t.name)).map(t=>t.name);
-  return state.projects.filter(p=>p.active && (cfgNames.includes(p.project_type) || /anim/i.test(p.project_type)));
+  return state.projects.filter(p=>p.active && (cfgNames.includes(p.project_type) || /anim/i.test(p.project_type) || p.requires_animation));
 }
+// Split of animProjects() into the two Animation-page headings — a project
+// whose main type is already an animation type ("full"), vs one flagged
+// requires_animation whose main type is something else ("embedded", e.g. a
+// Website project that also needs a shot pipeline for looping renders).
+function animFullProjects(){ return animProjects().filter(p=>isAnimationType(p.project_type)); }
+function animEmbeddedProjects(){ return animProjects().filter(p=>!isAnimationType(p.project_type)); }
 function animShotsFor(projectId){ return state.animShots.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
 function animStepsFor(projectId){ return state.animSteps.filter(s=>s.project_id===projectId).sort((a,b)=>a.position-b.position); }
 function animCell(shotId, stepId){ return state.animCells.find(c=>c.shot_id===shotId && c.step_id===stepId) || null; }
@@ -6394,34 +6425,51 @@ function renderAnimation(){
 
 /* Card grid of every active animation project, same shape as the All
    Projects client cards — click one to jump straight into its Home. */
+function animProjectCardHtml(p){
+  const c = state.clients.find(cl=>cl.id===p.client_id);
+  const shots = animShotsFor(p.id);
+  const steps = animStepsFor(p.id);
+  const approved = steps.length ? shots.filter(s=> animShotProgress(s, steps).done===steps.length).length : 0;
+  const pct = shots.length ? Math.round(approved/shots.length*100) : 0;
+  return `<div class="card client-card" data-animopen="${p.id}">
+    <h3 style="display:flex;align-items:center;gap:8px">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:'Unknown client'}</h3>
+    <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
+    <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
+      <div><span>Shots</span><span>${shots.length}</span></div>
+      <div><span>Approved</span><span>${approved}/${shots.length}</span></div>
+    </div>
+    ${shots.length? `<div class="mini-progress"><div class="fill" style="width:${pct}%"></div></div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">${pct}% approved</div>`:''}
+  </div>`;
+}
+
 function renderAnimProjectsGrid(){
-  const projects = animProjects();
+  const full = animFullProjects();
+  const embedded = animEmbeddedProjects();
   let html = `<div><h2>Animation <span style="font-size:13px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px;margin-left:6px">Beta</span></h2>
     <div class="sub" style="margin-bottom:0">Every active animation project — click one to open it</div></div>
     <div style="margin-bottom:18px"></div>`;
 
-  if(!projects.length){
-    html += emptyStateHtml({ icon:'film', title:'No animation projects yet', subtitle:"Create a project with an animation type under All Projects and it'll appear here." });
+  if(!full.length && !embedded.length){
+    html += emptyStateHtml({ icon:'film', title:'No animation projects yet', subtitle:"Create a project with an animation type — or tick \"Requires animation pipeline\" on any project — under All Projects and it'll appear here." });
     main.innerHTML = html;
     return;
   }
 
-  html += `<div class="grid">${projects.map(p=>{
-    const c = state.clients.find(cl=>cl.id===p.client_id);
-    const shots = animShotsFor(p.id);
-    const steps = animStepsFor(p.id);
-    const approved = steps.length ? shots.filter(s=> animShotProgress(s, steps).done===steps.length).length : 0;
-    const pct = shots.length ? Math.round(approved/shots.length*100) : 0;
-    return `<div class="card client-card" data-animopen="${p.id}">
-      <h3 style="display:flex;align-items:center;gap:8px">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:'Unknown client'}</h3>
-      <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
-      <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
-        <div><span>Shots</span><span>${shots.length}</span></div>
-        <div><span>Approved</span><span>${approved}/${shots.length}</span></div>
-      </div>
-      ${shots.length? `<div class="mini-progress"><div class="fill" style="width:${pct}%"></div></div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">${pct}% approved</div>`:''}
-    </div>`;
-  }).join('')}</div>`;
+  // Full animation-type projects (60–120s standalone deliverables) vs.
+  // embedded work (a Website/Deck/Branding project that also needs a shot
+  // pipeline for looping renders or inline animation) — same card, same
+  // click-through, just grouped under separate headings so the two kinds of
+  // work don't blur together in one flat grid.
+  html += `<div class="pd-section-title">Full Animation Projects</div>`;
+  html += full.length
+    ? `<div class="grid">${full.map(animProjectCardHtml).join('')}</div>`
+    : `<div class="empty">No full animation projects yet.</div>`;
+
+  html += `<div class="pd-divider"></div>`;
+  html += `<div class="pd-section-title">Embedded Animation Work</div>`;
+  html += embedded.length
+    ? `<div class="grid">${embedded.map(animProjectCardHtml).join('')}</div>`
+    : `<div class="empty">No embedded animation work yet — tick "Requires animation pipeline" when creating or editing a project to add it here.</div>`;
 
   main.innerHTML = html;
   main.querySelectorAll('[data-animopen]').forEach(el=>el.addEventListener('click', ()=>{
