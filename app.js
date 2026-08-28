@@ -5011,7 +5011,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.55.3';
+const APP_VERSION = '0.56.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6474,9 +6474,11 @@ function renderAnimHome(){
   html += `<div class="two-col-cards">`;
 
   // Left — one card, stages as an accordion (was one full-height card per
-  // stage with every task list always expanded).
+  // stage with every task list always expanded). Title sits outside the
+  // card, bigger, matching the public dashboard's .pd-section-title style.
+  html += `<div><div class="pd-section-title">Project Milestones</div>`;
   if(!stages.length){
-    html += `<div class="card"><div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div></div>`;
+    html += `<div class="card"><div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div></div></div>`;
   } else {
     html += `<div class="card" style="padding:6px 0">${stages.map((s,idx)=>{
       const isOpen = s.id===state.animHomeExpandedStage;
@@ -6510,7 +6512,7 @@ function renderAnimHome(){
       </div>`;
     }).join('')}
       <div style="padding:10px 16px 4px"><button class="btn small ghost" id="animHomeAddStage">+ Add stage</button></div>
-    </div>`;
+    </div></div>`;
   }
 
   // Right — Recent, reuses animChangedSince (the same helper the removed
@@ -6518,8 +6520,7 @@ function renderAnimHome(){
   const shots = animShotsFor(p.id);
   const steps = animStepsFor(p.id);
   const recent = animChangedSince(p.id, 24*30).slice().sort((a,b)=> (b.updated_at||'').localeCompare(a.updated_at||'')).slice(0,8);
-  html += `<div class="card">
-    <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Recent</div>
+  html += `<div><div class="pd-section-title">Recent</div><div class="card">
     ${recent.length ? recent.map(cItem=>{
       const shot = shots.find(sh=>sh.id===cItem.shot_id);
       const step = steps.find(st=>st.id===cItem.step_id);
@@ -6531,7 +6532,7 @@ function renderAnimHome(){
         <div style="font-size:11px;color:var(--muted);white-space:nowrap">${esc(timeAgoLabel(cItem.updated_at))}</div>
       </div>`;
     }).join('') : `<div class="empty" style="padding:16px 0">No recent activity in the last 30 days.</div>`}
-  </div>`;
+  </div></div>`;
 
   html += `</div>`; // .two-col-cards
 
@@ -6625,17 +6626,23 @@ function renderAnimGrid(){
   const todayIso = iso(new Date());
   const budget = p.anim_total_seconds!=null ? +p.anim_total_seconds : null;
 
-  html += `<div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:4px 0 12px">Pipeline</div>`;
-  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-    <button class="btn small" id="animAddShot">+ Shot</button>
-    <button class="btn small ghost" id="animAddStep">+ Pipeline step</button>
-    <button class="btn small ghost" id="animSetBudget">${budget!=null?'Edit':'Set'} total seconds</button>
-  </div>`;
+  // Pipeline — one card holds the toolbar, the shot grid, and its legend,
+  // instead of the buttons/table/legend sitting as three loose siblings.
+  // Title lives outside the card, in the bigger .pd-section-title style
+  // (shared with the public client dashboard) rather than the old tiny
+  // uppercase label.
+  html += `<div class="pd-section-title">Pipeline</div>`;
+  html += `<div class="card">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <button class="btn small" id="animAddShot">+ Shot</button>
+      <button class="btn small ghost" id="animAddStep">+ Pipeline step</button>
+      <button class="btn small ghost" id="animSetBudget">${budget!=null?'Edit':'Set'} total seconds</button>
+    </div>`;
 
   if(!shots.length){
-    html += `<div class="empty">No shots yet — add your first shot to start building the pipeline grid.</div>`;
+    html += `<div class="empty">No shots yet — add your first shot to start building the pipeline grid.</div></div>`;
   } else {
-    html += `<div class="card" style="padding:0;overflow-x:auto">
+    html += `<div style="overflow-x:auto">
       <table class="anim-grid" style="min-width:${260 + steps.length*104}px">
         <thead><tr>
           <th style="min-width:210px">Shot</th>
@@ -6682,33 +6689,38 @@ function renderAnimGrid(){
         </tbody>
       </table>
     </div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--muted)">
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:11.5px;color:var(--muted)">
       ${animStatusList().map(s=>`<span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:${s.color};display:inline-block"></span>${esc(s.name)}</span>`).join('')}
-    </div>`;
+    </div>
+  </div>`;
 
     // Timeline section — moved here from the old standalone Timeline tab
     // (merged into Animation Pipeline per explicit request). Same shots/
     // progress as the grid above, laid out by running screen-time instead
     // of by row: shots play back-to-back in pipeline position order, each
-    // occupying a slice equal to its own duration.
+    // occupying a slice equal to its own duration. The old "Xs laid out ·
+    // Ys contracted · Zs unallocated" summary card is gone (redundant with
+    // the track itself); the undated-shots warning now lives inside the
+    // same card as the track, shrunk down, rather than as its own
+    // page-level banner above it.
     const timedShots = shots.filter(s=> s.duration_seconds!=null && +s.duration_seconds>0);
     const undatedShots = shots.filter(s=> s.duration_seconds==null || +s.duration_seconds<=0);
     const tlAllocated = timedShots.reduce((n,s)=> n + +s.duration_seconds, 0);
     const tlRemainder = budget!=null ? Math.max(0, budget - tlAllocated) : 0;
 
-    html += `<div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:28px 0 12px">Shot Timeline</div>`;
-    html += `<div class="card" style="margin-bottom:18px">
-      <div style="font-size:12.5px;color:var(--muted)">
-        <b style="color:var(--ink)">${tlAllocated}s</b> of shots laid out across the timeline${budget!=null?` · ${budget}s contracted${tlRemainder?` · ${tlRemainder}s unallocated`:''}`:''}
-      </div>
-    </div>`;
+    html += `<div class="pd-divider"></div>`;
+    html += `<div class="pd-section-title">Shot Timeline</div>`;
+    html += `<div class="card">`;
 
     if(undatedShots.length){
-      html += `<div class="banner"><div>🕓</div><div><strong>${undatedShots.length} shot${undatedShots.length===1?'':'s'}</strong> ${undatedShots.length===1?"doesn't":"don't"} have a duration set, so ${undatedShots.length===1?"it isn't":"they aren't"} placed on the timeline below.
-        <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-start">
-          ${undatedShots.map(s=>`<button class="btn small ghost" data-animshotedit="${s.id}">${esc(s.code)}</button>`).join('')}
+      html += `<div class="banner" style="padding:8px 12px;margin-bottom:14px;font-size:12px;gap:8px">
+        <div style="font-size:14px">🕓</div>
+        <div><strong>${undatedShots.length} shot${undatedShots.length===1?'':'s'}</strong> ${undatedShots.length===1?"doesn't":"don't"} have a duration set, so ${undatedShots.length===1?"it isn't":"they aren't"} placed on the timeline below.
+          <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+            ${undatedShots.map(s=>`<button class="btn small ghost" data-animshotedit="${s.id}" style="font-size:11px;padding:3px 9px">${esc(s.code)}</button>`).join('')}
+          </div>
         </div>
-      </div></div>`;
+      </div>`;
     }
 
     if(!timedShots.length){
@@ -6719,8 +6731,7 @@ function renderAnimGrid(){
       const tickEvery = scale / tickCount;
       const ticks = Array.from({length: tickCount+1}, (_, i)=> Math.round(i*tickEvery));
 
-      html += `<div class="card" style="padding:16px">
-        <div style="display:flex;font-size:10.5px;color:var(--muted);margin-bottom:6px">
+      html += `<div style="display:flex;font-size:10.5px;color:var(--muted);margin-bottom:6px">
           ${ticks.map((t,i)=> `<span style="flex:${i===ticks.length-1?'0 0 auto':'1'};${i===ticks.length-1?'':'border-right:1px dashed var(--line)'};padding-left:4px">${t}s</span>`).join('')}
         </div>
         <div class="anim-timeline-track">
@@ -6737,9 +6748,9 @@ function renderAnimGrid(){
           ${[['Not started','#e7e7ee'],['In progress','#4C6EF5'],['Awaiting client','#15AABF'],['Needs retakes','#E8623D'],['Overdue','#c9372c'],['Approved','#2FB380']].map(([label,color])=>
             `<span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:${color};display:inline-block"></span>${label}</span>`
           ).join('')}
-        </div>
-      </div>`;
+        </div>`;
     }
+    html += `</div>`;
   }
 
   main.innerHTML = html;
@@ -6861,6 +6872,7 @@ function renderAnimSchedule(){
 
   let html = animProjectHeaderHtml(p);
   html += animViewToggleHtml('schedule');
+  html += `<div class="pd-section-title">Work Schedule</div>`;
 
   if(!steps.length){
     html += `<div class="banner"><div>🎬</div><div>This project has no pipeline steps yet. Set up the pipeline from the Pipeline tab first.</div></div>`;
@@ -7265,11 +7277,11 @@ function renderAnimFeedbackTab(){
       dataset/state keys ('grid', 'schedule') are unchanged from before this
       rename — only the button labels moved, so nothing else had to change. */
 function animViewToggleHtml(tab){
-  return `<div class="view-toggle" style="margin-bottom:20px">
-    <button class="btn small ${tab==='home'?'':'ghost'}" data-animtab="home">Home</button>
-    <button class="btn small ${!tab||tab==='grid'?'':'ghost'}" data-animtab="grid">Animation Pipeline</button>
-    <button class="btn small ${tab==='schedule'?'':'ghost'}" data-animtab="schedule">Work Schedule</button>
-  </div>`;
+  const cur = tab || 'grid';
+  const items = [['home','Home'],['grid','Animation Pipeline'],['schedule','Work Schedule']];
+  return `<div class="pd-tabs" style="padding:0;margin-bottom:24px">${items.map(([key,label])=>
+    `<button type="button" class="pd-tab ${cur===key?'active':''}" data-animtab="${key}" style="${cur===key?'color:var(--accent);border-color:var(--accent)':''}">${label}</button>`
+  ).join('')}</div>`;
 }
 
 /* ── Shared tab wiring ─────────────────────────────────────────────────── */

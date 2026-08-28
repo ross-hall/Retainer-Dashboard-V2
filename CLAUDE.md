@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.55.3**
+Current version: **v0.56.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -550,6 +550,13 @@ Font: Inter (unchanged from v0.9.0)
 - **`renderAnimGrid()` gained a small uppercase "Pipeline" label** above the `+ Shot`/`+ Pipeline step`/`Edit total seconds` toolbar — the page previously went straight from the Home/Animation Pipeline/Work Schedule tab bar into the toolbar with no heading of its own for the shot-grid section.
 - **The merged Shot Timeline section's label changed from "Timeline" to "Shot Timeline"** — same uppercase muted style, cosmetic rename only, `animShotTimelineStatus()` and everything else in that section unchanged.
 - Verified live: both labels render correctly above their sections in light and dark mode; no other layout changes.
+
+**What shipped in v0.56.0** (Animation page visual pass — underline tabs instead of pill buttons, bigger outside-the-card section titles with a divider, buttons grouped into their section's card, "Project Milestones" title added, and the Shot Timeline summary card removed):
+- **`animViewToggleHtml()` switched from pill `.btn`/`.btn ghost` buttons to the same underline-tab component the public client dashboard already uses** (`.pd-tabs`/`.pd-tab`, previously only used for the client-project switcher strips) — Home/Animation Pipeline/Work Schedule now read as a proper tab bar with a bottom-border underline on the active tab instead of a filled pill, on all three Animation subpages at once since they all share this one helper.
+- **Every section on the Animation subpages now follows the same shape: a bigger title outside the card, one card holding that section's buttons + content, and a `.pd-divider` between sections** — reusing `.pd-section-title`/`.pd-divider` verbatim from the public client dashboard ("similar to the client dashboard home page", per explicit request) rather than inventing internal-app equivalents. Concretely: Animation Home gained a **"Project Milestones"** title above the stage accordion (previously untitled) and "Recent" moved from a small uppercase in-card label to its own bigger title outside the card; Animation Pipeline's "Pipeline" toolbar (+ Shot/+ Pipeline step/Edit total seconds) is now inside the same card as the shot grid and its legend, instead of sitting above it as a separate row, with "Shot Timeline" below a `.pd-divider`; Work Schedule gained a "Work Schedule" title (it previously had none) — the "Today" button and hint text were already inside that page's one card, so no restructuring was needed there beyond the title.
+- **Removed the "Xs of shots laid out across the timeline · Ys contracted · Zs unallocated" summary card** from Shot Timeline entirely, per explicit request — judged redundant with the timeline track itself, which already shows the same allocation visually.
+- **The undated-shots warning ("N shots don't have a duration set…") moved from its own page-level `.banner` into the same card as the timeline track**, shrunk down (smaller padding/font, buttons shrunk to `11px`/`3px 9px`) so it reads as an inline note rather than a full-width alert competing with the track below it.
+- Verified live: tab bar underline/active state on all three subpages in both light and dark mode; Pipeline's toolbar+grid+legend rendering as one card with no visible seam; Shot Timeline's warning + ticks + track + legend all inside one card with the old stats card confirmed gone; Work Schedule's new title; the `≤760px` mobile stack (tabs scroll horizontally, two-col-cards stack with titles preserved above each).
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
