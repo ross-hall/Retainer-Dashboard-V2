@@ -5036,7 +5036,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.57.0';
+const APP_VERSION = '0.57.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6945,10 +6945,32 @@ function renderAnimSchedule(){
   });
   rangeStart = new Date(rangeStart); rangeStart.setDate(rangeStart.getDate()-3);
   rangeEnd = new Date(rangeEnd); rangeEnd.setDate(rangeEnd.getDate()+3);
-  const totalDays = Math.round((rangeEnd-rangeStart)/86400000)+1;
-  const dayAt = i => { const d=new Date(rangeStart); d.setDate(d.getDate()+(i-1)); return d; };
+
+  // Weekdays only — Sat/Sun are skipped entirely (no column rendered), per
+  // explicit request. Columns are indexed within this weekday-only list
+  // rather than by raw days-since-start, so dayAt/dayIsoAt/colForIso all
+  // route through it. A date that happens to fall on a weekend (a shot's
+  // work_start_date/work_end_date or a stage due_date can be set to any
+  // day) snaps forward to the following Monday so it still lands on a
+  // real, visible column instead of going out of range.
+  const weekdays = [];
+  for(let d=new Date(rangeStart); d<=rangeEnd; d.setDate(d.getDate()+1)){
+    const dow = d.getDay();
+    if(dow!==0 && dow!==6) weekdays.push(new Date(d));
+  }
+  const totalDays = weekdays.length;
+  const dayAt = i => weekdays[i-1];
   const dayIsoAt = i => iso(dayAt(i));
-  const colForIso = dateIso => Math.round((new Date(dateIso+'T00:00')-rangeStart)/86400000)+1;
+  const colForIso = dateIso => {
+    const d = new Date(dateIso+'T00:00');
+    const dow = d.getDay();
+    if(dow===0) d.setDate(d.getDate()+1);
+    else if(dow===6) d.setDate(d.getDate()+2);
+    const targetIso = iso(d);
+    let idx = weekdays.findIndex(w=>iso(w)===targetIso);
+    if(idx===-1) idx = d < rangeStart ? 0 : weekdays.length-1;
+    return idx+1;
+  };
   const rangeStartIso = iso(rangeStart), rangeEndIso = iso(rangeEnd);
 
   // Client deliverables — this project's own stage due dates, the same
@@ -7026,7 +7048,7 @@ function renderAnimSchedule(){
       <button type="button" class="btn small ghost" id="animSchedToday">Today</button>
       <div style="font-size:11.5px;color:var(--muted)">Client deliverable dates from this project's stages · click a bar to edit dates · drag to move · drag an edge to resize · drag across an empty row to schedule a shot</div>
     </div>
-    <div style="overflow-x:auto" id="animSchedWrap">
+    <div style="overflow-x:auto;padding-bottom:14px" id="animSchedWrap">
       <div class="anim-sched-grid" style="grid-template-columns:200px repeat(${totalDays}, minmax(30px,1fr));min-width:${200+totalDays*32}px">
         ${cornerCells}
         ${monthBandHtml}
