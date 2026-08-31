@@ -497,13 +497,6 @@
   button.checklist-hub-row:hover{background:var(--row-hover);border-color:var(--accent)}
 
   .view-toggle{display:flex;gap:6px;margin-bottom:14px}
-  .switch-toggle{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
-  .switch-toggle input{display:none}
-  .switch-track{width:34px;height:19px;border-radius:99px;background:var(--track);border:1px solid var(--line);position:relative;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease);flex:none}
-  .switch-knob{position:absolute;top:1px;left:1px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:var(--shadow-sm);transition:transform var(--fast) var(--ease)}
-  .switch-toggle input:checked + .switch-track{background:var(--accent);border-color:var(--accent)}
-  .switch-toggle input:checked + .switch-track .switch-knob{transform:translateX(15px)}
-  .switch-toggle .switch-label{font-size:13px;font-weight:500;color:var(--ink)}
   .cal.milestones .day{min-height:170px;padding:10px}
   .cal.milestones{gap:8px}
   .milestone-chip{border-radius:8px;padding:8px 9px;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--line);color:var(--ink);margin-bottom:6px;font-size:11px;line-height:1.5;cursor:grab;box-shadow:var(--shadow-sm);transition:box-shadow var(--fast) var(--ease),transform var(--fast) var(--ease)}
@@ -820,7 +813,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.57.1</div>
+    <div id="versionBadge" class="version-badge">v0.58.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -2298,31 +2291,32 @@ function dashboardLinkButtonHtml(c){
   const url = `${window.location.origin}${window.location.pathname}?client=${c.slug}&admin=1`;
   return `<a class="btn small ghost" href="${esc(url)}" target="_blank" rel="noopener">View dashboard ↗</a>`;
 }
+// Header follows the same shape renderProjDetail/animProjectHeaderHtml use:
+// breadcrumb, title row with action buttons, secondary info (here: renewal
+// date + allowance meter), then an underline-tab strip — no enclosing .card,
+// replacing the old boxed header + Allowance View switch-toggle.
 function clientRetainerHeaderHtml(c, tab){
   const u = clientUsage(c);
   return `<div class="breadcrumb"><button data-bc="clients">Clients</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
-    <div class="card" style="margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-        <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span></h2>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}${dashboardLinkButtonHtml(c)}</div>
-      </div>
-      <div style="margin-top:18px">
-        <div style="font-size:12.5px;color:var(--muted);margin-bottom:2px">${renewsInDays(u.cyc.next)} (${fmtDate(u.cyc.next)})</div>
-        ${meterHtml(u, c.retainer_hours)}
-      </div>
-      <label class="switch-toggle" style="margin:18px 0 0">
-        <input type="checkbox" id="allowanceTrackingToggle" ${tab==='allowance'?'checked':''}>
-        <span class="switch-track"><span class="switch-knob"></span></span>
-        <span class="switch-label">Allowance View</span>
-      </label>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+      <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span></h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}${dashboardLinkButtonHtml(c)}</div>
+    </div>
+    <div style="margin-bottom:20px">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:2px">${renewsInDays(u.cyc.next)} (${fmtDate(u.cyc.next)})</div>
+      ${meterHtml(u, c.retainer_hours)}
+    </div>
+    <div class="pd-tabs" style="padding:0;margin-bottom:24px">
+      <button type="button" class="pd-tab ${tab==='tasks'?'active':''}" data-retainertab="tasks" style="${tab==='tasks'?'color:var(--accent);border-color:var(--accent)':''}">Home</button>
+      <button type="button" class="pd-tab ${tab==='allowance'?'active':''}" data-retainertab="allowance" style="${tab==='allowance'?'color:var(--accent);border-color:var(--accent)':''}">Monthly Allowance</button>
     </div>`;
 }
 function wireClientRetainerHeader(){
   if($('[data-bc="clients"]')) $('[data-bc="clients"]').onclick = ()=>{ state.view='projects'; state.projView='clients'; render(); };
-  if($('#allowanceTrackingToggle')) $('#allowanceTrackingToggle').addEventListener('change', (e)=>{
-    state.retainerTab = e.target.checked ? 'allowance' : 'tasks';
+  main.querySelectorAll('[data-retainertab]').forEach(el=>el.addEventListener('click', ()=>{
+    state.retainerTab = el.dataset.retainertab;
     render();
-  });
+  }));
   wireMiroButtons();
 }
 
@@ -4518,23 +4512,31 @@ function renderProjDetail(){
   const doneCount = allTasks.filter(t=>isCompleteStatus(t.status)).length;
   const pctComplete = allTasks.length ? Math.round(doneCount/allTasks.length*100) : 0;
 
+  // Header follows the same shape every project/retainer/animation page now
+  // uses: breadcrumb, then a title row with action buttons, then whatever
+  // secondary info this page type has (here: type/label chips + progress —
+  // animation's equivalent is its scope pill, retainer's is the renewal +
+  // meter), then an underline-tab strip. No enclosing .card any more, to
+  // match animProjectHeaderHtml's frameless header exactly.
   let html = `<div class="breadcrumb">
       <button data-bc="clients">All Projects</button><span class="sep">/</span>
       <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
       <span class="current">${esc(p.name)}</span>
     </div>
-    <div class="card" style="margin-bottom:26px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-        <h2>${esc(p.name)}</h2>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${miroButtonsHtml(c)}
-          <button class="btn small ghost" id="checklistsBtn">✓ Checklists${state.checklists.filter(cl=>cl.project_id===p.id).length? ` (${state.checklists.filter(cl=>cl.project_id===p.id).length})`:''}</button>
-          <button class="btn small" style="background:#7289DA" id="discordBtn">Share to Discord</button>
-          <button class="btn small ghost" id="editProjectBtn">Edit project</button>
-        </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+      <h2 style="display:flex;align-items:center;gap:8px">${projectTypeIconHtml(p.project_type,18)}${esc(p.name)}</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${miroButtonsHtml(c)}
+        <button class="btn small ghost" id="checklistsBtn">✓ Checklists${state.checklists.filter(cl=>cl.project_id===p.id).length? ` (${state.checklists.filter(cl=>cl.project_id===p.id).length})`:''}</button>
+        <button class="btn small" style="background:#7289DA" id="discordBtn">Share to Discord</button>
+        <button class="btn small ghost" id="editProjectBtn">Edit project</button>
       </div>
-      ${(p.label || projectDetailsSummary(p))? `<div class="sub" style="margin-bottom:${allTasks.length?'16px':'0'}">${projectDetailsSummary(p)?`<span class="type-badge">${esc(projectDetailsSummary(p))}</span>`:''}${p.label?`<span class="label-chip"${projectDetailsSummary(p)?'':' style="margin-left:0"'}>${esc(p.label)}</span>`:''}</div>` : ''}
-      ${allTasks.length? `<div style="max-width:320px"><div class="mini-progress"><div class="fill" style="width:${pctComplete}%"></div></div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">${pctComplete}% complete · ${doneCount}/${allTasks.length} tasks</div></div>`:''}
+    </div>
+    ${(p.label || projectDetailsSummary(p))? `<div class="sub" style="margin-bottom:${allTasks.length?'16px':'20px'}">${projectDetailsSummary(p)?`<span class="type-badge">${esc(projectDetailsSummary(p))}</span>`:''}${p.label?`<span class="label-chip"${projectDetailsSummary(p)?'':' style="margin-left:0"'}>${esc(p.label)}</span>`:''}</div>` : ''}
+    ${allTasks.length? `<div style="max-width:320px;margin-bottom:20px"><div class="mini-progress"><div class="fill" style="width:${pctComplete}%"></div></div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">${pctComplete}% complete · ${doneCount}/${allTasks.length} tasks</div></div>`:''}
+    ${(!p.label && !projectDetailsSummary(p) && !allTasks.length) ? `<div style="margin-bottom:20px"></div>` : ''}
+    <div class="pd-tabs" style="padding:0;margin-bottom:24px">
+      <button type="button" class="pd-tab active" style="color:var(--accent);border-color:var(--accent)">Home</button>
     </div>
     <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
 
@@ -5868,7 +5870,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.57.1';
+const APP_VERSION = '0.58.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
