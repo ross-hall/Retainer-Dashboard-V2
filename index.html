@@ -4720,10 +4720,14 @@ function projectDetailsSummary(p){
 // length", "12 slides", "Full branding") wrapped in one shared chip style,
 // so every project card/page shows a project's specific scope the same way
 // instead of each place inventing its own markup. Returns '' when there's
-// nothing to show (project has no type-specific details set yet).
-function projectScopePillHtml(p){
+// nothing to show (project has no type-specific details set yet). Pass
+// {afterBadge:true} when this pill follows a type-badge chip (it needs a
+// left margin there) — everywhere else it's the first chip in its row, so
+// no margin, matching how .label-chip's own margin is likewise only
+// appropriate when something precedes it.
+function projectScopePillHtml(p, {afterBadge}={}){
   const summary = projectDetailsSummary(p);
-  return summary ? `<span class="scope-chip">${esc(summary)}</span>` : '';
+  return summary ? `<span class="scope-chip"${afterBadge?' style="margin-left:7px"':''}>${esc(summary)}</span>` : '';
 }
 
 function openProjectModal(projectId, clientId){
@@ -7285,7 +7289,7 @@ function animProjectCardHtml(p){
   const pct = shots.length ? Math.round(approved/shots.length*100) : 0;
   return `<div class="card client-card" data-animopen="${p.id}">
     <h3 style="display:flex;align-items:center;gap:8px">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:'Unknown client'}</h3>
-    <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${projectScopePillHtml(p)}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
+    <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${projectScopePillHtml(p,{afterBadge:true})}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
     <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
       <div><span>Shots</span><span>${shots.length}</span></div>
       <div><span>Approved</span><span>${approved}/${shots.length}</span></div>
