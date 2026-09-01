@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.59.0**
+Current version: **v0.59.1**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -58,8 +58,9 @@ HTML structure:
 
 Nav views (state.view) — 'dashboard' (Retainers) is gone as of v0.13.0:
   'home'         → renderHome()
-  'projects'     → renderProjects() → dispatches on state.projView
+  'projects'     → renderProjects() → dispatches on state.projView  [sidebar label "Graphics" as of v0.59.1, was "All Projects"]
                      'retainerTasks' → renderClientTasksView(c) — now internally tabs Tasks/Allowance via state.retainerTab
+                     'clientProjects' → renderProjClientProjects(c) — excludes full animation-type projects as of v0.59.1 (they live on the Animation page instead); a project flagged requires_animation still shows here, since its main type isn't animation
                      (no per-project checklists page as of v0.27.0 — see Checklists note below)
   'animation'    → renderAnimation()  [Animation Beta]
   'tasksahead'   → renderTasksAhead() [Week Tasks]
@@ -598,6 +599,14 @@ Font: Inter (unchanged from v0.9.0)
 - **New `state.projDetailTab`/`state.projDetailTabFor`** — tab state is scoped to whichever project is currently being viewed and self-resets to `'home'` the instant `projDetailTabFor` stops matching the viewed project's id (checked at the top of every `renderProjDetail()` call), rather than requiring every one of the ~9 existing navigation call sites that jump to a project page (Home, command palette, Milestones, quick-add, ...) to remember to reset it themselves. The one deliberate exception: the Animation page's embedded-project cards set both fields to `'pipeline'`/`p.id` immediately before calling `render()`.
 - **Animation page's "Embedded Animation Work" cards now route into the main project page's Pipeline tab instead of the standalone Animation page shell** — `renderAnimProjectsGrid()`'s `[data-animopen]` click handler looks up the clicked project and branches: `requires_animation && !isAnimationType` jumps to `state.view='projects'; state.projView='project'; ...; state.projDetailTab='pipeline'`, everything else (full animation-type projects) keeps the original `state.animProjectId`/`state.animTab='home'` behavior unchanged. The "Embedded Animation Work" section itself is untouched — still a discovery list, just a different destination on click.
 - Verified live: clicking DeepLife's card (a Website project flagged `requires_animation`) from the Animation page landed on `All Projects / DeepLife / Website` with "Animation Pipeline" active and the real shot grid + Shot Timeline rendering (SH010 cell, undated-shot warning, etc.); clicked "Home" and confirmed it switched to the ordinary stage/task view; confirmed a real cell click still opens the status/feedback modal (`openAnimCellModal`) correctly from inside the project-page context; confirmed an ordinary non-embedded project (Branding) still shows exactly one inert "Home" tab with zero change; confirmed a full animation-type project (Metaphore) still has its own separate Home/Animation Pipeline/Work Schedule page, unaffected; dark mode; the `≤760px` mobile stack.
+
+**What shipped in v0.59.1** ("All Projects" renamed to "Graphics" with a new icon; full animation-type projects hidden from it; "Embedded Animation Work" renamed "Embedded Animation Projects"; scope pills moved inline with project-type titles everywhere they appear; the animation-length pill's wording unified on "length"):
+- **Sidebar nav item, breadcrumbs, and the client-list page title all renamed** "All Projects" → **"Graphics"** — the nav icon changed from a folder to a picture/image glyph (rounded frame + sun + mountain path) to match. The mobile top-bar title picks this up automatically since it just reads the active nav button's text, no separate change needed there.
+- **`renderProjClientProjects()` (a client's project grid — the "Graphics" page) now excludes full animation-type projects** (`!isAnimationType(p.project_type)`) — those live on the Animation page instead, so a client like Atransen (an animation-only client) now correctly shows the "No projects yet for this client" empty state on Graphics rather than a redundant card. A project flagged `requires_animation` whose main type is Website/Deck/etc. is unaffected and still shows here, since it's a normal Graphics project with an extra tab, not an animation project.
+- **"Embedded Animation Work" → "Embedded Animation Projects"** — the Animation page's section heading, its empty-state copy, and the New/Edit Project modal's helper text under the "Requires animation pipeline" checkbox all updated to match.
+- **Scope pills moved inline with the title, standardized across every surface that shows one**: the client's Graphics-grid project cards and the project detail page's header both used to show the scope pill (+ label chip) on a separate line below the title (`.cycle`/`.sub` row) — both now render it directly in the title row instead, right after the type icon+name, using `projectScopePillHtml(p,{afterBadge:true})` for the correct spacing. The now-empty `.cycle`/`.sub` wrapper rows were removed outright rather than left rendering nothing.
+- **Unified "Xs scope"/"No scope set" → "Xs length"/"No length set"** on `animProjectHeaderHtml`'s pill (next to the client name on every Animation subpage) — this was the one place still saying "scope" while `projectScopePillHtml` (client cards, project pages, Animation cards) already said "length"; same `anim_total_seconds` field, just inconsistent copy before this.
+- Verified live: Atransen (full-animation client) shows the Graphics empty state with zero project cards; DeepLife's embedded Website project still shows on Graphics with "6 pages" inline next to the title; a Branding project's detail page shows "Refresh branding" + "Rush" inline next to the h2; Metaphore's Animation Home/Pipeline/Work Schedule pages all show "120s length" consistently; dark mode; the `≤760px` mobile stack (chips wrap cleanly under the title on narrow cards).
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

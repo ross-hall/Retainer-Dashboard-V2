@@ -2280,7 +2280,7 @@ function renderClientListTable(){
     `).join('');
   }
 
-  let html = `<div class="breadcrumb"><button data-bc="clients">All Projects</button><span class="sep">/</span><span class="current">Client list</span></div>
+  let html = `<div class="breadcrumb"><button data-bc="clients">Graphics</button><span class="sep">/</span><span class="current">Client list</span></div>
     <h2>Client list</h2>
     <div class="sub">Every client and project at a glance — grouped and sorted however's useful.</div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">
@@ -2355,7 +2355,7 @@ function renderProjClients(){
   const retainerClients = clients.filter(c=>c.is_retainer);
   const projectClients = clients.filter(c=>!c.is_retainer);
   let html = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div><h2>All Projects</h2></div>
+      <div><h2>Graphics</h2></div>
       <div style="display:flex;gap:8px">
         <button class="btn small ghost" id="clientListBtn">Client list</button>
         <button class="btn small" id="newClientBtn">+ New client</button>
@@ -2415,9 +2415,14 @@ function renderProjClients(){
 function renderProjClientProjects(){
   const c = state.clients.find(c=>c.id===state.projClientId);
   if(!c){ state.projView='clients'; render(); return; }
-  const projects = state.projects.filter(p=>p.client_id===c.id && p.active).sort((a,b)=> a.name.localeCompare(b.name));
+  // Full animation-type projects live on the Animation page instead — this
+  // is the Graphics grid now, so they're excluded here regardless of active
+  // state. Embedded animation work (requires_animation on a Website/Deck/
+  // etc. project) stays, since its main type isn't animation and it's still
+  // a normal Graphics project with an extra tab.
+  const projects = state.projects.filter(p=>p.client_id===c.id && p.active && !isAnimationType(p.project_type)).sort((a,b)=> a.name.localeCompare(b.name));
 
-  let html = `<div class="breadcrumb"><button data-bc="clients">All Projects</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+  let html = `<div class="breadcrumb"><button data-bc="clients">Graphics</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h2>
     <div style="margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" id="newProjectBtn">+ New project</button>
@@ -2439,18 +2444,18 @@ function renderProjClientProjects(){
       const nextLabel = nextStage
         ? `${esc(nextStage.name)}${nextStage.due_date? ' · due '+fmtDateNatural(nextStage.due_date) : ''}`
         : (stages.length? 'All stages complete' : null);
-      const scopePill = projectScopePillHtml(p);
+      const scopePill = projectScopePillHtml(p,{afterBadge:true});
       // p.name is always set equal to p.project_type (openProjectModal keeps
       // them in sync on every save), so a type-badge chip under this h3 would
       // just repeat the title verbatim — the icon here carries the type
-      // instead, and the chip row shows scope (projectScopePillHtml) in its
-      // place, standardized with the same helper used on the project detail
-      // page and the Animation project cards.
+      // instead. Scope (+ the label chip) sits inline in the title row now,
+      // next to the type, rather than on its own line below it — standardized
+      // with the same helper used on the project detail page and the
+      // Animation project cards.
       return `<div class="card client-card" data-projdetail="${p.id}" style="${p.active?'':'opacity:.5'}">
-        <h3 style="display:flex;align-items:center;gap:8px">${tc?projectTypeIconHtml(p.project_type,14):''}${esc(p.name)}${p.active?'':' (archived)'}
+        <h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">${tc?projectTypeIconHtml(p.project_type,14):''}${esc(p.name)}${p.active?'':' (archived)'}${scopePill}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}
           <span class="card-actions"><button class="btn small ghost menu-dots" data-projmenu="${p.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
         </h3>
-        ${(scopePill || p.label) ? `<div class="cycle">${scopePill}${p.label?`<span class="label-chip"${scopePill?'':' style="margin-left:0"'}>${esc(p.label)}</span>`:''}</div>` : ''}
         <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
           <div><span>Stages</span><span>${stages.length}</span></div>
           <div><span>Tasks</span><span>${tasks.length}</span></div>
@@ -3719,12 +3724,12 @@ function renderProjDetail(){
   // meter), then an underline-tab strip. No enclosing .card any more, to
   // match animProjectHeaderHtml's frameless header exactly.
   let html = `<div class="breadcrumb">
-      <button data-bc="clients">All Projects</button><span class="sep">/</span>
+      <button data-bc="clients">Graphics</button><span class="sep">/</span>
       <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
       <span class="current">${esc(p.name)}</span>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-      <h2 style="display:flex;align-items:center;gap:8px">${projectTypeIconHtml(p.project_type,18)}${esc(p.name)}</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${allTasks.length?'16px':'20px'}">
+      <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${projectTypeIconHtml(p.project_type,18)}${esc(p.name)}${projectScopePillHtml(p,{afterBadge:true})}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${miroButtonsHtml(c)}
         <button class="btn small ghost" id="checklistsBtn">✓ Checklists${state.checklists.filter(cl=>cl.project_id===p.id).length? ` (${state.checklists.filter(cl=>cl.project_id===p.id).length})`:''}</button>
@@ -3732,9 +3737,7 @@ function renderProjDetail(){
         <button class="btn small ghost" id="editProjectBtn">Edit project</button>
       </div>
     </div>
-    ${(p.label || projectDetailsSummary(p))? `<div class="sub" style="margin-bottom:${allTasks.length?'16px':'20px'}">${projectScopePillHtml(p)}${p.label?`<span class="label-chip"${projectDetailsSummary(p)?'':' style="margin-left:0"'}>${esc(p.label)}</span>`:''}</div>` : ''}
     ${allTasks.length? `<div style="max-width:320px;margin-bottom:20px"><div class="mini-progress"><div class="fill" style="width:${pctComplete}%"></div></div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">${pctComplete}% complete · ${doneCount}/${allTasks.length} tasks</div></div>`:''}
-    ${(!p.label && !projectDetailsSummary(p) && !allTasks.length) ? `<div style="margin-bottom:20px"></div>` : ''}
     <div class="pd-tabs" style="padding:0;margin-bottom:24px">
       <button type="button" class="pd-tab ${tab==='home'?'active':''}" data-projdetailtab="home" style="${tab==='home'?'color:var(--accent);border-color:var(--accent)':''}">Home</button>
       ${isEmbeddedAnim? `<button type="button" class="pd-tab ${tab==='pipeline'?'active':''}" data-projdetailtab="pipeline" style="${tab==='pipeline'?'color:var(--accent);border-color:var(--accent)':''}">Animation Pipeline</button>` : ''}
@@ -3953,7 +3956,7 @@ function openProjectModal(projectId, clientId){
       <div><label>Review days <span style="color:var(--muted);font-weight:400">(business days after a stage's due date)</span></label><input type="number" min="1" id="pj_review" value="${p&&p.review_days!=null?p.review_days:5}"></div>
       <div class="full" id="pj_animwrap" style="${isAnimationType(initialType)?'display:none':''}">
         <label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="pj_reqanim" ${p&&p.requires_animation?'checked':''} style="width:auto"> Requires animation pipeline</label>
-        <div class="sub" style="margin:4px 0 0">Gives this project its own shots/pipeline on the Animation page, listed under "Embedded Animation Work" — separate from full animation-type projects.</div>
+        <div class="sub" style="margin:4px 0 0">Gives this project its own shots/pipeline on the Animation page, listed under "Embedded Animation Projects" — separate from full animation-type projects.</div>
       </div>
       <div class="full sub" style="margin:0;color:var(--muted)">Miro board links are set once per client — edit them from that client's page or Settings.</div>
     </form>
@@ -5099,7 +5102,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.59.0';
+const APP_VERSION = '0.59.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5383,7 +5386,7 @@ function renderAnimation(){
     </div><div style="margin-bottom:18px"></div>`;
 
   if(!projects.length){
-    html += `<div class="empty">No active animation projects. Create a project with an animation type under All Projects and it'll appear here.</div>`;
+    html += `<div class="empty">No active animation projects. Create a project with an animation type under Graphics and it'll appear here.</div>`;
     main.innerHTML = html;
     return;
   }
@@ -6523,7 +6526,7 @@ function renderAnimProjectsGrid(){
     <div style="margin-bottom:18px"></div>`;
 
   if(!full.length && !embedded.length){
-    html += emptyStateHtml({ icon:'film', title:'No animation projects yet', subtitle:"Create a project with an animation type — or tick \"Requires animation pipeline\" on any project — under All Projects and it'll appear here." });
+    html += emptyStateHtml({ icon:'film', title:'No animation projects yet', subtitle:"Create a project with an animation type — or tick \"Requires animation pipeline\" on any project — under Graphics and it'll appear here." });
     main.innerHTML = html;
     return;
   }
@@ -6539,10 +6542,10 @@ function renderAnimProjectsGrid(){
     : `<div class="empty">No full animation projects yet.</div>`;
 
   html += `<div class="pd-divider"></div>`;
-  html += `<div class="pd-section-title">Embedded Animation Work</div>`;
+  html += `<div class="pd-section-title">Embedded Animation Projects</div>`;
   html += embedded.length
     ? `<div class="grid">${embedded.map(animProjectCardHtml).join('')}</div>`
-    : `<div class="empty">No embedded animation work yet — tick "Requires animation pipeline" when creating or editing a project to add it here.</div>`;
+    : `<div class="empty">No embedded animation projects yet — tick "Requires animation pipeline" when creating or editing a project to add it here.</div>`;
 
   main.innerHTML = html;
   main.querySelectorAll('[data-animopen]').forEach(el=>el.addEventListener('click', ()=>{
@@ -6570,7 +6573,7 @@ function renderAnimProjectsGrid(){
    project. */
 function animProjectHeaderHtml(p){
   const c = state.clients.find(cl=>cl.id===p.client_id);
-  const scopeLabel = p.anim_total_seconds!=null ? `${p.anim_total_seconds}s scope` : 'No scope set';
+  const scopeLabel = p.anim_total_seconds!=null ? `${p.anim_total_seconds}s length` : 'No length set';
   return `<div class="breadcrumb"><button data-animback="1">Animation</button><span class="sep">/</span><span class="current">${c?esc(c.name):'?'}${p.label?' · '+esc(p.label):''}</span></div>
     <h2 style="display:flex;align-items:center;gap:8px">${projectTypeIconHtml(p.project_type,18)}${c?esc(c.name):'?'}${p.label?` <span style="font-weight:400;color:var(--muted)">· ${esc(p.label)}</span>`:''}
       <span style="font-size:12px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px">${esc(scopeLabel)}</span>
