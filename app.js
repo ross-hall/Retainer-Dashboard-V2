@@ -2439,11 +2439,18 @@ function renderProjClientProjects(){
       const nextLabel = nextStage
         ? `${esc(nextStage.name)}${nextStage.due_date? ' · due '+fmtDateNatural(nextStage.due_date) : ''}`
         : (stages.length? 'All stages complete' : null);
+      const scopePill = projectScopePillHtml(p);
+      // p.name is always set equal to p.project_type (openProjectModal keeps
+      // them in sync on every save), so a type-badge chip under this h3 would
+      // just repeat the title verbatim — the icon here carries the type
+      // instead, and the chip row shows scope (projectScopePillHtml) in its
+      // place, standardized with the same helper used on the project detail
+      // page and the Animation project cards.
       return `<div class="card client-card" data-projdetail="${p.id}" style="${p.active?'':'opacity:.5'}">
-        <h3 style="display:flex;align-items:center;gap:8px">${esc(p.name)}${p.active?'':' (archived)'}
+        <h3 style="display:flex;align-items:center;gap:8px">${tc?projectTypeIconHtml(p.project_type,14):''}${esc(p.name)}${p.active?'':' (archived)'}
           <span class="card-actions"><button class="btn small ghost menu-dots" data-projmenu="${p.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
         </h3>
-        <div class="cycle"><span class="type-badge">${tc?projectTypeIconHtml(p.project_type,12)+' ':''}${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
+        ${(scopePill || p.label) ? `<div class="cycle">${scopePill}${p.label?`<span class="label-chip"${scopePill?'':' style="margin-left:0"'}>${esc(p.label)}</span>`:''}</div>` : ''}
         <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
           <div><span>Stages</span><span>${stages.length}</span></div>
           <div><span>Tasks</span><span>${tasks.length}</span></div>
@@ -3678,6 +3685,24 @@ function renderProjDetail(){
   const p = state.projects.find(p=>p.id===state.projProjectId);
   if(!p){ state.projView='clientProjects'; render(); return; }
   const c = state.clients.find(c=>c.id===p.client_id);
+
+  // Embedded animation work (requires_animation on a non-animation-type
+  // project) gets a second "Animation Pipeline" tab right here on its own
+  // project page instead of a separate page under the Animation nav item —
+  // per explicit request to merge the two rather than keep them apart. Tab
+  // state is scoped to whichever project is currently viewed and resets to
+  // Home the moment the viewed project changes (projDetailTabFor tracks
+  // that), so stale 'pipeline' state from a previously-viewed project can
+  // never leak in via one of the many other navigation call sites that jump
+  // here (Home page, command palette, Milestones, quick-add, ...) without
+  // themselves knowing about this tab. The one deliberate exception is the
+  // Animation page's embedded-project cards, which set both projDetailTab
+  // and projDetailTabFor to 'pipeline'/p.id right before calling render()
+  // specifically to land straight on this tab.
+  const isEmbeddedAnim = !!p.requires_animation && !isAnimationType(p.project_type);
+  if(state.projDetailTabFor !== p.id){ state.projDetailTab = 'home'; state.projDetailTabFor = p.id; }
+  const tab = isEmbeddedAnim ? state.projDetailTab : 'home';
+
   const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
   const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
   const todayIso = iso(new Date());
@@ -3707,38 +3732,44 @@ function renderProjDetail(){
         <button class="btn small ghost" id="editProjectBtn">Edit project</button>
       </div>
     </div>
-    ${(p.label || projectDetailsSummary(p))? `<div class="sub" style="margin-bottom:${allTasks.length?'16px':'20px'}">${projectDetailsSummary(p)?`<span class="type-badge">${esc(projectDetailsSummary(p))}</span>`:''}${p.label?`<span class="label-chip"${projectDetailsSummary(p)?'':' style="margin-left:0"'}>${esc(p.label)}</span>`:''}</div>` : ''}
+    ${(p.label || projectDetailsSummary(p))? `<div class="sub" style="margin-bottom:${allTasks.length?'16px':'20px'}">${projectScopePillHtml(p)}${p.label?`<span class="label-chip"${projectDetailsSummary(p)?'':' style="margin-left:0"'}>${esc(p.label)}</span>`:''}</div>` : ''}
     ${allTasks.length? `<div style="max-width:320px;margin-bottom:20px"><div class="mini-progress"><div class="fill" style="width:${pctComplete}%"></div></div><div style="font-size:12.5px;color:var(--muted);margin-top:6px">${pctComplete}% complete · ${doneCount}/${allTasks.length} tasks</div></div>`:''}
     ${(!p.label && !projectDetailsSummary(p) && !allTasks.length) ? `<div style="margin-bottom:20px"></div>` : ''}
     <div class="pd-tabs" style="padding:0;margin-bottom:24px">
-      <button type="button" class="pd-tab active" style="color:var(--accent);border-color:var(--accent)">Home</button>
-    </div>
-    <div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
+      <button type="button" class="pd-tab ${tab==='home'?'active':''}" data-projdetailtab="home" style="${tab==='home'?'color:var(--accent);border-color:var(--accent)':''}">Home</button>
+      ${isEmbeddedAnim? `<button type="button" class="pd-tab ${tab==='pipeline'?'active':''}" data-projdetailtab="pipeline" style="${tab==='pipeline'?'color:var(--accent);border-color:var(--accent)':''}">Animation Pipeline</button>` : ''}
+    </div>`;
 
-  if(!stages.length){
-    html += `<div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="addStageBtn">+ Add stage</button></div>`;
+  if(tab==='pipeline'){
+    html += animPipelineBodyHtml(p);
   } else {
-    stages.forEach((s,idx)=>{
-      const tasks = state.projTasks.filter(t=>t.stage_id===s.id).sort((a,b)=>(a.position||0)-(b.position||0));
-      const overdue = s.due_date && s.due_date < todayIso;
-      const sStatus = stageStatus(s.id);
-      const dateLabel = s.due_date
-        ? `${overdue?'⚠️ ':''}${fmtDateNatural(s.due_date)}${s.due_time?' · '+formatTime12(s.due_time):''}${overdue?' (overdue)':''}`
-        : 'Set due date';
-      html += `<div class="stage-section" data-stagesection="${s.id}">
-        <div class="stage-head">
-          <h4><span class="stage-num">Stage ${idx}</span><span class="inline-editable" data-stagename="${s.id}" title="Click to rename">${esc(s.name)}</span>${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
-          <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-            <button type="button" class="stage-date-btn" data-stagedate="${s.id}" style="margin-top:0">${dateLabel}</button>
-            ${idx>0 && s.due_date ? `<span style="font-size:11px;color:var(--muted)">${reviewWindowLabel(s.due_date, p.review_days)}</span>` : ''}
+    html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
+    if(!stages.length){
+      html += `<div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="addStageBtn">+ Add stage</button></div>`;
+    } else {
+      stages.forEach((s,idx)=>{
+        const tasks = state.projTasks.filter(t=>t.stage_id===s.id).sort((a,b)=>(a.position||0)-(b.position||0));
+        const overdue = s.due_date && s.due_date < todayIso;
+        const sStatus = stageStatus(s.id);
+        const dateLabel = s.due_date
+          ? `${overdue?'⚠️ ':''}${fmtDateNatural(s.due_date)}${s.due_time?' · '+formatTime12(s.due_time):''}${overdue?' (overdue)':''}`
+          : 'Set due date';
+        html += `<div class="stage-section" data-stagesection="${s.id}">
+          <div class="stage-head">
+            <h4><span class="stage-num">Stage ${idx}</span><span class="inline-editable" data-stagename="${s.id}" title="Click to rename">${esc(s.name)}</span>${sStatus==='Complete'?' <span class="status-pill status-complete">✓ Complete</span>':''}</h4>
+            <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+              <button type="button" class="stage-date-btn" data-stagedate="${s.id}" style="margin-top:0">${dateLabel}</button>
+              ${idx>0 && s.due_date ? `<span style="font-size:11px;color:var(--muted)">${reviewWindowLabel(s.due_date, p.review_days)}</span>` : ''}
+            </div>
           </div>
-        </div>
-        <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.', p.project_type==='Animations', c.is_retainer)}</div>
-        <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
-      </div>`;
-    });
-    html += `<div style="margin:4px 0 20px"><button class="btn small ghost" id="addStageBtn">+ Add stage</button></div>`;
+          <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.', p.project_type==='Animations', c.is_retainer)}</div>
+          <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
+        </div>`;
+      });
+      html += `<div style="margin:4px 0 20px"><button class="btn small ghost" id="addStageBtn">+ Add stage</button></div>`;
+    }
   }
+
   main.innerHTML = html;
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
   $('[data-bc="client"]').onclick = ()=>{ state.projView='clientProjects'; render(); };
@@ -3746,6 +3777,15 @@ function renderProjDetail(){
   $('#discordBtn').onclick = ()=> openDiscordModal(p.id);
   $('#checklistsBtn').onclick = (e)=>{ e.stopPropagation(); openChecklistsPopover(e.currentTarget, p.id); };
   wireMiroButtons();
+  main.querySelectorAll('[data-projdetailtab]').forEach(el=>el.addEventListener('click', ()=>{
+    state.projDetailTab = el.dataset.projdetailtab; state.projDetailTabFor = p.id; render();
+  }));
+
+  if(tab==='pipeline'){
+    wireAnimPipelineBody(p);
+    return;
+  }
+
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
   wireTaskRows(main);
@@ -3881,6 +3921,20 @@ function projectDetailsSummary(p){
   if(isAnimationType(p.project_type)) return d.seconds ? `${d.seconds}s length` : null;
   if(isDeckType(p.project_type)) return d.slides ? `${d.slides} slide${d.slides===1?'':'s'}` : null;
   return null;
+}
+
+// Standardized "scope" pill — projectDetailsSummary's text (e.g. "45s
+// length", "12 slides", "Full branding") wrapped in one shared chip style,
+// so every project card/page shows a project's specific scope the same way
+// instead of each place inventing its own markup. Returns '' when there's
+// nothing to show (project has no type-specific details set yet). Pass
+// {afterBadge:true} when this pill follows a type-badge chip (it needs a
+// left margin there) — everywhere else it's the first chip in its row, so
+// no margin, matching how .label-chip's own margin is likewise only
+// appropriate when something precedes it.
+function projectScopePillHtml(p, {afterBadge}={}){
+  const summary = projectDetailsSummary(p);
+  return summary ? `<span class="scope-chip"${afterBadge?' style="margin-left:7px"':''}>${esc(summary)}</span>` : '';
 }
 
 function openProjectModal(projectId, clientId){
@@ -5045,7 +5099,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.58.0';
+const APP_VERSION = '0.59.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5689,6 +5743,16 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   // pixels sideways between them, which reads as the whole nav "jumping".
   document.documentElement.style.overflowY = 'scroll';
   const accent = client.dash_accent_color || '#2383e2';
+  // Favicon — same rounded-square mark as the internal app's "RS" tab icon,
+  // but this client's own initial + accent colour, so a client with several
+  // portal tabs open can tell them apart at a glance. Set on every boot
+  // (including reload()'s re-boots) rather than once — cheap, and keeps it
+  // correct if the accent colour is changed mid-session from admin mode.
+  { const initial = (client.name||'?').trim().charAt(0).toUpperCase() || '?';
+    const favSvg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='${accent}'/><text x='16' y='21' font-family='Arial, Helvetica, sans-serif' font-size='14' font-weight='700' fill='#fff' text-anchor='middle'>${initial}</text></svg>`;
+    const favLink = document.getElementById('favicon');
+    if(favLink) favLink.href = 'data:image/svg+xml,' + encodeURIComponent(favSvg);
+  }
   // The header is now a plain "Hello, {name}" greeting with no logo tile, so
   // client.dash_logo_url is no longer rendered anywhere on this page — the
   // field is still stored and still editable, just currently unused.
@@ -6442,7 +6506,7 @@ function animProjectCardHtml(p){
   const pct = shots.length ? Math.round(approved/shots.length*100) : 0;
   return `<div class="card client-card" data-animopen="${p.id}">
     <h3 style="display:flex;align-items:center;gap:8px">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:'Unknown client'}</h3>
-    <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
+    <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${projectScopePillHtml(p,{afterBadge:true})}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
     <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
       <div><span>Shots</span><span>${shots.length}</span></div>
       <div><span>Approved</span><span>${approved}/${shots.length}</span></div>
@@ -6482,6 +6546,18 @@ function renderAnimProjectsGrid(){
 
   main.innerHTML = html;
   main.querySelectorAll('[data-animopen]').forEach(el=>el.addEventListener('click', ()=>{
+    const proj = state.projects.find(x=>x.id===el.dataset.animopen);
+    // Embedded animation work now lives on the project's own page (merged
+    // in per explicit request) rather than the standalone Home/Pipeline/
+    // Work Schedule shell full animation-type projects still use — jump
+    // straight to its Animation Pipeline tab instead of into animProjectId/
+    // animTab state.
+    if(proj && proj.requires_animation && !isAnimationType(proj.project_type)){
+      state.view='projects'; state.projView='project'; state.projClientId=proj.client_id; state.projProjectId=proj.id;
+      state.projDetailTab='pipeline'; state.projDetailTabFor=proj.id;
+      render();
+      return;
+    }
     state.animProjectId = el.dataset.animopen; state.animTab='home'; render();
   }));
 }
@@ -6657,38 +6733,32 @@ function renderAnimHome(){
   };
 }
 
-function renderAnimGrid(){
-  const p = animProjects().find(x=>x.id===state.animProjectId) || null;
-  if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
-
-  let html = animProjectHeaderHtml(p);
-  html += animViewToggleHtml(state.animTab);
-
+// ── Animation Pipeline body — the shot grid + Shot Timeline content, shared
+// by the standalone Animation page (renderAnimGrid, for a project whose main
+// type IS an animation type) and the "Animation Pipeline" tab on an embedded
+// project's own page (renderProjDetail, for a Website/Deck/etc. project
+// flagged requires_animation). Header/tabs are each caller's own
+// responsibility — this returns/wires only the body between them, so the
+// two surfaces can never drift out of sync with each other.
+function animPipelineBodyHtml(p){
   const shots = animShotsFor(p.id);
   const steps = animStepsFor(p.id);
 
   if(!steps.length){
-    html += `<div class="banner"><div>🎬</div><div>This project has no pipeline steps yet.
+    return `<div class="banner"><div>🎬</div><div>This project has no pipeline steps yet.
       <button class="btn small" id="animSeed" style="margin-left:8px">Set up default pipeline</button>
       <div style="margin-top:6px;font-size:12px;color:var(--muted)">Creates: ${ANIM_DEFAULT_STEPS.join(' → ')}</div>
     </div></div>`;
-    main.innerHTML = html; wireAnimTabsAll();
-    $('#animSeed').onclick = async ()=>{
-      await Promise.all(ANIM_DEFAULT_STEPS.map((n,i)=> db.from('rs_anim_steps').insert({ project_id:p.id, name:n, position:i })));
-      toast('Pipeline created'); await loadAll();
-    };
-    return;
   }
 
   const todayIso = iso(new Date());
   const budget = p.anim_total_seconds!=null ? +p.anim_total_seconds : null;
 
-  // Pipeline — one card holds the toolbar, the shot grid, and its legend,
-  // instead of the buttons/table/legend sitting as three loose siblings.
-  // Title lives outside the card, in the bigger .pd-section-title style
-  // (shared with the public client dashboard) rather than the old tiny
-  // uppercase label.
-  html += `<div class="pd-section-title">Pipeline</div>`;
+  // One card holds the toolbar, the shot grid, and its legend, instead of
+  // the buttons/table/legend sitting as three loose siblings. Title lives
+  // outside the card, in the bigger .pd-section-title style (shared with
+  // the public client dashboard) rather than the old tiny uppercase label.
+  let html = `<div class="pd-section-title">Pipeline</div>`;
   html += `<div class="card">
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
       <button class="btn small" id="animAddShot">+ Shot</button>
@@ -6809,9 +6879,20 @@ function renderAnimGrid(){
     }
     html += `</div>`;
   }
+  return html;
+}
 
-  main.innerHTML = html;
-  wireAnimTabsAll();
+function wireAnimPipelineBody(p){
+  // No-steps case renders only the "Set up default pipeline" banner — none
+  // of the other elements below exist yet, so wire that one and stop.
+  const seedBtn = $('#animSeed');
+  if(seedBtn){
+    seedBtn.onclick = async ()=>{
+      await Promise.all(ANIM_DEFAULT_STEPS.map((n,i)=> db.from('rs_anim_steps').insert({ project_id:p.id, name:n, position:i })));
+      toast('Pipeline created'); await loadAll();
+    };
+    return;
+  }
   $('#animAddShot').onclick = ()=> openAnimShotModal(p.id, null);
   $('#animAddStep').onclick = ()=> openAnimStepModal(p.id);
   $('#animSetBudget').onclick = ()=> openAnimBudgetModal(p);
@@ -6828,6 +6909,19 @@ function renderAnimGrid(){
     await db.from('rs_anim_steps').delete().eq('id', st.id);
     toast('Step removed'); await loadAll();
   }));
+}
+
+function renderAnimGrid(){
+  const p = animProjects().find(x=>x.id===state.animProjectId) || null;
+  if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
+
+  let html = animProjectHeaderHtml(p);
+  html += animViewToggleHtml(state.animTab);
+  html += animPipelineBodyHtml(p);
+
+  main.innerHTML = html;
+  wireAnimTabsAll();
+  wireAnimPipelineBody(p);
 }
 
 /* A shot's single headline colour/status for the timeline bar — same urgency
