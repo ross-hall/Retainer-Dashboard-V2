@@ -821,7 +821,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.59.1</div>
+    <div id="versionBadge" class="version-badge">v0.60.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -870,7 +870,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
-  departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[],
+  departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -1204,7 +1204,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -1224,7 +1224,9 @@ async function loadAll(){
     db.from('rs_checklist_items').select('*').order('position'),
     db.from('rs_tools').select('*').order('position'),
     db.from('rs_checklist_templates').select('*').order('position'),
-    db.from('rs_checklist_template_items').select('*').order('position')
+    db.from('rs_checklist_template_items').select('*').order('position'),
+    db.from('rs_anim_deliverables').select('*').order('position'),
+    db.from('rs_anim_deliverable_columns').select('*').order('position')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -1240,6 +1242,10 @@ async function loadAll(){
   state.checklistTemplates = clt.data||[];
   state.checklistTemplateItems = clti.data||[];
   state.tools = tls.data||[];
+  state.animDeliverables = adl.data||[];
+  state.animDeliverableColumns = (adc.data && adc.data.length) ? adc.data : [];
+  if(adl.error) console.warn('Animation deliverables table not found — run outputs/v34_anim_deliverables.sql', adl.error);
+  if(adc.error) console.warn('Animation deliverable columns table not found — run outputs/v34_anim_deliverables.sql', adc.error);
   if(tls.error) console.warn('Tools table not found — run outputs/v24_tools.sql', tls.error);
   if(cl.error) console.warn('Checklists tables not found — run outputs/v23_qa_checklist.sql', cl.error);
   if(clt.error) console.warn('Checklist templates tables not found — run outputs/v25_checklist_templates.sql', clt.error);
@@ -4574,10 +4580,13 @@ function renderProjDetail(){
     <div class="pd-tabs" style="padding:0;margin-bottom:24px">
       <button type="button" class="pd-tab ${tab==='home'?'active':''}" data-projdetailtab="home" style="${tab==='home'?'color:var(--accent);border-color:var(--accent)':''}">Home</button>
       ${isEmbeddedAnim? `<button type="button" class="pd-tab ${tab==='pipeline'?'active':''}" data-projdetailtab="pipeline" style="${tab==='pipeline'?'color:var(--accent);border-color:var(--accent)':''}">Animation Pipeline</button>` : ''}
+      ${isEmbeddedAnim? `<button type="button" class="pd-tab ${tab==='deliverables'?'active':''}" data-projdetailtab="deliverables" style="${tab==='deliverables'?'color:var(--accent);border-color:var(--accent)':''}">Deliverables</button>` : ''}
     </div>`;
 
   if(tab==='pipeline'){
     html += animPipelineBodyHtml(p);
+  } else if(tab==='deliverables'){
+    html += animDeliverablesBodyHtml(p);
   } else {
     html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
     if(!stages.length){
@@ -4619,6 +4628,10 @@ function renderProjDetail(){
 
   if(tab==='pipeline'){
     wireAnimPipelineBody(p);
+    return;
+  }
+  if(tab==='deliverables'){
+    wireAnimDeliverablesBody(p);
     return;
   }
 
@@ -5409,6 +5422,7 @@ const SETTINGS_SECTIONS = [
   { key:'departments', label:'Departments' },
   { key:'checklists', label:'Checklist templates' },
   { key:'pipeline', label:'Pipeline statuses' },
+  { key:'deliverablecols', label:'Deliverable columns' },
   { key:'data', label:'Data & backups' },
 ];
 
@@ -5865,6 +5879,94 @@ function wireSettingsPipeline(){
   };
 }
 
+const DELIVERABLE_COLUMN_TYPES = [
+  { value:'text',     label:'Text' },
+  { value:'textarea', label:'Long text' },
+  { value:'boolean',  label:'Yes / No' },
+  { value:'status',   label:'Status' },
+];
+function settingsDeliverableColumnsHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Deliverable columns</h3>
+    <div class="sub" style="margin-bottom:14px">Columns shown on every project's Deliverables tab (Animation page, and embedded animation projects). Renaming a column here doesn't move or lose any existing values — the underlying field stays the same, only its label changes.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+      ${animDeliverableColumnList().map((c,i,arr)=>`<div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <input type="text" data-delcolname="${c.id||c.key}" value="${esc(c.label)}" placeholder="Column name" style="flex:1;min-width:140px">
+        <select data-delcoltype="${c.id||c.key}" style="min-width:130px">
+          ${DELIVERABLE_COLUMN_TYPES.map(t=>`<option value="${t.value}" ${c.type===t.value?'selected':''}>${t.label}</option>`).join('')}
+        </select>
+        <button class="btn small ghost" data-delcolup="${c.id||c.key}" ${i===0?'disabled':''} title="Move up">↑</button>
+        <button class="btn small ghost" data-delcoldown="${c.id||c.key}" ${i===arr.length-1?'disabled':''} title="Move down">↓</button>
+        <button class="btn small danger" data-delcoldelete="${c.id||c.key}" title="Delete">Delete</button>
+      </div>`).join('') || '<div class="empty">No columns yet.</div>'}
+    </div>
+    <div class="row-form">
+      <input id="delcol_newname" placeholder="New column name" style="flex:1">
+      <select id="delcol_newtype" style="min-width:130px">${DELIVERABLE_COLUMN_TYPES.map(t=>`<option value="${t.value}">${t.label}</option>`).join('')}</select>
+      <button class="btn small" id="newDelColBtn">+ Add column</button>
+    </div>
+  </div>`;
+}
+function wireSettingsDeliverableColumns(){
+  const cols = animDeliverableColumnList();
+  const degradeToast = (error, fallback)=> toast(['PGRST205','PGRST204'].includes(error.code) ? 'Run migration v34 to enable editable columns' : fallback);
+  main.querySelectorAll('[data-delcolname]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const label = inp.value.trim();
+      const col = cols.find(c=>(c.id||c.key)===inp.dataset.delcolname);
+      if(!label){ toast('Column needs a name'); inp.value = col.label; return; }
+      const { error } = await db.from('rs_anim_deliverable_columns').update({ label }).eq('key', col.key);
+      if(error){ degradeToast(error, 'Could not rename'); return; }
+      toast('Column renamed'); await loadAll();
+    });
+  });
+  main.querySelectorAll('[data-delcoltype]').forEach(sel=>{
+    sel.addEventListener('change', async ()=>{
+      const col = cols.find(c=>(c.id||c.key)===sel.dataset.delcoltype);
+      const { error } = await db.from('rs_anim_deliverable_columns').update({ type: sel.value }).eq('key', col.key);
+      if(error){ degradeToast(error, 'Could not save'); return; }
+      toast('Column type updated — existing values are kept as-is, so double-check a column you just retyped'); await loadAll();
+    });
+  });
+  main.querySelectorAll('[data-delcolup]').forEach(b=>b.onclick = async ()=>{
+    const i = cols.findIndex(c=>(c.id||c.key)===b.dataset.delcolup);
+    if(i<=0) return;
+    const a=cols[i], prev=cols[i-1];
+    await Promise.all([
+      db.from('rs_anim_deliverable_columns').update({position:prev.position}).eq('key',a.key),
+      db.from('rs_anim_deliverable_columns').update({position:a.position}).eq('key',prev.key)
+    ]);
+    await loadAll();
+  });
+  main.querySelectorAll('[data-delcoldown]').forEach(b=>b.onclick = async ()=>{
+    const i = cols.findIndex(c=>(c.id||c.key)===b.dataset.delcoldown);
+    if(i<0 || i>=cols.length-1) return;
+    const a=cols[i], next=cols[i+1];
+    await Promise.all([
+      db.from('rs_anim_deliverable_columns').update({position:next.position}).eq('key',a.key),
+      db.from('rs_anim_deliverable_columns').update({position:a.position}).eq('key',next.key)
+    ]);
+    await loadAll();
+  });
+  main.querySelectorAll('[data-delcoldelete]').forEach(b=>b.onclick = async ()=>{
+    const col = cols.find(c=>(c.id||c.key)===b.dataset.delcoldelete);
+    if(!confirm(`Delete the "${col.label}" column? Any values already saved under it are kept in the database but won't be shown or editable anywhere until a column with the same key exists again.`)) return;
+    const { error } = await db.from('rs_anim_deliverable_columns').delete().eq('key', col.key);
+    if(error){ degradeToast(error, 'Delete failed'); return; }
+    toast('Column deleted'); await loadAll();
+  });
+  if($('#newDelColBtn')) $('#newDelColBtn').onclick = async ()=>{
+    const label = $('#delcol_newname').value.trim();
+    if(!label){ toast('Give the column a name'); return; }
+    const type = $('#delcol_newtype').value;
+    const key = slugifyColumnKey(label);
+    const nextPos = cols.length ? Math.max(...cols.map(c=>c.position))+1 : 0;
+    const { error } = await db.from('rs_anim_deliverable_columns').insert({ key, label, type, position:nextPos });
+    if(error){ degradeToast(error, 'Could not add column'); console.error(error); return; }
+    toast('Column added'); await loadAll();
+  };
+}
+
 function settingsDataHtml(){
   return `<div class="card">
     <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Data & backups</h3>
@@ -5888,6 +5990,7 @@ function settingsSectionHtml(key){
   if(key==='departments') return settingsDepartmentsHtml();
   if(key==='checklists') return settingsChecklistsHtml();
   if(key==='pipeline') return settingsPipelineHtml();
+  if(key==='deliverablecols') return settingsDeliverableColumnsHtml();
   if(key==='data') return settingsDataHtml();
   return '';
 }
@@ -5899,6 +6002,7 @@ function wireSettingsSection(key){
   else if(key==='departments') wireSettingsDepartments();
   else if(key==='checklists') wireSettingsChecklists();
   else if(key==='pipeline') wireSettingsPipeline();
+  else if(key==='deliverablecols') wireSettingsDeliverableColumns();
   else if(key==='data') wireSettingsData();
 }
 
@@ -5935,7 +6039,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.59.1';
+const APP_VERSION = '0.60.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -6184,6 +6288,37 @@ function animStatusList(){ return (state.animCellStatuses.length?state.animCellS
 function animStatusNames(){ return animStatusList().map(s=>s.name); }
 function animStatusRecord(name){ return animStatusList().find(s=>s.name===name) || animStatusList()[0]; }
 function animStatusBehavior(name){ return animStatusRecord(name)?.behavior || 'none'; }
+
+// Same fallback pattern as DEFAULT_ANIM_CELL_STATUSES/DEFAULT_TASK_STATUSES —
+// the app degrades to these built-in columns until v34 has been run and
+// Settings > "Deliverable columns" has real rows to read instead. Matches
+// the original client-supplied spec table (Deliverable/Code/Page/
+// Description/Format/Specs/Duration/Alpha Delivered/Notes/Status) so a
+// fresh install (or a pre-migration one) still looks right out of the box.
+const DEFAULT_ANIM_DELIVERABLE_COLUMNS = [
+  { key:'deliverable',     label:'Deliverable',         type:'text',     position:0 },
+  { key:'code',            label:'Code',                type:'text',     position:1 },
+  { key:'page',            label:'Page',                type:'text',     position:2 },
+  { key:'description',     label:'Description',         type:'text',     position:3 },
+  { key:'format',          label:'Format',              type:'text',     position:4 },
+  { key:'specs',           label:'Specs / Dimensions',  type:'text',     position:5 },
+  { key:'duration',        label:'Duration',            type:'text',     position:6 },
+  { key:'alpha_delivered', label:'Alpha Delivered',     type:'boolean',  position:7 },
+  { key:'notes',           label:'Notes',               type:'textarea', position:8 },
+  { key:'status',          label:'Status',              type:'status',   position:9 }
+];
+function animDeliverableColumnList(){ return (state.animDeliverableColumns.length?state.animDeliverableColumns:DEFAULT_ANIM_DELIVERABLE_COLUMNS).slice().sort((a,b)=>a.position-b.position); }
+// A stable identifier for a new column's key — slugified from the label,
+// with a numeric suffix if that slug is already taken (the key has a unique
+// constraint in the DB). Never shown to the user; only the label is.
+function slugifyColumnKey(label){
+  const base = (label||'column').toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || 'column';
+  const existing = new Set(animDeliverableColumnList().map(c=>c.key));
+  if(!existing.has(base)) return base;
+  let i = 2;
+  while(existing.has(`${base}_${i}`)) i++;
+  return `${base}_${i}`;
+}
 
 function animProjects(){
   const cfgNames = state.projectTypes.filter(t=>/anim/i.test(t.name)).map(t=>t.name);
@@ -7329,6 +7464,7 @@ function renderAnimation(){
   }
   if(state.animTab === 'home') { renderAnimHome(); return; }
   if(state.animTab === 'schedule') { renderAnimSchedule(); return; }
+  if(state.animTab === 'deliverables') { renderAnimDeliverables(); return; }
   renderAnimGrid();
 }
 
@@ -7747,6 +7883,155 @@ function wireAnimPipelineBody(p){
   }));
 }
 
+function animDeliverablesFor(projectId){ return state.animDeliverables.filter(d=>d.project_id===projectId).sort((a,b)=>(a.position||0)-(b.position||0)); }
+// The first column's value stands in for a deliverable's "name" wherever one
+// is needed (delete confirmations, etc.) — whatever that column is currently
+// called, since columns (including which one is first) are user-editable.
+function deliverablePrimaryLabel(d){
+  const first = animDeliverableColumnList()[0];
+  return (first && d.data && d.data[first.key]) || 'this deliverable';
+}
+
+// ── Deliverables body — a flat table of named assets to ship, columns
+// driven entirely by animDeliverableColumnList() (Settings > "Deliverable
+// columns") rather than hardcoded, so renaming/adding/removing a column
+// there is reflected here with no code change. Distinct from the shot-by-
+// shot Pipeline grid. Shared the same way animPipelineBodyHtml is: no
+// header/tabs baked in, so it drops into both the standalone Animation page
+// (a full animation-type project) and the "Deliverables" tab on an embedded
+// project's own page.
+function animDeliverableCellHtml(col, d){
+  const val = (d.data && d.data[col.key]) || '';
+  if(col.type==='boolean') return `<td style="text-align:center">${val? '<span style="color:var(--green);font-weight:700">✓</span>' : '<span style="color:var(--muted)">—</span>'}</td>`;
+  if(col.type==='status'){
+    const st = statusRecord(val || 'To do');
+    return `<td><button type="button" class="status-pill" data-delstatus="${d.id}" data-delstatuscol="${esc(col.key)}" style="background:${mutedBg(st.color)};color:${st.color};cursor:pointer">${st.is_complete?'✓':'○'} ${esc(st.name)}</button></td>`;
+  }
+  if(col.type==='textarea') return `<td style="white-space:normal;font-size:12px;color:var(--muted)">${esc(val)}</td>`;
+  return `<td style="white-space:normal;font-size:12.5px">${esc(val)}</td>`;
+}
+function animDeliverablesBodyHtml(p){
+  const rows = animDeliverablesFor(p.id);
+  const cols = animDeliverableColumnList();
+  let html = `<div class="pd-section-title">Deliverables</div>`;
+  html += `<div class="card">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <button class="btn small" id="animAddDeliverable">+ Deliverable</button>
+      <button class="btn small ghost" id="animEditDeliverableCols">Edit columns</button>
+    </div>`;
+
+  if(!rows.length){
+    html += `<div class="empty">No deliverables yet — add the first one to start tracking assets for this project.</div>`;
+  } else {
+    html += `<div style="overflow-x:auto">
+      <table class="anim-grid" style="min-width:${140*cols.length+40}px">
+        <thead><tr>
+          ${cols.map(c=>`<th style="min-width:${c.type==='boolean'?70:c.type==='status'?120:c.type==='textarea'?220:150}px${c.type==='boolean'?';text-align:center':''}">${esc(c.label)}</th>`).join('')}
+          <th style="min-width:36px"></th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(d=>`<tr>${cols.map(c=>animDeliverableCellHtml(c,d)).join('')}<td><button type="button" class="btn small ghost menu-dots" data-delmenu="${d.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function wireAnimDeliverablesBody(p){
+  const addBtn = $('#animAddDeliverable');
+  if(addBtn) addBtn.onclick = ()=> openAnimDeliverableModal(p.id, null);
+  const colsBtn = $('#animEditDeliverableCols');
+  if(colsBtn) colsBtn.onclick = ()=>{ state.view='settings'; state.settingsSection='deliverablecols'; render(); };
+  main.querySelectorAll('[data-delstatus]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openDeliverableStatusPopover(el, el.dataset.delstatus, el.dataset.delstatuscol);
+  }));
+  main.querySelectorAll('[data-delmenu]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const id = el.dataset.delmenu;
+    const row = state.animDeliverables.find(x=>x.id===id);
+    openMenuPopover(e.currentTarget, [
+      { label:'Edit', onClick:()=> openAnimDeliverableModal(p.id, id) },
+      { label:'Delete', danger:true, onClick: async ()=>{
+        if(!confirm(`Delete "${deliverablePrimaryLabel(row)}"?`)) return;
+        const { error } = await db.from('rs_anim_deliverables').delete().eq('id', id);
+        if(error){ toast('Could not delete'); return; }
+        toast('Deliverable deleted'); await loadAll(); render();
+      }}
+    ]);
+  }));
+}
+
+function openDeliverableStatusPopover(anchorEl, deliverableId, colKey){
+  const row = state.animDeliverables.find(d=>d.id===deliverableId);
+  const current = (row && row.data && row.data[colKey]) || 'To do';
+  const options = taskStatusList().map(s=>({ value:s.name, html:`<span class="status-pill" style="background:${mutedBg(s.color)};color:${s.color}">${s.is_complete?'✓':'○'} ${esc(s.name)}</span>` }));
+  openPillPopover(anchorEl, options, current, async (val)=>{
+    const nextData = { ...(row.data||{}), [colKey]: val };
+    const { error } = await db.from('rs_anim_deliverables').update({ data: nextData }).eq('id', deliverableId);
+    if(error){ toast('Could not update status'); return; }
+    await loadAll(); render();
+  });
+}
+
+// Renders one form field per column (text/textarea/boolean/status), reading
+// and writing d.data[col.key] — so a column added in Settings shows up in
+// this modal automatically, no code change needed per column.
+function animDeliverableFieldHtml(col, d){
+  const val = (d.data && d.data[col.key]) || '';
+  const id = `adf_${col.key}`;
+  const wrapClass = (col.type==='textarea') ? 'full' : '';
+  if(col.type==='boolean') return `<div style="display:flex;align-items:flex-end"><label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" id="${id}" ${val?'checked':''} style="width:auto"> ${esc(col.label)}</label></div>`;
+  if(col.type==='status') return `<div><label>${esc(col.label)}</label><select id="${id}">${taskStatusList().map(s=>`<option value="${esc(s.name)}" ${val===s.name?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>`;
+  if(col.type==='textarea') return `<div class="${wrapClass}"><label>${esc(col.label)}</label><textarea id="${id}" style="min-height:60px">${esc(val)}</textarea></div>`;
+  return `<div><label>${esc(col.label)}</label><input type="text" id="${id}" value="${esc(val)}"></div>`;
+}
+function openAnimDeliverableModal(projectId, deliverableId){
+  const isNew = !deliverableId;
+  const d = isNew ? { data:{} } : (state.animDeliverables.find(x=>x.id===deliverableId) || { data:{} });
+  const existing = animDeliverablesFor(projectId);
+  const cols = animDeliverableColumnList();
+  showModal(`
+    <h3>${isNew?'New deliverable':'Edit deliverable'}</h3>
+    <form class="log" style="max-width:none">
+      ${cols.map(c=>animDeliverableFieldHtml(c,d)).join('')}
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn danger" id="ad_delete">Delete</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="ad_cancel">Cancel</button>
+        <button class="btn" id="ad_save">${isNew?'Add deliverable':'Save changes'}</button>
+      </div>
+    </div>
+  `);
+  $('#ad_cancel').onclick = closeModal;
+  if(!isNew) $('#ad_delete').onclick = async ()=>{
+    if(!confirm(`Delete "${deliverablePrimaryLabel(d)}"?`)) return;
+    const { error } = await db.from('rs_anim_deliverables').delete().eq('id', deliverableId);
+    if(error){ toast('Delete failed'); return; }
+    closeModal(); toast('Deliverable deleted'); await loadAll(); render();
+  };
+  $('#ad_save').onclick = async ()=>{
+    const data = {};
+    cols.forEach(c=>{
+      const el = document.getElementById(`adf_${c.key}`);
+      if(!el) return;
+      data[c.key] = c.type==='boolean' ? el.checked : el.value.trim();
+    });
+    if(isNew){
+      const { error } = await db.from('rs_anim_deliverables').insert({ project_id:projectId, data, position:existing.length });
+      if(error){ toast(['PGRST205','PGRST204'].includes(error.code)?'Run migration v34 to enable deliverables':'Could not add deliverable'); console.error(error); return; }
+      closeModal(); toast('Deliverable added'); await loadAll(); render();
+    } else {
+      const { error } = await db.from('rs_anim_deliverables').update({ data }).eq('id', deliverableId);
+      if(error){ toast('Could not save'); console.error(error); return; }
+      closeModal(); toast('Deliverable updated'); await loadAll(); render();
+    }
+  };
+}
+
 function renderAnimGrid(){
   const p = animProjects().find(x=>x.id===state.animProjectId) || null;
   if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
@@ -7758,6 +8043,19 @@ function renderAnimGrid(){
   main.innerHTML = html;
   wireAnimTabsAll();
   wireAnimPipelineBody(p);
+}
+
+function renderAnimDeliverables(){
+  const p = animProjects().find(x=>x.id===state.animProjectId) || null;
+  if(!p){ state.animProjectId=null; renderAnimProjectsGrid(); return; }
+
+  let html = animProjectHeaderHtml(p);
+  html += animViewToggleHtml(state.animTab);
+  html += animDeliverablesBodyHtml(p);
+
+  main.innerHTML = html;
+  wireAnimTabsAll();
+  wireAnimDeliverablesBody(p);
 }
 
 /* A shot's single headline colour/status for the timeline bar — same urgency
@@ -8287,7 +8585,7 @@ function renderAnimFeedbackTab(){
       rename — only the button labels moved, so nothing else had to change. */
 function animViewToggleHtml(tab){
   const cur = tab || 'grid';
-  const items = [['home','Home'],['grid','Animation Pipeline'],['schedule','Work Schedule']];
+  const items = [['home','Home'],['grid','Animation Pipeline'],['deliverables','Deliverables'],['schedule','Work Schedule']];
   return `<div class="pd-tabs" style="padding:0;margin-bottom:24px">${items.map(([key,label])=>
     `<button type="button" class="pd-tab ${cur===key?'active':''}" data-animtab="${key}" style="${cur===key?'color:var(--accent);border-color:var(--accent)':''}">${label}</button>`
   ).join('')}</div>`;
