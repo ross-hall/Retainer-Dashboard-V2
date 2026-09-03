@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.60.1**
+Current version: **v0.60.2**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -623,6 +623,12 @@ Font: Inter (unchanged from v0.9.0)
 - **New Settings section, "Deliverable columns"** (`settingsDeliverableColumnsHtml`/`wireSettingsDeliverableColumns`, added to `SETTINGS_SECTIONS`) — mirrors the existing "Pipeline cell statuses" editor exactly: rename (text input), retype (select from the 4 types), reorder (↑/↓), delete, "+ Add column" with a name + type picker. A "Edit columns" button on the Deliverables tab itself jumps straight there (`state.settingsSection='deliverablecols'`). Changing a column's type does **not** convert existing values (a boolean column retyped to text keeps storing `true`/`false` under the hood) — the save toast says so explicitly rather than silently reformatting data.
 - **Degrades the same way pre-migration**: `DEFAULT_ANIM_DELIVERABLE_COLUMNS` (10 starter columns matching the original spec) is the fallback whenever `rs_anim_deliverable_columns` is empty or missing, so both the Deliverables tab and its Settings editor render correctly before v34 is ever run — only writes (rename/retype/reorder/delete/add) fail, with the same `PGRST205`/`PGRST204`→"Run migration v34" toast pattern used throughout this feature.
 - Verified live end-to-end with synthetic in-memory columns/rows (real tables still pending): renamed "Deliverable" → "Asset Name" and added a brand-new "Reviewer" (text) column, confirmed both appear correctly in the table header, in the add/edit modal, and in Settings; confirmed the column-rename toast correctly reports the real `PGRST205` error pre-migration; confirmed "Edit columns" jumps to the right Settings section; dark mode; the `≤760px` mobile stack.
+
+**What shipped in v0.60.2** ("Embedded Animation" tag on a Graphics project card/page when `requires_animation` is set; scope pills (and the new tag) now colour themselves in the owning client's own accent colour instead of a flat neutral tone):
+- **`projectScopePillHtml(p, {afterBadge, accent})`** gained an `accent` option — when passed, the pill's background/text use `mutedBg(accent)`/`accent` (the same muted-tint formula status pills already use) instead of the static `.scope-chip` CSS colours, so a project's scope pill now reads in its own client's colour, the same colour as that client's dot elsewhere in the app.
+- **New `embeddedAnimationTagHtml(p, accent)`** — a same-styled, same-coloured chip reading "Embedded Animation", shown immediately after the scope pill whenever `p.requires_animation` is set and the project's own type isn't already an animation type (so a full animation-type project, which doesn't need the tag, never gets a redundant one). Treated as part of the same chip group as scope, per explicit request — same spacing convention, same colour source.
+- **Wired at the two places a project's own scope pill renders**: the client's Graphics-grid project cards (`renderProjClientProjects`) and the project detail page header (`renderProjDetail`) — both now pass `accent: colorFor(c)` and append the new tag. `animProjectCardHtml` (Animation page cards) also picked up the accent colouring for consistency, but deliberately does **not** get the tag — a card already sitting under the "Embedded Animation Projects" heading doesn't need to say so again on the card itself.
+- Verified live: DeepLife's embedded Website project shows "6 pages" and "Embedded Animation" both in the client's purple accent on its Graphics card and on its project detail page header; a non-embedded Branding project (different client, blue accent) shows only its scope pill, no tag, in that client's own colour; dark mode; the `≤760px` mobile stack.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

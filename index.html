@@ -821,7 +821,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.60.1</div>
+    <div id="versionBadge" class="version-badge">v0.60.2</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -3283,16 +3283,20 @@ function renderProjClientProjects(){
       const nextLabel = nextStage
         ? `${esc(nextStage.name)}${nextStage.due_date? ' · due '+fmtDateNatural(nextStage.due_date) : ''}`
         : (stages.length? 'All stages complete' : null);
-      const scopePill = projectScopePillHtml(p,{afterBadge:true});
+      const accent = colorFor(c);
+      const scopePill = projectScopePillHtml(p,{afterBadge:true, accent});
+      const embedTag = embeddedAnimationTagHtml(p, accent);
       // p.name is always set equal to p.project_type (openProjectModal keeps
       // them in sync on every save), so a type-badge chip under this h3 would
       // just repeat the title verbatim — the icon here carries the type
-      // instead. Scope (+ the label chip) sits inline in the title row now,
-      // next to the type, rather than on its own line below it — standardized
-      // with the same helper used on the project detail page and the
-      // Animation project cards.
+      // instead. Scope (+ the "Embedded Animation" tag + the label chip) sits
+      // inline in the title row now, next to the type, rather than on its
+      // own line below it — standardized with the same helper used on the
+      // project detail page and the Animation project cards, and coloured in
+      // the client's own accent so it reads as part of the same identity as
+      // the client dot.
       return `<div class="card client-card" data-projdetail="${p.id}" style="${p.active?'':'opacity:.5'}">
-        <h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">${tc?projectTypeIconHtml(p.project_type,14):''}${esc(p.name)}${p.active?'':' (archived)'}${scopePill}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}
+        <h3 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">${tc?projectTypeIconHtml(p.project_type,14):''}${esc(p.name)}${p.active?'':' (archived)'}${scopePill}${embedTag}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}
           <span class="card-actions"><button class="btn small ghost menu-dots" data-projmenu="${p.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
         </h3>
         <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
@@ -4568,7 +4572,7 @@ function renderProjDetail(){
       <span class="current">${esc(p.name)}</span>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${allTasks.length?'16px':'20px'}">
-      <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${projectTypeIconHtml(p.project_type,18)}${esc(p.name)}${projectScopePillHtml(p,{afterBadge:true})}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</h2>
+      <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${projectTypeIconHtml(p.project_type,18)}${esc(p.name)}${projectScopePillHtml(p,{afterBadge:true, accent:colorFor(c)})}${embeddedAnimationTagHtml(p, colorFor(c))}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</h2>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${miroButtonsHtml(c)}
         <button class="btn small ghost" id="checklistsBtn">✓ Checklists${state.checklists.filter(cl=>cl.project_id===p.id).length? ` (${state.checklists.filter(cl=>cl.project_id===p.id).length})`:''}</button>
@@ -4781,9 +4785,28 @@ function projectDetailsSummary(p){
 // left margin there) — everywhere else it's the first chip in its row, so
 // no margin, matching how .label-chip's own margin is likewise only
 // appropriate when something precedes it.
-function projectScopePillHtml(p, {afterBadge}={}){
+// `accent` colours the pill in the owning client's own colour (dot/brand
+// colour, same as colorFor(client) everywhere else) instead of the flat
+// neutral default, so scope reads as "this client's project" at a glance
+// alongside the client-coloured dot. Falls back to the neutral .scope-chip
+// styling when no accent is passed.
+function projectScopePillHtml(p, {afterBadge, accent}={}){
   const summary = projectDetailsSummary(p);
-  return summary ? `<span class="scope-chip"${afterBadge?' style="margin-left:7px"':''}>${esc(summary)}</span>` : '';
+  if(!summary) return '';
+  const style = `${afterBadge?'margin-left:7px;':''}${accent?`background:${mutedBg(accent)};color:${accent};`:''}`;
+  return `<span class="scope-chip"${style?` style="${style}"`:''}>${esc(summary)}</span>`;
+}
+
+// "Embedded Animation" tag — shown next to the scope pill for a project
+// flagged requires_animation whose main type isn't itself an animation type
+// (a full animation-type project doesn't need it — its type already says
+// so). Presented as part of the same chip group as the scope pill, so it
+// shares its client-accent colouring and spacing convention rather than
+// looking like a separate, differently-styled label.
+function embeddedAnimationTagHtml(p, accent){
+  if(!p.requires_animation || isAnimationType(p.project_type)) return '';
+  const style = `margin-left:7px;${accent?`background:${mutedBg(accent)};color:${accent};`:''}`;
+  return `<span class="scope-chip" style="${style}">Embedded Animation</span>`;
 }
 
 function openProjectModal(projectId, clientId){
@@ -6039,7 +6062,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.60.1';
+const APP_VERSION = '0.60.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7478,7 +7501,7 @@ function animProjectCardHtml(p){
   const pct = shots.length ? Math.round(approved/shots.length*100) : 0;
   return `<div class="card client-card" data-animopen="${p.id}">
     <h3 style="display:flex;align-items:center;gap:8px">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:'Unknown client'}</h3>
-    <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${projectScopePillHtml(p,{afterBadge:true})}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
+    <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${projectScopePillHtml(p,{afterBadge:true, accent:c?colorFor(c):null})}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
     <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
       <div><span>Shots</span><span>${shots.length}</span></div>
       <div><span>Approved</span><span>${approved}/${shots.length}</span></div>
