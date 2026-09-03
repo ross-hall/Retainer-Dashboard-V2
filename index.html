@@ -853,7 +853,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.65.0</div>
+    <div id="versionBadge" class="version-badge">v0.66.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -906,7 +906,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
   timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null, appSettings:{},
-  taskSort: store.get('rs_task_sort') || 'manual', taskGroupBy: store.get('rs_task_groupby') || 'none',
+  taskSort: store.get('rs_task_sort') || 'due', taskGroupBy: store.get('rs_task_groupby') || 'taskstatus',
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -2487,28 +2487,16 @@ function renderClientTasksView(c){
 
 function renderRetainerTasksBodyHtml(c){
   const tasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id).sort((a,b)=>(a.position||0)-(b.position||0));
-  const todo = tasks.filter(t=>!isCompleteStatus(t.status));
-  const done = tasks.filter(t=>isCompleteStatus(t.status));
   const legacyProjects = state.projects.filter(p=>p.client_id===c.id);
   const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
   return `${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
     <div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" data-addclienttask="${c.id}">+ Task</button>
-      <button class="btn small ghost" id="taskSortBtn">Sort: ${TASK_SORT_LABELS[state.taskSort]||'Manual'} ▾</button>
-      <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'None'} ▾</button>
+      <button class="btn small ghost" id="taskSortBtn">Sort: ${TASK_SORT_LABELS[state.taskSort]||'Due date'} ▾</button>
+      <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'Task status'} ▾</button>
       <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
     </div>
-    <div class="todo-complete-group">
-      <div class="stage-section" style="margin-bottom:0;padding-bottom:24px">
-        <div class="stage-head"><h4>To do</h4></div>
-        <div class="card" style="padding:8px 12px">${taskTableHtml(todo, visibleCount, 'Nothing to do yet.')}</div>
-        <div style="margin-top:10px"><button class="btn small ghost" data-addclienttask="${c.id}">+ Task</button></div>
-      </div>
-      <div class="stage-section" style="margin:24px 0 0">
-        <div class="stage-head"><h4>Completed</h4></div>
-        <div class="card" style="padding:8px 12px">${taskTableHtml(done, visibleCount, 'Nothing completed yet.')}</div>
-      </div>
-    </div>`;
+    ${taskCardGroupsHtml(tasks, visibleCount, 'No tasks yet.')}`;
 }
 function wireRetainerTasksBody(c){
   if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
@@ -3794,34 +3782,44 @@ function resizeHandle(key, storeName){
 
 /* Sort/Group by for project-stage and retainer task tables — one shared
    global toggle (state.taskSort/taskGroupBy) rather than per-page state,
-   since both call sites render through this same taskTableHtml(). Mirrors
-   the Internal Tasks page's Sort/Group pattern exactly (same label-map +
-   openMenuPopover shape), just against rs_proj_tasks fields instead of
-   rs_internal_tasks ones. Manual drag-reorder (wired separately per stage
-   in renderProjDetail) only makes sense when both are at their defaults —
-   taskRowHtml's canDrag param disables the draggable attribute otherwise,
-   same "canDrag = sort==='manual' && groupBy==='none'" rule Internal Tasks
-   already established. */
-const TASK_SORT_LABELS = { manual:'Manual', due:'Due date', priority:'Priority', title:'Task name', designer:'Designer', status:'Status' };
-const TASK_GROUP_LABELS = { none:'None', status:'Status', priority:'Priority', designer:'Designer' };
+   since both call sites render through the same taskTableHtml()/
+   taskCardGroupsHtml(). Mirrors the Internal Tasks page's Sort/Group
+   pattern (same label-map + openMenuPopover shape), just against
+   rs_proj_tasks fields.
+
+   Sort defaults to Due date (not Manual) — the drag-ordered position field
+   is still available as an explicit "Manual" choice, but due date is what
+   people actually want to see first day to day. Group by defaults to
+   "Task status", which is the existing To do/Completed split promoted to
+   be one value of the Group control rather than a hardcoded structural
+   wrapper — every other group-by (Priority, Designer) reorganises the
+   *same* combined task list into its own cards instead of nesting inside
+   To do/Completed, via the shared taskCardGroupsHtml() below. Manual
+   drag-reorder only makes sense when Sort is Manual (a non-manual sort
+   would just re-sort the list right back), independent of which grouping
+   is showing — taskTableHtml() computes canDrag from state.taskSort alone. */
+const TASK_SORT_LABELS = { due:'Due date', priority:'Priority', title:'Task name', designer:'Designer', status:'Status', manual:'Manual' };
+const TASK_GROUP_LABELS = { taskstatus:'Task status', priority:'Priority', designer:'Designer' };
 const TASK_PRIORITY_RANK = { Urgent:0, High:1, Medium:2, Low:3 };
 function sortProjTaskList(list){
   const arr = list.slice();
-  const sort = state.taskSort || 'manual';
+  const sort = state.taskSort || 'due';
   const designerName = t => { const m = state.members.find(x=>x.id===(t.assigned_designer_ids||[])[0]); return m ? m.name : '￿'; };
-  if(sort==='due') arr.sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
-  else if(sort==='priority') arr.sort((a,b)=> (TASK_PRIORITY_RANK[a.priority]??2) - (TASK_PRIORITY_RANK[b.priority]??2));
+  if(sort==='priority') arr.sort((a,b)=> (TASK_PRIORITY_RANK[a.priority]??2) - (TASK_PRIORITY_RANK[b.priority]??2));
   else if(sort==='title') arr.sort((a,b)=> a.title.localeCompare(b.title));
   else if(sort==='designer') arr.sort((a,b)=> designerName(a).localeCompare(designerName(b)));
   else if(sort==='status') arr.sort((a,b)=> statusRecord(a.status).position - statusRecord(b.status).position);
-  else arr.sort((a,b)=>(a.position||0)-(b.position||0));
+  else if(sort==='manual') arr.sort((a,b)=>(a.position||0)-(b.position||0));
+  else arr.sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
   return arr;
 }
+/* Splits a combined task list into labelled { label, tasks, empty } groups,
+   each rendered as its own card by taskCardGroupsHtml(). "Task status"
+   always yields exactly To do + Completed (even when one side is empty, so
+   the two cards stay put rather than jumping around); the other group-bys
+   drop any group with nothing in it. */
 function groupProjTaskList(list){
-  const groupBy = state.taskGroupBy || 'none';
-  if(groupBy==='status'){
-    return taskStatusList().map(s=>({ label:s.name, tasks:list.filter(t=>t.status===s.name) })).filter(g=>g.tasks.length);
-  }
+  const groupBy = state.taskGroupBy || 'taskstatus';
   if(groupBy==='priority'){
     return PRIORITIES.slice().reverse().map(p=>({ label:p, tasks:list.filter(t=>(t.priority||'Medium')===p) })).filter(g=>g.tasks.length);
   }
@@ -3832,14 +3830,17 @@ function groupProjTaskList(list){
     const unassigned = { label:'Unassigned', tasks:list.filter(t=>!(t.assigned_designer_ids||[]).length) };
     return [...named, unassigned].filter(g=>g.tasks.length);
   }
-  return [{ label:null, tasks:list }];
+  return [
+    { label:'To do', tasks:list.filter(t=>!isCompleteStatus(t.status)), empty:'Nothing to do yet.' },
+    { label:'Completed', tasks:list.filter(t=>isCompleteStatus(t.status)), empty:'Nothing completed yet.' }
+  ];
 }
 function wireTaskSortGroupBtns(){
   const sortBtn = $('#taskSortBtn');
   if(sortBtn) sortBtn.onclick = (e)=>{
     e.stopPropagation();
     openMenuPopover(e.currentTarget, Object.entries(TASK_SORT_LABELS).map(([key,label])=>({
-      label: (state.taskSort===key?'✓ ':'')+label,
+      label: ((state.taskSort||'due')===key?'✓ ':'')+label,
       onClick: ()=>{ state.taskSort = key; saveTaskSort(); render(); }
     })));
   };
@@ -3847,15 +3848,16 @@ function wireTaskSortGroupBtns(){
   if(groupBtn) groupBtn.onclick = (e)=>{
     e.stopPropagation();
     openMenuPopover(e.currentTarget, Object.entries(TASK_GROUP_LABELS).map(([key,label])=>({
-      label: (state.taskGroupBy===key?'✓ ':'')+label,
+      label: ((state.taskGroupBy||'taskstatus')===key?'✓ ':'')+label,
       onClick: ()=>{ state.taskGroupBy = key; saveTaskGroupBy(); render(); }
     })));
   };
 }
 
 function taskTableHtml(tasks, visibleCount, emptyText, showAnimator, showRetainer){
-  if(!tasks.length) return `<div class="task-grid">${emptyStateHtml({ icon:'tray', title: emptyText||'Nothing here yet.' })}</div>`;
-  const canDrag = (state.taskSort||'manual')==='manual' && (state.taskGroupBy||'none')==='none';
+  const sorted = sortProjTaskList(tasks);
+  if(!sorted.length) return `<div class="task-grid">${emptyStateHtml({ icon:'tray', title: emptyText||'Nothing here yet.' })}</div>`;
+  const canDrag = (state.taskSort||'due')==='manual';
   const gridCols = taskGridColumns(showAnimator, showRetainer);
   const headerCells = visibleTaskCols(showRetainer).map(k=>{
     const def = TASK_COLUMN_DEFS[k];
@@ -3868,10 +3870,20 @@ function taskTableHtml(tasks, visibleCount, emptyText, showAnimator, showRetaine
       ${headerCells}
       <div></div>
     </div>`;
-  const groups = groupProjTaskList(sortProjTaskList(tasks));
+  const rows = sorted.map(t=>taskRowHtml(t, showAnimator, showRetainer, canDrag)).join('');
+  return `<div class="task-grid">${header}${rows}</div>`;
+}
+/* One card per group (see groupProjTaskList) — used by both the retainer
+   client task view and, per-stage, the project detail page, so "Task
+   status" (the default) and every other group-by read identically in both
+   places. */
+function taskCardGroupsHtml(tasks, visibleCount, emptyText, showAnimator, showRetainer){
+  const groups = groupProjTaskList(tasks);
   return groups.map(g=>`
-    ${g.label!=null? `<div style="margin:${g===groups[0]?'0':'16px'} 0 6px;font-size:12px;font-weight:600;color:var(--muted)">${esc(g.label)} <span style="font-weight:400">${g.tasks.length}</span></div>`:''}
-    <div class="task-grid">${header}${g.tasks.map(t=>taskRowHtml(t, showAnimator, showRetainer, canDrag)).join('')}</div>
+    <div class="stage-section" style="margin-bottom:20px">
+      <div class="stage-head"><h4>${esc(g.label)} <span class="home-count">${g.tasks.length}</span></h4></div>
+      <div class="card" style="padding:8px 12px">${taskTableHtml(g.tasks, visibleCount, g.empty||emptyText, showAnimator, showRetainer)}</div>
+    </div>
   `).join('');
 }
 async function duplicateProjTask(taskId){
@@ -5035,8 +5047,8 @@ function renderProjDetail(){
     html += animDeliverablesBodyHtml(p);
   } else {
     html += `<div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn small ghost" id="taskSortBtn">Sort: ${TASK_SORT_LABELS[state.taskSort]||'Manual'} ▾</button>
-      <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'None'} ▾</button>
+      <button class="btn small ghost" id="taskSortBtn">Sort: ${TASK_SORT_LABELS[state.taskSort]||'Due date'} ▾</button>
+      <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'Task status'} ▾</button>
       <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
     </div>`;
     if(!stages.length){
@@ -5057,7 +5069,7 @@ function renderProjDetail(){
               ${idx>0 && s.due_date ? `<span style="font-size:11px;color:var(--muted)">${reviewWindowLabel(s.due_date, p.review_days)}</span>` : ''}
             </div>
           </div>
-          <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.', p.project_type==='Animations', c.is_retainer)}</div>
+          ${taskCardGroupsHtml(tasks, visibleCount, 'No tasks in this stage yet.', p.project_type==='Animations', c.is_retainer)}
           <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
         </div>`;
       });
@@ -6542,7 +6554,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.65.0';
+const APP_VERSION = '0.66.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
