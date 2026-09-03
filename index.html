@@ -520,17 +520,21 @@
   .week-grid .day .num{border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:10px}
   .year-month{margin-bottom:20px}
   .year-month h4{font-size:14px;font-weight:600;margin-bottom:8px}
+  .year-month.past{opacity:.4}
   .year-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .year-row.past{opacity:.4}
+  .year-today-marker{display:flex;align-items:center;gap:10px;margin:14px 0 10px;color:var(--accent);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+  .year-today-marker::before,.year-today-marker::after{content:'';flex:1;height:1px;background:var(--accent);opacity:.35}
 
-  .gantt-wrap{overflow-x:auto;padding-bottom:8px;position:relative}
+  .gantt-wrap{overflow-x:auto;padding-bottom:8px;padding-top:22px;position:relative}
   .gantt-header{display:grid;grid-template-columns:180px 1fr;position:relative;height:34px;margin-bottom:6px;min-width:640px}
   .gantt-month-marker{position:absolute;top:0;font-size:11px;color:var(--muted);border-left:1px solid var(--line);padding-left:6px;white-space:nowrap}
   .gantt-day-marker{position:absolute;top:0;font-size:9.5px;color:var(--muted);border-left:1px solid var(--line-soft);padding-left:4px;white-space:nowrap}
   .gantt-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);z-index:3;pointer-events:none}
-  .gantt-today-label{position:absolute;top:16px;font-size:9.5px;font-weight:700;color:#fff;background:var(--accent);padding:1px 5px;border-radius:4px;white-space:nowrap;transform:translateX(-50%);z-index:4;pointer-events:none}
-  .gantt-client-row{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;margin:18px 0 8px;color:var(--ink)}
+  .gantt-today-label{position:absolute;top:2px;font-size:9.5px;font-weight:700;color:#fff;background:var(--accent);padding:1px 5px;border-radius:4px;white-space:nowrap;transform:translateX(-50%);z-index:5;pointer-events:none}
+  .gantt-client-row{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;margin:18px 0 8px;color:var(--ink);position:sticky;left:0;width:fit-content;background:var(--card);padding-right:14px;z-index:2}
   .gantt-row{display:grid;grid-template-columns:180px 1fr;align-items:center;min-height:38px;border-bottom:1px solid var(--line);min-width:640px}
-  .gantt-label-col{font-size:12.5px;color:var(--muted);padding-right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gantt-label-col{font-size:12.5px;color:var(--muted);padding-right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:var(--card);z-index:2}
   .gantt-track-col{position:relative;height:24px;background:var(--track);border-radius:6px}
   .gantt-bar{position:absolute;top:2px;height:20px;border-radius:5px;color:#fff;font-size:10.5px;font-weight:500;padding:2px 7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;line-height:1.6}
   .gantt-kickoff{position:absolute;top:-4px;width:3px;height:32px;border-radius:2px;cursor:pointer}
@@ -821,7 +825,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.60.2</div>
+    <div id="versionBadge" class="version-badge">v0.61.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -2892,8 +2896,17 @@ function renderGanttBody(){
   });
   if(!rows.length) return `<div class="empty">No projects with stage due dates yet — set due dates on stages to see them here.</div>`;
 
-  minDate = new Date(minDate); minDate.setDate(minDate.getDate()-3);
-  maxDate = new Date(maxDate); maxDate.setDate(maxDate.getDate()+3);
+  // Always span at least a full year around today so the chart is
+  // consistently scrollable regardless of how few stage dates happen to be
+  // set, widened further if real data falls outside that window — same
+  // "pad to cover real data" pattern Work Schedule's continuous range uses.
+  const todayAnchor = new Date(iso(new Date())+'T00:00');
+  let rangeStart = new Date(todayAnchor); rangeStart.setMonth(rangeStart.getMonth()-2);
+  let rangeEnd = new Date(todayAnchor); rangeEnd.setMonth(rangeEnd.getMonth()+10);
+  if(minDate < rangeStart) rangeStart = new Date(minDate);
+  if(maxDate > rangeEnd) rangeEnd = new Date(maxDate);
+  minDate = rangeStart; minDate.setDate(minDate.getDate()-3);
+  maxDate = rangeEnd; maxDate.setDate(maxDate.getDate()+3);
   const totalMs = maxDate - minDate;
   const totalDays = Math.max(1, Math.round(totalMs/86400000));
   const pct = d => Math.max(0, Math.min(100, (d-minDate)/totalMs*100));
@@ -3002,23 +3015,33 @@ function renderMilestones(){
       <div class="week-grid" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px">${cells}</div>`;
   } else if(state.milestoneViewMode==='year'){
     const y = anchor.getFullYear();
+    const todayD = new Date(iso(new Date())+'T00:00');
+    const isCurrentYear = y===todayD.getFullYear();
+    const curMonth = todayD.getMonth(), curDay = todayD.getDate();
     let months = '';
     for(let m=0;m<12;m++){
       const daysIn = new Date(y,m+1,0).getDate();
+      const isPastMonth = isCurrentYear && m<curMonth;
+      const isTodayMonth = isCurrentYear && m===curMonth;
       const rows = [];
       for(let d=1; d<=daysIn; d++){
+        if(isTodayMonth && d===curDay){
+          rows.push(`<div class="year-today-marker" id="yearTodayMarker"><span>Today — ${fmtDate(todayD)}</span></div>`);
+        }
         const dIso = iso(new Date(y,m,d));
+        const isPastRow = isTodayMonth && d<curDay;
         (byDay[dIso]||[]).forEach(item=>{
+          const rowCls = `year-row${isPastRow?' past':''}`;
           if(item.type==='stage'){
             const cl = state.clients.find(c=>c.id===item.proj.client_id);
-            rows.push(`<div class="year-row"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="stage:${item.s.id}">${esc(cl?cl.name:'')} — ${esc(item.proj.name)} · ${esc(item.s.name)}</span></div>`);
+            rows.push(`<div class="${rowCls}"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="stage:${item.s.id}">${esc(cl?cl.name:'')} — ${esc(item.proj.name)} · ${esc(item.s.name)}</span></div>`);
           } else {
             const cl = state.clients.find(c=>c.id===item.t.client_id);
-            rows.push(`<div class="year-row"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="task:${item.t.id}">${esc(cl?cl.name:'')} — ${esc(item.t.title)} <span style="color:var(--muted)">(retainer)</span></span></div>`);
+            rows.push(`<div class="${rowCls}"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="task:${item.t.id}">${esc(cl?cl.name:'')} — ${esc(item.t.title)} <span style="color:var(--muted)">(retainer)</span></span></div>`);
           }
         });
       }
-      if(rows.length) months += `<div class="year-month"><h4>${new Date(y,m,1).toLocaleDateString('en-GB',{month:'long'})}</h4>${rows.join('')}</div>`;
+      if(rows.length) months += `<div class="year-month${isPastMonth?' past':''}"><h4>${new Date(y,m,1).toLocaleDateString('en-GB',{month:'long'})}</h4>${rows.join('')}</div>`;
     }
     body = `<div class="cal-head"><button class="btn ghost small" id="mPrev">←</button><h3>${y}</h3><button class="btn ghost small" id="mNext">→</button><button class="btn ghost small" id="mToday">Today</button></div>
       ${months || '<div class="empty">No milestones this year.</div>'}`;
@@ -3053,6 +3076,20 @@ function renderMilestones(){
   };
   if($('#mToday')) $('#mToday').onclick = ()=>{ state.milestoneAnchor = new Date(); renderMilestones(); };
   attachMilestoneInteractions();
+
+  // Land on "today" by default rather than the start of the range — the
+  // gantt scrolls horizontally so today sits near the left edge (leaving
+  // room to scroll right into the future); the year view scrolls vertically
+  // so today's month is at the top (past months are still there, just
+  // scrolled-to via scrolling up, and rendered dimmed via .past).
+  if(state.milestoneViewMode==='gantt'){
+    const wrap = main.querySelector('.gantt-wrap');
+    const line = wrap && wrap.querySelector('.gantt-today-line');
+    if(wrap && line) wrap.scrollLeft = Math.max(0, line.offsetLeft-100);
+  } else if(state.milestoneViewMode==='year'){
+    const marker = $('#yearTodayMarker');
+    if(marker) marker.scrollIntoView({ block:'start' });
+  }
 }
 
 /* One "row" per project (with a scope summary via projectDetailsSummary),
@@ -6062,7 +6099,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.60.2';
+const APP_VERSION = '0.61.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
