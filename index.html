@@ -194,22 +194,23 @@
   .meter .tick-label{position:absolute;top:-22px;left:75%;transform:translateX(-50%);font-size:10.5px;color:var(--muted);white-space:nowrap;font-weight:500}
   /* Labels sit inside the bar itself rather than below it — "used" is
      pinned at the left, "pct" tracks the fill's leading edge (clamped to a
-     minimum left% so it never clips off the bar at very low usage). White
-     text + a soft dark halo (not a single drop-shadow) reads correctly
-     against every combination this bar can show: the light track in light
-     mode, the dark track in dark mode, and both the vivid (light-mode) and
-     pastel (dark-mode) fill colours — no single flat text colour survives
-     all four without this halo trick. */
-  .meter-used-label,.meter-pct-label,.meter-compact-used,.meter-compact-pct{position:absolute;top:50%;transform:translateY(-50%);color:#fff;font-weight:700;text-shadow:0 0 1px rgba(0,0,0,.75),0 0 4px rgba(0,0,0,.55);white-space:nowrap;z-index:2;pointer-events:none;font-variant-numeric:tabular-nums}
-  .meter-used-label{left:10px;font-size:12.5px}
-  .meter-pct-label{transform:translate(-100%,-50%);font-size:12px;transition:left .4s ease}
+     minimum left% so it never clips off the bar at very low usage, and
+     shifted an extra fixed pixel amount off the right edge so it doesn't
+     sit flush against it at 100%+). Each is a solid pill using the app's
+     own ink/paper token pair, inverted (dark pill + light text in light
+     mode, light pill + dark text in dark mode) — opaque, so it's legible
+     regardless of what colour is underneath (track or any fill state),
+     unlike a text-shadow halo which still depends on the background. */
+  .meter-used-label,.meter-pct-label,.meter-compact-used,.meter-compact-pct{position:absolute;top:50%;transform:translateY(-50%);background:var(--ink);color:var(--paper);font-weight:600;padding:3px 9px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.18);white-space:nowrap;z-index:2;pointer-events:none;font-variant-numeric:tabular-nums}
+  .meter-used-label{left:8px;font-size:12px}
+  .meter-pct-label{transform:translate(calc(-100% - 8px),-50%);font-size:11.5px;transition:left .4s ease}
   .meter-compact{position:relative;height:20px;background:var(--track);border-radius:99px;overflow:hidden;margin:10px 0 2px}
   .meter-compact .fill{position:absolute;inset:0 auto 0 0;height:100%;border-radius:99px;background:var(--accent);transition:width .4s ease;max-width:100%}
   .meter-compact .fill.warn{background:var(--amber)}
   .meter-compact .fill.over{background:var(--red)}
   .meter-compact .tick{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.35;left:75%}
-  .meter-compact-used{left:9px;font-size:10.5px}
-  .meter-compact-pct{transform:translate(-100%,-50%);font-size:10.5px;transition:left .4s ease}
+  .meter-compact-used{left:6px;font-size:10px;padding:2px 7px}
+  .meter-compact-pct{transform:translate(calc(-100% - 6px),-50%);font-size:10px;padding:2px 7px;transition:left .4s ease}
   .status{margin-top:12px;font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px}
   .status.ok{background:#e8f2ec;color:var(--green)}
   .status.warn{background:var(--amber-bg);color:var(--amber)}
@@ -852,7 +853,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.64.0</div>
+    <div id="versionBadge" class="version-badge">v0.65.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -902,7 +903,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
-  timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null,
+  timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null, appSettings:{},
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -1174,6 +1175,20 @@ function mutedBg(hex){
 }
 
 function initials(name){ const p=(name||'').trim().split(/\s+/); return ((p[0]?.[0]||'')+(p[1]?.[0]||'')).toUpperCase() || '?'; }
+
+/* rs_app_settings is a simple global key/value store (outputs/v37_app_settings.sql)
+   for app-wide numbers/toggles that aren't tied to any one client, project, or
+   member — starts with just the holiday-days-per-year allowance, edited from
+   Settings > Admin settings. */
+function appSetting(key, fallback){
+  const v = state.appSettings ? state.appSettings[key] : undefined;
+  return v!=null ? v : fallback;
+}
+const DEFAULT_HOLIDAY_DAYS_PER_YEAR = 25;
+function holidayDaysPerYear(){
+  const n = Number(appSetting('holiday_days_per_year', DEFAULT_HOLIDAY_DAYS_PER_YEAR));
+  return Number.isFinite(n) ? n : DEFAULT_HOLIDAY_DAYS_PER_YEAR;
+}
 function avatarHtml(member){ if(!member) return ''; return `<span class="avatar" style="background:${clientColor(member.id)}" title="${esc(member.name)}">${initials(member.name)}</span>`; }
 function avatarWithName(member){ return member ? `<span style="display:inline-flex;align-items:center;gap:6px">${avatarHtml(member)}${esc(member.name)}</span>` : '<span style="color:var(--muted)">—</span>'; }
 function avatarGroupHtml(ids){
@@ -1228,18 +1243,24 @@ function usageForCycle(client, cyc, taskList){
 function clientUsage(client, taskList){
   const cyc = cycleFor(client.renewal_day);
   const cur = usageForCycle(client, cyc, taskList);
-  // Rollover only looks one cycle back (not a cumulative multi-cycle carry)
-  // — whatever was left unused last cycle tops up this cycle's allowance,
-  // clamped at 0 so going over budget last cycle never eats into this one.
-  let rolloverHours = 0;
-  if(client.rollover_hours && client.retainer_hours>0){
+  // Both rollover directions only look one cycle back (not a cumulative
+  // multi-cycle carry) and share the same previous-cycle lookup — a cycle
+  // is never simultaneously under AND over budget, so only one of the two
+  // ever actually applies regardless of which toggles are on.
+  let rolloverHours = 0, overageDeduction = 0;
+  if((client.rollover_hours || client.rollover_overage) && client.retainer_hours>0){
     const prevRef = new Date(cyc.start); prevRef.setDate(prevRef.getDate()-1);
     const prevCyc = cycleFor(client.renewal_day, prevRef);
     const prevUsage = usageForCycle(client, prevCyc, taskList);
-    rolloverHours = Math.max(0, client.retainer_hours - prevUsage.used);
+    // Unused hours from last cycle top up this cycle's allowance.
+    if(client.rollover_hours) rolloverHours = Math.max(0, client.retainer_hours - prevUsage.used);
+    // Hours over budget last cycle are deducted from this cycle's allowance
+    // instead — floored at 0 below, so a bad month can't push the client
+    // into a negative allowance.
+    if(client.rollover_overage) overageDeduction = Math.max(0, prevUsage.used - client.retainer_hours);
   }
-  const effectiveHours = (client.retainer_hours||0) + rolloverHours;
-  return { cyc, tasks:cur.tasks, entryRows:cur.entryRows, used:cur.used, perMember:cur.perMember, rolloverHours, effectiveHours, pct: effectiveHours>0 ? cur.used/effectiveHours*100 : 0 };
+  const effectiveHours = Math.max(0, (client.retainer_hours||0) + rolloverHours - overageDeduction);
+  return { cyc, tasks:cur.tasks, entryRows:cur.entryRows, used:cur.used, perMember:cur.perMember, rolloverHours, overageDeduction, effectiveHours, pct: effectiveHours>0 ? cur.used/effectiveHours*100 : 0 };
 }
 
 /* ---------- data ---------- */
@@ -1253,7 +1274,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc,tor] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc,tor,aps] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -1276,7 +1297,8 @@ async function loadAll(){
     db.from('rs_checklist_template_items').select('*').order('position'),
     db.from('rs_anim_deliverables').select('*').order('position'),
     db.from('rs_anim_deliverable_columns').select('*').order('position'),
-    db.from('rs_time_off_requests').select('*').order('start_date',{ascending:false})
+    db.from('rs_time_off_requests').select('*').order('start_date',{ascending:false}),
+    db.from('rs_app_settings').select('*')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -1295,9 +1317,12 @@ async function loadAll(){
   state.animDeliverables = adl.data||[];
   state.animDeliverableColumns = (adc.data && adc.data.length) ? adc.data : [];
   state.timeOffRequests = tor.data||[];
+  state.appSettings = {};
+  (aps.data||[]).forEach(row=>{ state.appSettings[row.key] = row.value; });
   if(adl.error) console.warn('Animation deliverables table not found — run outputs/v34_anim_deliverables.sql', adl.error);
   if(adc.error) console.warn('Animation deliverable columns table not found — run outputs/v34_anim_deliverables.sql', adc.error);
   if(tor.error) console.warn('Time off requests table not found — run outputs/v35_time_off.sql', tor.error);
+  if(aps.error) console.warn('App settings table not found — run outputs/v37_app_settings.sql', aps.error);
   if(tls.error) console.warn('Tools table not found — run outputs/v24_tools.sql', tls.error);
   if(cl.error) console.warn('Checklists tables not found — run outputs/v23_qa_checklist.sql', cl.error);
   if(clt.error) console.warn('Checklist templates tables not found — run outputs/v25_checklist_templates.sql', clt.error);
@@ -2218,7 +2243,7 @@ function renderHome(){
 function meterHtml(u){
   const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
   const fillPct = Math.min(u.pct,100);
-  const labelPct = Math.max(fillPct, 10);
+  const labelPct = Math.max(fillPct, 16);
   return `<div class="meter-wrap">
       <div class="meter">
         <div class="fill ${cls}" style="width:${fillPct}%"></div>
@@ -2232,7 +2257,7 @@ function meterHtml(u){
 function compactMeterHtml(u){
   const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
   const fillPct = Math.min(u.pct,100);
-  const labelPct = Math.max(fillPct, 14);
+  const labelPct = Math.max(fillPct, 22);
   return `<div class="meter-compact">
       <div class="fill ${cls}" style="width:${fillPct}%"></div>
       <div class="tick"></div>
@@ -2418,6 +2443,10 @@ function openRetainerSettingsModal(clientId){
         <div style="font-size:12px;color:var(--muted);margin-left:24px">Hours left over at the end of a cycle carry into next cycle's allowance, one cycle at a time.</div>
       </div>
       <div class="full">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:500"><input type="checkbox" id="rs_overage" ${c.rollover_overage?'checked':''} style="width:auto"> Roll over hours gone over</label>
+        <div style="font-size:12px;color:var(--muted);margin-left:24px">If a cycle finishes over its allowance, the extra hours are deducted from next cycle's allowance instead, one cycle at a time. Noted on the Monthly Allowance tab.</div>
+      </div>
+      <div class="full">
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:500"><input type="checkbox" id="rs_paused" ${c.retainer_paused?'checked':''} style="width:auto"> Pause retainer</label>
         <div style="font-size:12px;color:var(--muted);margin-left:24px">Hides the usage meter and marks the retainer as paused until this is turned off again.</div>
       </div>
@@ -2433,8 +2462,9 @@ function openRetainerSettingsModal(clientId){
   $('#rs_cancel').onclick = closeModal;
   $('#rs_save').onclick = async ()=>{
     const rollover_hours = $('#rs_rollover').checked;
+    const rollover_overage = $('#rs_overage').checked;
     const retainer_paused = $('#rs_paused').checked;
-    const { error } = await db.from('rs_clients').update({ rollover_hours, retainer_paused }).eq('id', c.id);
+    const { error } = await db.from('rs_clients').update({ rollover_hours, rollover_overage, retainer_paused }).eq('id', c.id);
     if(error){ toast(error.code==='PGRST204'?'Run migration v36 to enable retainer settings':'Could not save'); console.error(error); return; }
     closeModal(); toast('Retainer settings saved'); await loadAll(); render();
   };
@@ -2552,6 +2582,11 @@ async function loadRetainerAllowanceBody(c){
     </div></div>`;
   }
 
+  // Only the current cycle's overage-deduction note is shown here — past
+  // cycles keep showing their own historical retainer_hours/pct untouched
+  // (settingsAt's snapshot at the time), so this is additive context on the
+  // live cycle rather than a retroactive rewrite of what already happened.
+  const u = clientUsage(c);
   if(!keys.length){
     html += `<div class="empty">No tasks logged for this client yet.</div>`;
   } else {
@@ -2563,6 +2598,9 @@ async function loadRetainerAllowanceBody(c){
       const badgeCls = pct>=100?'over':pct>=75?'warn':'ok';
       const badgeText = pct>=100 ? `${Math.round(pct)}% · over` : pct>=75 ? `${Math.round(pct)}% · reaching limit` : `${Math.round(pct)}%`;
       const items = (projGroups[key]||[]).sort((a,b)=> (a.work_date||a.due_date||'').localeCompare(b.work_date||b.due_date||''));
+      const overageNote = (isCurrent && u.overageDeduction>0)
+        ? `<div style="margin-top:8px;font-size:12.5px;color:var(--red);background:var(--red-bg);padding:7px 11px;border-radius:8px">⚠ ${fmtH(u.overageDeduction)} carried over from last cycle's overage — this cycle's allowance is reduced to ${fmtH(u.effectiveHours)}.</div>`
+        : '';
       html += `<div class="cycle-block">
         <div class="cb-head">
           <h4>${fmtDateY(g.cyc.start)} – ${fmtDateY(g.cyc.end)} ${isCurrent?'<span class="badge">(current cycle)</span>':''}</h4>
@@ -2571,6 +2609,7 @@ async function loadRetainerAllowanceBody(c){
             <button class="btn small ghost" data-pdf="${key}">PDF</button>
           </span>
         </div>
+        ${overageNote}
         <div class="card" style="padding:8px 12px">
           ${items.length? `<table><thead><tr><th>Task</th><th>Date</th><th>Assigned</th><th>Hours (entries)</th><th style="text-align:center">Tracked</th><th></th></tr></thead>
           <tbody>${items.map(pt=>{
@@ -4678,6 +4717,19 @@ function openToolModal(toolId){
    not-yet-run table in this app. */
 function timeOffIsAdmin(){ const m = currentUser(); return !!(m && m.is_admin); }
 function timeOffTypeLabel(type){ return type==='wfh' ? 'WFH' : 'Holiday'; }
+/* Holiday days remaining this calendar year — approved 'holiday' requests
+   only (WFH doesn't count against the allowance), attributed to the year
+   their start_date falls in (a request spanning New Year's is a rare edge
+   case, not worth the extra complexity of splitting it across two years). */
+function holidayDaysUsedThisYear(memberId){
+  const y = new Date().getFullYear();
+  return (state.timeOffRequests||[])
+    .filter(r=>r.member_id===memberId && r.type==='holiday' && r.status==='approved' && new Date(r.start_date+'T00:00').getFullYear()===y)
+    .reduce((sum,r)=> sum + timeOffDaysCount(r), 0);
+}
+function holidayDaysRemainingThisYear(memberId){
+  return holidayDaysPerYear() - holidayDaysUsedThisYear(memberId);
+}
 function timeOffRangeLabel(r){
   const s = fmtDate(new Date(r.start_date+'T00:00'));
   if(r.start_date===r.end_date) return s;
@@ -4769,9 +4821,10 @@ function renderTimeOff(){
   if(state.timeOffCalY==null){ const t = new Date(); state.timeOffCalY = t.getFullYear(); state.timeOffCalM = t.getMonth(); }
   const me = currentUser();
   const isAdmin = timeOffIsAdmin();
+  const remainingLine = me ? `<div class="sub" style="margin:6px 0 0"><strong style="color:var(--ink)">${holidayDaysRemainingThisYear(me.id)}</strong> holiday day${holidayDaysRemainingThisYear(me.id)===1?'':'s'} left this year</div>` : '';
   main.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div><h2>Time Off</h2><div class="sub" style="margin-bottom:0">Request holiday and work-from-home days${isAdmin?' — you can approve requests below':''}</div></div>
+      <div><h2>Time Off</h2><div class="sub" style="margin-bottom:0">Request holiday and work-from-home days${isAdmin?' — you can approve requests below':''}</div>${remainingLine}</div>
       <button class="btn small" id="toRequestBtn">+ Request time off</button>
     </div>
     <div class="view-toggle" style="margin:16px 0 20px">
@@ -5766,6 +5819,7 @@ const SETTINGS_SECTIONS = [
   { key:'pipeline', label:'Pipeline statuses' },
   { key:'deliverablecols', label:'Deliverable columns' },
   { key:'data', label:'Data & backups' },
+  { key:'admin', label:'Admin settings' },
 ];
 
 function settingsClientsHtml(){
@@ -6325,6 +6379,35 @@ function wireSettingsData(){
   $('#exportCsv').onclick = exportTasksCsv;
 }
 
+/* Admin settings — app-wide numbers/toggles not tied to any one client,
+   project, or member. Starts with just the holiday-days-per-year allowance
+   (rs_app_settings, outputs/v37_app_settings.sql) that drives the "days
+   left this year" line on the Time Off page — a deliberately separate
+   section from every other Settings tab, which are all about editing lists
+   of clients/members/statuses rather than a single app-wide value. */
+function settingsAdminHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Admin settings</h3>
+    <div class="sub" style="margin-bottom:14px">App-wide settings — not tied to any one client, project, or member.</div>
+    <div class="row-form">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;white-space:nowrap">Holiday days per year
+        <input type="number" id="as_holiday_days" min="0" step="1" value="${holidayDaysPerYear()}" style="width:80px">
+      </label>
+      <button class="btn small" id="as_save">Save</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px">Drives the "days left this year" line at the top of the Time Off page — the same allowance applies to everyone.</div>
+  </div>`;
+}
+function wireSettingsAdmin(){
+  $('#as_save').onclick = async ()=>{
+    const n = parseInt($('#as_holiday_days').value, 10);
+    if(!Number.isFinite(n) || n<0){ toast('Enter a valid number of days'); return; }
+    const { error } = await db.from('rs_app_settings').upsert({ key:'holiday_days_per_year', value:String(n) });
+    if(error){ toast(error.code==='PGRST205'?'Run migration v37 to enable Admin settings':'Could not save'); console.error(error); return; }
+    toast('Saved'); await loadAll(); render();
+  };
+}
+
 function settingsSectionHtml(key){
   if(key==='clients') return settingsClientsHtml();
   if(key==='team') return settingsTeamHtml();
@@ -6335,6 +6418,7 @@ function settingsSectionHtml(key){
   if(key==='pipeline') return settingsPipelineHtml();
   if(key==='deliverablecols') return settingsDeliverableColumnsHtml();
   if(key==='data') return settingsDataHtml();
+  if(key==='admin') return settingsAdminHtml();
   return '';
 }
 function wireSettingsSection(key){
@@ -6347,6 +6431,7 @@ function wireSettingsSection(key){
   else if(key==='pipeline') wireSettingsPipeline();
   else if(key==='deliverablecols') wireSettingsDeliverableColumns();
   else if(key==='data') wireSettingsData();
+  else if(key==='admin') wireSettingsAdmin();
 }
 
 function renderSettings(){
@@ -6382,7 +6467,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.64.0';
+const APP_VERSION = '0.65.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
