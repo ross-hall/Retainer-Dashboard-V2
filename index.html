@@ -532,12 +532,12 @@
   .gantt-day-marker{position:absolute;top:0;font-size:9.5px;color:var(--muted);border-left:1px solid var(--line-soft);padding-left:4px;white-space:nowrap}
   .gantt-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);z-index:3;pointer-events:none}
   .gantt-today-label{position:absolute;top:2px;font-size:9.5px;font-weight:700;color:#fff;background:var(--accent);padding:1px 5px;border-radius:4px;white-space:nowrap;transform:translateX(-50%);z-index:5;pointer-events:none}
-  .gantt-client-row{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;margin:18px 0 8px;color:var(--ink);position:sticky;left:0;width:fit-content;background:var(--card);padding-right:14px;z-index:2}
+  .gantt-client-row{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;margin:18px 0 8px;color:var(--ink);position:sticky;left:0;width:fit-content;background:var(--paper);padding-right:14px;z-index:2}
   .gantt-row{display:grid;grid-template-columns:180px 1fr;align-items:center;min-height:38px;border-bottom:1px solid var(--line);min-width:640px}
-  .gantt-label-col{font-size:12.5px;color:var(--muted);padding-right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:var(--card);z-index:2}
+  .gantt-label-col{font-size:12.5px;color:var(--muted);padding-right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:var(--paper);z-index:2}
   .gantt-track-col{position:relative;height:24px;background:var(--track);border-radius:6px}
   .gantt-bar{position:absolute;top:2px;height:20px;border-radius:5px;color:#fff;font-size:10.5px;font-weight:500;padding:2px 7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;line-height:1.6}
-  .gantt-kickoff{position:absolute;top:-4px;width:3px;height:32px;border-radius:2px;cursor:pointer}
+  .gantt-kickoff{position:absolute;top:2px;width:3px;height:20px;border-radius:2px;cursor:pointer}
 
   .anim-grid th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:relative}
   .anim-grid td{border-bottom:1px solid var(--line)}
@@ -840,7 +840,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.62.0</div>
+    <div id="versionBadge" class="version-badge">v0.62.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -6299,7 +6299,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.62.0';
+const APP_VERSION = '0.62.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
