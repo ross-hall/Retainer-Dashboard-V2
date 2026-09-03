@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.63.0**
+Current version: **v0.64.0**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -665,6 +665,12 @@ Font: Inter (unchanged from v0.9.0)
   - **Pause retainer** (`rs_clients.retainer_paused`) — purely presentational, scoped narrowly on purpose: hides the meter and shows "⏸ Retainer paused" (client detail header) / "⏸ Paused" (client card) instead, plus an amber "Paused" badge next to the green "Retainer" badge. Does not touch billing math, task counting, or anything else — just a status flag admins can see at a glance.
 - Degrades gracefully pre-migration: the modal opens and both checkboxes toggle, but Save fails with a toast ("Run migration v36...") on the real `PGRST204`; until the migration runs every client reads `rollover_hours`/`retainer_paused` as `undefined` (falsy), so the app behaves exactly as it did before this version.
 - Verified live: real bar rendering against live Athernal Bio/Entos/Ikarovec/MindLab data (107%/149%/104%/202%, all correctly red with numbers tracking the fill) and Phaseshift/Prokarium (35%/46%, blue); the real `PGRST204` on Save; the paused state on both the card and detail header (mocked `retainer_paused`, confirmed the meter disappears and the badge/status line appear correctly); rollover math verified directly (`clientUsage()` called with `rollover_hours` toggled on Phaseshift: 34.7h allowance → 130.6h effective after crediting 61.3h left over from the previous cycle, pct dropping from 34.6% to 18.4% accordingly) and visually on the card; dark mode on both bar types and the modal; the `≤760px` mobile stack.
+
+**What shipped in v0.64.0** (admin mode on the public client dashboard gets a client-switcher dropdown in the admin banner — jump straight to any other active client's dashboard without going back through the internal app):
+- **`bootPublicDashboard` fetches a lightweight client directory (`id,name,slug`) only when `isAdmin` is true** — the client-facing read-only path is completely unaffected (same queries as before, no widened data exposure on an unauthenticated `?client=slug` link). Passed through to `renderPublicDashboard` as `otherClients`.
+- **New `<select id="pdClientSwitch">` in the existing admin banner**, next to "Copy client link" — every active client, alphabetical, current one pre-selected. Only rendered when there's more than one active client (`otherClients.length>1`), so a single-client setup never shows a useless one-option dropdown.
+- **New `jumpToClient(newSlug)`** (next to the existing `reload()`) — unlike `reload()`, which re-boots the *same* client and carries `pub` forward (view/project/stage) so an admin write doesn't bounce the page, switching clients is a deliberate fresh boot with no `initialPub`: a different client means entirely different projects/stages/tasks, so there's nothing worth preserving, and landing on that client's own Home is the correct behaviour. Calls `history.pushState` first so the address bar (and a refresh) reflect the newly-viewed client, same as if the admin had edited the `?client=` slug by hand.
+- Verified live: switching from Athernal Bio → Radyus via the dropdown correctly re-rendered the whole page (nav, favicon, accent colour, projects) for the new client and updated the URL to `?client=radyus&admin=1`; confirmed the dropdown is completely absent on the same client's non-admin `?client=radyus` link; light and dark mode; the `≤760px` mobile stack (dropdown goes full-width, wraps cleanly under the admin banner text).
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

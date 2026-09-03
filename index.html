@@ -852,7 +852,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.63.0</div>
+    <div id="versionBadge" class="version-badge">v0.64.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -6382,7 +6382,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.63.0';
+const APP_VERSION = '0.64.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7038,10 +7038,17 @@ async function bootPublicDashboard(slug, isAdmin, initialPub){
   state.taskStatuses = (statusesRes.data && statusesRes.data.length) ? statusesRes.data : DEFAULT_TASK_STATUSES;
   state.stageCategories = categories;
   state.stageLinks = links;
-  renderPublicDashboard(client, projects||[], stages, categories, links, !!isAdmin, retainerTasksRes.data||[], initialPub);
+  // Only fetched for admins — the client-facing read-only view has no use
+  // for a directory of every other client, and there's no reason to widen
+  // what an unauthenticated ?client=slug link can see.
+  const otherClients = isAdmin
+    ? (await db.from('rs_clients').select('id,name,slug').eq('active', true).order('name')).data || []
+    : [];
+  renderPublicDashboard(client, projects||[], stages, categories, links, !!isAdmin, retainerTasksRes.data||[], initialPub, otherClients);
 }
 
-function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks, initialPub){
+function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks, initialPub, otherClients){
+  otherClients = otherClients || [];
   retainerTasks = retainerTasks || [];
   const now = new Date();
   // 'home' is the landing page (greeting, project cards, useful info); 'project'
@@ -7072,6 +7079,16 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   // field is still stored and still editable, just currently unused.
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true, { ...pub }); }
+  // Switching client is a fresh boot (different client = different projects/
+  // stages/tasks entirely, so there's nothing from `pub` worth carrying
+  // over — unlike reload(), which stays on the same client). pushState so
+  // the address bar — and a refresh — reflect whichever client is now being
+  // viewed, same as manually editing the ?client= slug would.
+  async function jumpToClient(newSlug){
+    if(!newSlug || newSlug===client.slug) return;
+    history.pushState({}, '', `?client=${newSlug}&admin=1`);
+    await bootPublicDashboard(newSlug, true);
+  }
 
   /* Admin-only "+" on a calendar day — the client is already fixed by the
      portal we're on, so this is deliberately just a name + a date, not the
@@ -7632,6 +7649,9 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink);display:flex;flex-direction:column">
         ${isAdmin? `<div style="background:var(--accent-soft);color:var(--accent);border-bottom:1px solid var(--line);text-align:center;padding:10px 20px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
           <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
+          ${otherClients.length>1 ? `<select id="pdClientSwitch" style="font-size:12.5px;font-family:inherit;border:1px solid var(--accent);color:var(--accent);background:var(--card);border-radius:7px;padding:4px 8px;cursor:pointer">
+            ${otherClients.map(c=>`<option value="${esc(c.slug)}" ${c.slug===client.slug?'selected':''}>${esc(c.name)}</option>`).join('')}
+          </select>` : ''}
           <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
         <div style="max-width:1600px;width:100%;box-sizing:border-box;margin:0 auto;padding:0 24px;flex:1;display:flex;flex-direction:column;min-width:0">
@@ -7667,6 +7687,8 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         const url = `${window.location.origin}${window.location.pathname}?client=${client.slug}`;
         navigator.clipboard?.writeText(url).then(()=> toast('Client link copied')).catch(()=> toast(url));
       });
+      const switchSel = document.getElementById('pdClientSwitch');
+      if(switchSel) switchSel.addEventListener('change', ()=> jumpToClient(switchSel.value));
       // "+ Add material"/"+ Add note" no longer surface category management at
       // all — find-or-create a category behind the scenes (ensureMaterialsCategory)
       // and go straight to the link modal. Scope falls back stage → project →
