@@ -853,7 +853,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.66.0</div>
+    <div id="versionBadge" class="version-badge">v0.67.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -895,6 +895,7 @@ function saveInternalCols(){ store.set('rs_internal_cols', JSON.stringify(Array.
 function saveInternalSort(){ store.set('rs_internal_sort', state.internalSort); }
 function saveInternalGroup(){ store.set('rs_internal_group', state.internalGroupBy); }
 function saveTaskSort(){ store.set('rs_task_sort', state.taskSort); }
+function saveTaskSortDir(){ store.set('rs_task_sortdir', state.taskSortDir); }
 function saveTaskGroupBy(){ store.set('rs_task_groupby', state.taskGroupBy); }
 
 let state = { view:'home', clients:[], members:[], tasks:[],
@@ -906,7 +907,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
   timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null, appSettings:{},
-  taskSort: store.get('rs_task_sort') || 'due', taskGroupBy: store.get('rs_task_groupby') || 'taskstatus',
+  taskSort: store.get('rs_task_sort') || 'due', taskSortDir: store.get('rs_task_sortdir') || 'asc', taskGroupBy: store.get('rs_task_groupby') || 'taskstatus',
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -2492,7 +2493,7 @@ function renderRetainerTasksBodyHtml(c){
   return `${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
     <div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" data-addclienttask="${c.id}">+ Task</button>
-      <button class="btn small ghost" id="taskSortBtn">Sort: ${TASK_SORT_LABELS[state.taskSort]||'Due date'} ▾</button>
+      <button class="btn small ghost" id="taskSortBtn">${taskSortButtonLabel()}</button>
       <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'Task status'} ▾</button>
       <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
     </div>
@@ -3809,9 +3810,19 @@ function sortProjTaskList(list){
   else if(sort==='title') arr.sort((a,b)=> a.title.localeCompare(b.title));
   else if(sort==='designer') arr.sort((a,b)=> designerName(a).localeCompare(designerName(b)));
   else if(sort==='status') arr.sort((a,b)=> statusRecord(a.status).position - statusRecord(b.status).position);
-  else if(sort==='manual') arr.sort((a,b)=>(a.position||0)-(b.position||0));
+  else if(sort==='manual') return arr.sort((a,b)=>(a.position||0)-(b.position||0)); // manual ignores direction — position order isn't meaningfully reversible
   else arr.sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
+  if((state.taskSortDir||'asc')==='desc') arr.reverse();
   return arr;
+}
+/* "Sort: Due date ▾" plus a direction arrow (↑ ascending / ↓ descending) —
+   clicking the already-active sort option again in the popover flips
+   taskSortDir instead of re-picking the same key (see wireTaskSortGroupBtns). */
+function taskSortButtonLabel(){
+  const sort = state.taskSort || 'due';
+  const label = TASK_SORT_LABELS[sort] || 'Due date';
+  const arrow = sort!=='manual' ? (state.taskSortDir==='desc'?' ↓':' ↑') : '';
+  return `Sort: ${label}${arrow} ▾`;
 }
 /* Splits a combined task list into labelled { label, tasks, empty } groups,
    each rendered as its own card by taskCardGroupsHtml(). "Task status"
@@ -3839,10 +3850,18 @@ function wireTaskSortGroupBtns(){
   const sortBtn = $('#taskSortBtn');
   if(sortBtn) sortBtn.onclick = (e)=>{
     e.stopPropagation();
-    openMenuPopover(e.currentTarget, Object.entries(TASK_SORT_LABELS).map(([key,label])=>({
-      label: ((state.taskSort||'due')===key?'✓ ':'')+label,
-      onClick: ()=>{ state.taskSort = key; saveTaskSort(); render(); }
-    })));
+    openMenuPopover(e.currentTarget, Object.entries(TASK_SORT_LABELS).map(([key,label])=>{
+      const active = (state.taskSort||'due')===key;
+      const arrow = active && key!=='manual' ? (state.taskSortDir==='desc'?' ↓':' ↑') : '';
+      return {
+        label: (active?'✓ ':'')+label+arrow,
+        onClick: ()=>{
+          if(active && key!=='manual') state.taskSortDir = state.taskSortDir==='desc' ? 'asc' : 'desc';
+          else { state.taskSort = key; state.taskSortDir = 'asc'; }
+          saveTaskSort(); saveTaskSortDir(); render();
+        }
+      };
+    }));
   };
   const groupBtn = $('#taskGroupBtn');
   if(groupBtn) groupBtn.onclick = (e)=>{
@@ -5047,7 +5066,7 @@ function renderProjDetail(){
     html += animDeliverablesBodyHtml(p);
   } else {
     html += `<div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn small ghost" id="taskSortBtn">Sort: ${TASK_SORT_LABELS[state.taskSort]||'Due date'} ▾</button>
+      <button class="btn small ghost" id="taskSortBtn">${taskSortButtonLabel()}</button>
       <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'Task status'} ▾</button>
       <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
     </div>`;
@@ -6554,7 +6573,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.66.0';
+const APP_VERSION = '0.67.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
