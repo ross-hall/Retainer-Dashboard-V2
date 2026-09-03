@@ -192,12 +192,24 @@
   .meter .fill.over{background:var(--red)}
   .meter .tick{position:absolute;top:-6px;bottom:-6px;width:2px;background:var(--ink);opacity:.4;left:75%}
   .meter .tick-label{position:absolute;top:-22px;left:75%;transform:translateX(-50%);font-size:10.5px;color:var(--muted);white-space:nowrap;font-weight:500}
-  .meter-stats{display:flex;justify-content:space-between;font-size:13px;font-variant-numeric:tabular-nums;margin-top:10px}
-  .meter-stats .pct{font-weight:600}
-  .meter-compact{position:relative;height:6px;background:var(--track);border-radius:99px;overflow:hidden;margin:8px 0 2px}
+  /* Labels sit inside the bar itself rather than below it — "used" is
+     pinned at the left, "pct" tracks the fill's leading edge (clamped to a
+     minimum left% so it never clips off the bar at very low usage). White
+     text + a soft dark halo (not a single drop-shadow) reads correctly
+     against every combination this bar can show: the light track in light
+     mode, the dark track in dark mode, and both the vivid (light-mode) and
+     pastel (dark-mode) fill colours — no single flat text colour survives
+     all four without this halo trick. */
+  .meter-used-label,.meter-pct-label,.meter-compact-used,.meter-compact-pct{position:absolute;top:50%;transform:translateY(-50%);color:#fff;font-weight:700;text-shadow:0 0 1px rgba(0,0,0,.75),0 0 4px rgba(0,0,0,.55);white-space:nowrap;z-index:2;pointer-events:none;font-variant-numeric:tabular-nums}
+  .meter-used-label{left:10px;font-size:12.5px}
+  .meter-pct-label{transform:translate(-100%,-50%);font-size:12px;transition:left .4s ease}
+  .meter-compact{position:relative;height:20px;background:var(--track);border-radius:99px;overflow:hidden;margin:10px 0 2px}
   .meter-compact .fill{position:absolute;inset:0 auto 0 0;height:100%;border-radius:99px;background:var(--accent);transition:width .4s ease;max-width:100%}
+  .meter-compact .fill.warn{background:var(--amber)}
   .meter-compact .fill.over{background:var(--red)}
   .meter-compact .tick{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.35;left:75%}
+  .meter-compact-used{left:9px;font-size:10.5px}
+  .meter-compact-pct{transform:translate(-100%,-50%);font-size:10.5px;transition:left .4s ease}
   .status{margin-top:12px;font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px}
   .status.ok{background:#e8f2ec;color:var(--green)}
   .status.warn{background:var(--amber-bg);color:var(--amber)}
@@ -840,7 +852,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.62.1</div>
+    <div id="versionBadge" class="version-badge">v0.63.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -1182,9 +1194,10 @@ function settingsAt(history, dateObj){
 
 /* Usage is the sum of two sources: legacy ad-hoc rs_tasks rows (pre-dating per-task time entries)
    plus rs_proj_task_entries for this client's tasks — the latter is the only system still being
-   written to, so it must count toward the same total or the allowance meter silently undercounts. */
-function clientUsage(client, taskList){
-  const cyc = cycleFor(client.renewal_day);
+   written to, so it must count toward the same total or the allowance meter silently undercounts.
+   Factored out of clientUsage() so the same computation can be re-run against the *previous* cycle
+   for rollover math without duplicating the filter/sum logic. */
+function usageForCycle(client, cyc, taskList){
   const s = iso(cyc.start), e = iso(cyc.end);
   const tasks = (taskList||state.tasks).filter(t => t.client_id===client.id && t.task_date>=s && t.task_date<=e);
   const entryRows = (state.projTaskEntries||[]).filter(en=>{
@@ -1210,7 +1223,23 @@ function clientUsage(client, taskList){
     used += val;
     perMember[key] = (perMember[key]||0) + val;
   });
-  return { cyc, tasks, entryRows, used, perMember, pct: client.retainer_hours>0 ? used/client.retainer_hours*100 : 0 };
+  return { tasks, entryRows, used, perMember };
+}
+function clientUsage(client, taskList){
+  const cyc = cycleFor(client.renewal_day);
+  const cur = usageForCycle(client, cyc, taskList);
+  // Rollover only looks one cycle back (not a cumulative multi-cycle carry)
+  // — whatever was left unused last cycle tops up this cycle's allowance,
+  // clamped at 0 so going over budget last cycle never eats into this one.
+  let rolloverHours = 0;
+  if(client.rollover_hours && client.retainer_hours>0){
+    const prevRef = new Date(cyc.start); prevRef.setDate(prevRef.getDate()-1);
+    const prevCyc = cycleFor(client.renewal_day, prevRef);
+    const prevUsage = usageForCycle(client, prevCyc, taskList);
+    rolloverHours = Math.max(0, client.retainer_hours - prevUsage.used);
+  }
+  const effectiveHours = (client.retainer_hours||0) + rolloverHours;
+  return { cyc, tasks:cur.tasks, entryRows:cur.entryRows, used:cur.used, perMember:cur.perMember, rolloverHours, effectiveHours, pct: effectiveHours>0 ? cur.used/effectiveHours*100 : 0 };
 }
 
 /* ---------- data ---------- */
@@ -2186,20 +2215,30 @@ function renderHome(){
 }
 
 
-function meterHtml(u, retainerHours){
+function meterHtml(u){
   const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
+  const fillPct = Math.min(u.pct,100);
+  const labelPct = Math.max(fillPct, 10);
   return `<div class="meter-wrap">
       <div class="meter">
-        <div class="fill ${cls}" style="width:${Math.min(u.pct,100)}%"></div>
+        <div class="fill ${cls}" style="width:${fillPct}%"></div>
         <div class="tick"></div>
         <div class="tick-label">75%</div>
+        <span class="meter-used-label">${fmtH(u.used)} of ${fmtH(u.effectiveHours)}</span>
+        <span class="meter-pct-label" style="left:${labelPct}%">${Math.round(u.pct)}%</span>
       </div>
-      <div class="meter-stats"><span>${fmtH(u.used)} of ${fmtH(retainerHours)}</span><span class="pct">${Math.round(u.pct)}%</span></div>
     </div>`;
 }
 function compactMeterHtml(u){
-  const cls = u.pct>=75?'over':'';
-  return `<div class="meter-compact"><div class="fill ${cls}" style="width:${Math.min(u.pct,100)}%"></div><div class="tick"></div></div>`;
+  const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
+  const fillPct = Math.min(u.pct,100);
+  const labelPct = Math.max(fillPct, 14);
+  return `<div class="meter-compact">
+      <div class="fill ${cls}" style="width:${fillPct}%"></div>
+      <div class="tick"></div>
+      <span class="meter-compact-used">${fmtH(u.used)}</span>
+      <span class="meter-compact-pct" style="left:${labelPct}%">${Math.round(u.pct)}%</span>
+    </div>`;
 }
 function daysUntilLabel(date){
   const today = new Date(); today.setHours(0,0,0,0);
@@ -2334,14 +2373,18 @@ function dashboardLinkButtonHtml(c){
 // replacing the old boxed header + Allowance View switch-toggle.
 function clientRetainerHeaderHtml(c, tab){
   const u = clientUsage(c);
+  const pausedBadge = c.retainer_paused ? `<span class="retainer-badge" style="background:var(--amber-bg);color:var(--amber)">Paused</span>` : '';
+  const meterOrPaused = c.retainer_paused
+    ? `<div class="cycle" style="margin:8px 0 0">⏸ Retainer paused — usage tracking is hidden until this is resumed in Retainer settings.</div>`
+    : meterHtml(u);
   return `<div class="breadcrumb"><button data-bc="clients">Clients</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-      <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span></h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}${dashboardLinkButtonHtml(c)}</div>
+      <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span>${pausedBadge}</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}${dashboardLinkButtonHtml(c)}<button class="btn small ghost" data-retainersettings="${c.id}">Retainer settings</button></div>
     </div>
     <div style="margin-bottom:20px">
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:2px">${renewsInDays(u.cyc.next)} (${fmtDate(u.cyc.next)})</div>
-      ${meterHtml(u, c.retainer_hours)}
+      ${meterOrPaused}
     </div>
     <div class="pd-tabs" style="padding:0;margin-bottom:24px">
       <button type="button" class="pd-tab ${tab==='tasks'?'active':''}" data-retainertab="tasks" style="${tab==='tasks'?'color:var(--accent);border-color:var(--accent)':''}">Home</button>
@@ -2350,11 +2393,51 @@ function clientRetainerHeaderHtml(c, tab){
 }
 function wireClientRetainerHeader(){
   if($('[data-bc="clients"]')) $('[data-bc="clients"]').onclick = ()=>{ state.view='projects'; state.projView='clients'; render(); };
+  main.querySelectorAll('[data-retainersettings]').forEach(el=>el.addEventListener('click', ()=> openRetainerSettingsModal(el.dataset.retainersettings)));
   main.querySelectorAll('[data-retainertab]').forEach(el=>el.addEventListener('click', ()=>{
     state.retainerTab = el.dataset.retainertab;
     render();
   }));
   wireMiroButtons();
+}
+
+/* Deliberately separate from openClientEditModal — that modal already owns
+   retainer_hours/renewal_day and their settings-history side effects
+   (rs_client_settings_history), which these two new toggles don't need to
+   touch. Needs outputs/v36_retainer_rollover_pause.sql (rs_clients.rollover_hours
+   + retainer_paused) — degrades gracefully (toast, no local state change)
+   until that's run. */
+function openRetainerSettingsModal(clientId){
+  const c = state.clients.find(x=>x.id===clientId);
+  if(!c) return;
+  showModal(`
+    <h3>Retainer settings</h3>
+    <form class="log" style="max-width:none">
+      <div class="full">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:500"><input type="checkbox" id="rs_rollover" ${c.rollover_hours?'checked':''} style="width:auto"> Roll over unused hours</label>
+        <div style="font-size:12px;color:var(--muted);margin-left:24px">Hours left over at the end of a cycle carry into next cycle's allowance, one cycle at a time.</div>
+      </div>
+      <div class="full">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:500"><input type="checkbox" id="rs_paused" ${c.retainer_paused?'checked':''} style="width:auto"> Pause retainer</label>
+        <div style="font-size:12px;color:var(--muted);margin-left:24px">Hides the usage meter and marks the retainer as paused until this is turned off again.</div>
+      </div>
+    </form>
+    <div class="modal-actions">
+      <span></span>
+      <div class="right">
+        <button class="btn ghost" id="rs_cancel">Cancel</button>
+        <button class="btn" id="rs_save">Save</button>
+      </div>
+    </div>
+  `);
+  $('#rs_cancel').onclick = closeModal;
+  $('#rs_save').onclick = async ()=>{
+    const rollover_hours = $('#rs_rollover').checked;
+    const retainer_paused = $('#rs_paused').checked;
+    const { error } = await db.from('rs_clients').update({ rollover_hours, retainer_paused }).eq('id', c.id);
+    if(error){ toast(error.code==='PGRST204'?'Run migration v36 to enable retainer settings':'Could not save'); console.error(error); return; }
+    closeModal(); toast('Retainer settings saved'); await loadAll(); render();
+  };
 }
 
 function renderClientTasksView(c){
@@ -3220,8 +3303,8 @@ function clientCardHtml(c){
       <h3 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="home-count">${openTasks.length}</span>
         <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
       </h3>
-      <div class="cycle">${renewsInDays(u.cyc.next)}</div>
-      ${compactMeterHtml(u)}
+      <div class="cycle">${renewsInDays(u.cyc.next)}${c.retainer_paused?' · <span style="color:var(--amber)">⏸ Paused</span>':''}</div>
+      ${c.retainer_paused ? '' : compactMeterHtml(u)}
     </div>`;
   }
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
@@ -6299,7 +6382,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.62.1';
+const APP_VERSION = '0.63.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
