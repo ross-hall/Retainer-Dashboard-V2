@@ -638,6 +638,17 @@
   .pd-cal-add-btn{position:absolute;top:5px;right:5px;width:16px;height:16px;border-radius:50%;border:none;color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity var(--fast) var(--ease);padding:0}
   .pd-cal-day:hover .pd-cal-add-btn{opacity:1}
 
+  /* Time Off page — team calendar grid, same shape as .pd-cal-* above but
+     internal-app styled (neutral chip colours per-member instead of a
+     client accent) since it's shown to the whole team, not one client. */
+  .to-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}
+  .to-cal-dow{font-size:10px;font-weight:600;text-transform:uppercase;color:var(--muted);text-align:center;padding:4px 0 8px}
+  .to-cal-day{min-height:80px;border-radius:8px;padding:7px;border:1px solid var(--line-soft)}
+  .to-cal-day.empty{border-color:transparent}
+  .to-cal-day.today{border-color:var(--accent);border-width:2px}
+  .to-cal-daynum{font-size:11px;font-weight:600;color:var(--ink);margin-bottom:5px}
+  .to-cal-chip{font-size:10px;font-weight:600;padding:3px 6px;border-radius:5px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
   .pd-quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
   .pd-brief{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
   .pd-brief-item{background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12.5px;color:var(--ink)}
@@ -820,12 +831,16 @@
         </svg>
         <span class="nav-label">Settings</span>
       </button>
+      <button data-view="timeoff" title="Time Off">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3v18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 3a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.7 20.4c1-1.2 1-2.6 0-3.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <span class="nav-label">Time Off</span>
+      </button>
     </nav>
     <div class="sidebar-user" id="sidebarUser" style="display:none">
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.61.0</div>
+    <div id="versionBadge" class="version-badge">v0.62.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -875,6 +890,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
+  timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null,
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -1208,7 +1224,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc,tor] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -1230,7 +1246,8 @@ async function loadAll(){
     db.from('rs_checklist_templates').select('*').order('position'),
     db.from('rs_checklist_template_items').select('*').order('position'),
     db.from('rs_anim_deliverables').select('*').order('position'),
-    db.from('rs_anim_deliverable_columns').select('*').order('position')
+    db.from('rs_anim_deliverable_columns').select('*').order('position'),
+    db.from('rs_time_off_requests').select('*').order('start_date',{ascending:false})
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -1248,8 +1265,10 @@ async function loadAll(){
   state.tools = tls.data||[];
   state.animDeliverables = adl.data||[];
   state.animDeliverableColumns = (adc.data && adc.data.length) ? adc.data : [];
+  state.timeOffRequests = tor.data||[];
   if(adl.error) console.warn('Animation deliverables table not found — run outputs/v34_anim_deliverables.sql', adl.error);
   if(adc.error) console.warn('Animation deliverable columns table not found — run outputs/v34_anim_deliverables.sql', adc.error);
+  if(tor.error) console.warn('Time off requests table not found — run outputs/v35_time_off.sql', tor.error);
   if(tls.error) console.warn('Tools table not found — run outputs/v24_tools.sql', tls.error);
   if(cl.error) console.warn('Checklists tables not found — run outputs/v23_qa_checklist.sql', cl.error);
   if(clt.error) console.warn('Checklist templates tables not found — run outputs/v25_checklist_templates.sql', clt.error);
@@ -1979,7 +1998,7 @@ function render(){
     titleEl.textContent = activeLabel ? activeLabel.textContent : 'Reciprocal Space';
   }
   closeMobileNav();
-  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation, internal:renderInternalTasks, checklists:renderChecklistsHub, tools:renderTools}[state.view])();
+  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation, internal:renderInternalTasks, checklists:renderChecklistsHub, tools:renderTools, timeoff:renderTimeOff}[state.view])();
   main.classList.remove('fade-in'); void main.offsetWidth; main.classList.add('fade-in');
 }
 
@@ -4566,6 +4585,186 @@ function openToolModal(toolId){
   };
 }
 
+/* ── Time Off — holiday/WFH requests + approval + a shared team calendar.
+   No login system in this app (see CURRENT_USER_NAME/currentUser() above),
+   so "who's requesting" is always the hardcoded current user, and "who can
+   approve" is any member with is_admin set (Settings > Team members >
+   Admin). rs_members.is_admin and rs_time_off_requests both come from
+   outputs/v35_time_off.sql — degrades gracefully (toast + no local-state
+   mutation) until that migration is run, same pattern as every other
+   not-yet-run table in this app. */
+function timeOffIsAdmin(){ const m = currentUser(); return !!(m && m.is_admin); }
+function timeOffTypeLabel(type){ return type==='wfh' ? 'WFH' : 'Holiday'; }
+function timeOffRangeLabel(r){
+  const s = fmtDate(new Date(r.start_date+'T00:00'));
+  if(r.start_date===r.end_date) return s;
+  return `${s} – ${fmtDate(new Date(r.end_date+'T00:00'))}`;
+}
+function timeOffDaysCount(r){ return Math.round((new Date(r.end_date+'T00:00')-new Date(r.start_date+'T00:00'))/86400000)+1; }
+const TIME_OFF_STATUS_META = {
+  pending:{ label:'Pending', bg:'var(--amber-bg)', fg:'var(--amber)' },
+  approved:{ label:'Approved', bg:'var(--green-bg)', fg:'var(--green)' },
+  declined:{ label:'Declined', bg:'var(--red-bg)', fg:'var(--red)' }
+};
+function timeOffStatusPillHtml(status){
+  const m = TIME_OFF_STATUS_META[status] || TIME_OFF_STATUS_META.pending;
+  return `<span class="status-pill" style="background:${m.bg};color:${m.fg}">${m.label}</span>`;
+}
+function timeOffRowHtml(r, {showPerson, actionsHtml}={}){
+  const m = state.members.find(x=>x.id===r.member_id);
+  return `<tr>
+    ${showPerson? `<td>${m?avatarHtml(m):''} ${esc(m?m.name:'Unknown')}</td>`:''}
+    <td><span class="type-badge">${timeOffTypeLabel(r.type)}</span></td>
+    <td>${esc(timeOffRangeLabel(r))}</td>
+    <td style="color:var(--muted)">${timeOffDaysCount(r)}d</td>
+    <td>${timeOffStatusPillHtml(r.status)}</td>
+    <td style="color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.note||'—')}</td>
+    <td class="action-cell">${actionsHtml||''}</td>
+  </tr>`;
+}
+function timeOffListHtml({me, isAdmin}){
+  const all = (state.timeOffRequests||[]).slice();
+  const pending = all.filter(r=>r.status==='pending').sort((a,b)=>a.start_date.localeCompare(b.start_date));
+  const mine = me ? all.filter(r=>r.member_id===me.id).sort((a,b)=>b.start_date.localeCompare(a.start_date)) : [];
+  const teamHistory = isAdmin ? all.filter(r=>(!me || r.member_id!==me.id) && r.status!=='pending').sort((a,b)=>b.start_date.localeCompare(a.start_date)) : [];
+
+  const pendingSection = isAdmin ? `<div class="card" style="margin-bottom:20px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Pending approval${pending.length?` <span style="color:var(--muted);font-weight:500">(${pending.length})</span>`:''}</h3>
+    ${pending.length ? `<table><thead><tr><th>Person</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>
+      ${pending.map(r=>timeOffRowHtml(r,{showPerson:true, actionsHtml:`<button class="btn small" data-toapprove="${r.id}">Approve</button> <button class="btn small ghost" data-todecline="${r.id}">Decline</button>`})).join('')}
+    </tbody></table>` : `<div class="empty" style="padding:10px 0">Nothing waiting on you.</div>`}
+  </div>` : '';
+
+  const mineSection = `<div class="card" style="margin-bottom:20px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">My requests</h3>
+    ${mine.length ? `<table><thead><tr><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>
+      ${mine.map(r=>timeOffRowHtml(r,{showPerson:false, actionsHtml: r.status==='pending' ? `<button class="btn small ghost" data-tocancel="${r.id}">Cancel</button>` : ''})).join('')}
+    </tbody></table>` : `<div class="empty" style="padding:10px 0">No requests yet — use "+ Request time off" above.</div>`}
+  </div>`;
+
+  const teamSection = isAdmin ? `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Team history</h3>
+    ${teamHistory.length ? `<table><thead><tr><th>Person</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>
+      ${teamHistory.map(r=>timeOffRowHtml(r,{showPerson:true, actionsHtml:`<button class="btn small danger" data-todelete="${r.id}">Delete</button>`})).join('')}
+    </tbody></table>` : `<div class="empty" style="padding:10px 0">No decided requests yet.</div>`}
+  </div>` : '';
+
+  return `${pendingSection}${mineSection}${teamSection}`;
+}
+function timeOffCalendarHtml(){
+  const y = state.timeOffCalY, m = state.timeOffCalM;
+  const approved = (state.timeOffRequests||[]).filter(r=>r.status==='approved');
+  const first = new Date(y,m,1);
+  const startOffset = first.getDay();
+  const daysInMonth = new Date(y,m+1,0).getDate();
+  const todayIso = iso(new Date());
+  const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let cells = '';
+  for(let i=0;i<startOffset;i++) cells += `<div class="to-cal-day empty"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const dIso = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayReqs = approved.filter(r=>r.start_date<=dIso && r.end_date>=dIso);
+    cells += `<div class="to-cal-day${dIso===todayIso?' today':''}">
+      <div class="to-cal-daynum">${d}</div>
+      ${dayReqs.map(r=>{
+        const mem = state.members.find(x=>x.id===r.member_id);
+        const color = mem ? clientColor(mem.id) : '#999';
+        return `<div class="to-cal-chip" style="background:${mutedBg(color)};color:${color}" title="${esc(mem?mem.name:'Unknown')} — ${timeOffTypeLabel(r.type)}">${esc(mem?initials(mem.name):'?')} · ${timeOffTypeLabel(r.type)}</div>`;
+      }).join('')}
+    </div>`;
+  }
+  return `<div class="card">
+    <div class="pd-cal-nav">
+      <button type="button" class="pd-cal-navbtn" data-tocalnav="-1">‹</button>
+      <div style="font-size:14px;font-weight:600">${first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</div>
+      <button type="button" class="pd-cal-navbtn" data-tocalnav="1">›</button>
+    </div>
+    <div class="to-cal-grid">${dowLabels.map(d=>`<div class="to-cal-dow">${d}</div>`).join('')}${cells}</div>
+  </div>`;
+}
+function renderTimeOff(){
+  if(state.timeOffCalY==null){ const t = new Date(); state.timeOffCalY = t.getFullYear(); state.timeOffCalM = t.getMonth(); }
+  const me = currentUser();
+  const isAdmin = timeOffIsAdmin();
+  main.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div><h2>Time Off</h2><div class="sub" style="margin-bottom:0">Request holiday and work-from-home days${isAdmin?' — you can approve requests below':''}</div></div>
+      <button class="btn small" id="toRequestBtn">+ Request time off</button>
+    </div>
+    <div class="view-toggle" style="margin:16px 0 20px">
+      <button class="btn small ${state.timeOffView==='list'?'':'ghost'}" data-toview="list">Requests</button>
+      <button class="btn small ${state.timeOffView==='calendar'?'':'ghost'}" data-toview="calendar">Team calendar</button>
+    </div>
+    ${state.timeOffView==='calendar' ? timeOffCalendarHtml() : timeOffListHtml({me, isAdmin})}
+  `;
+  $('#toRequestBtn').onclick = openTimeOffRequestModal;
+  main.querySelectorAll('[data-toview]').forEach(b=>b.addEventListener('click', ()=>{ state.timeOffView = b.dataset.toview; renderTimeOff(); }));
+  main.querySelectorAll('[data-toapprove]').forEach(b=>b.addEventListener('click', ()=> timeOffSetStatus(b.dataset.toapprove, 'approved')));
+  main.querySelectorAll('[data-todecline]').forEach(b=>b.addEventListener('click', ()=> timeOffSetStatus(b.dataset.todecline, 'declined')));
+  main.querySelectorAll('[data-tocancel]').forEach(b=>b.addEventListener('click', ()=> timeOffDelete(b.dataset.tocancel)));
+  main.querySelectorAll('[data-todelete]').forEach(b=>b.addEventListener('click', ()=> timeOffDelete(b.dataset.todelete)));
+  main.querySelectorAll('[data-tocalnav]').forEach(b=>b.addEventListener('click', ()=>{
+    let m = state.timeOffCalM + (+b.dataset.tocalnav), y = state.timeOffCalY;
+    if(m<0){ m=11; y--; } else if(m>11){ m=0; y++; }
+    state.timeOffCalM = m; state.timeOffCalY = y;
+    renderTimeOff();
+  }));
+}
+async function timeOffSetStatus(reqId, status){
+  const me = currentUser();
+  const { error } = await db.from('rs_time_off_requests').update({ status, reviewed_by: me?me.id:null, reviewed_at: new Date().toISOString() }).eq('id', reqId);
+  if(error){ toast('Could not update request'); console.error(error); return; }
+  toast(status==='approved'?'Request approved':'Request declined'); await loadAll(); render();
+}
+async function timeOffDelete(reqId){
+  if(!confirm('Remove this time off request?')) return;
+  const { error } = await db.from('rs_time_off_requests').delete().eq('id', reqId);
+  if(error){ toast('Could not remove'); console.error(error); return; }
+  toast('Request removed'); await loadAll(); render();
+}
+function openTimeOffRequestModal(){
+  const me = currentUser();
+  if(!me){ toast(`Add a team member named "${CURRENT_USER_NAME}" in Settings first`); return; }
+  const todayIso = iso(new Date());
+  let type = 'holiday';
+  showModal(`
+    <h3>Request time off</h3>
+    <form class="log" style="max-width:none">
+      <div class="full">
+        <label>Type</label>
+        <div class="view-toggle" style="margin-bottom:0">
+          <button type="button" class="btn small" data-totype="holiday">Holiday</button>
+          <button type="button" class="btn small ghost" data-totype="wfh">Work from home</button>
+        </div>
+      </div>
+      <div><label>Start date</label><input type="date" id="to_start" value="${todayIso}"></div>
+      <div><label>End date</label><input type="date" id="to_end" value="${todayIso}"></div>
+      <div class="full"><label>Note <span style="color:var(--muted);font-weight:400">(optional)</span></label><textarea id="to_note" rows="2" placeholder="Anything your approver should know"></textarea></div>
+    </form>
+    <div class="modal-actions">
+      <span></span>
+      <div class="right">
+        <button class="btn ghost" id="to_cancel">Cancel</button>
+        <button class="btn" id="to_save">Request</button>
+      </div>
+    </div>
+  `);
+  document.querySelectorAll('[data-totype]').forEach(b=>b.addEventListener('click', ()=>{
+    type = b.dataset.totype;
+    document.querySelectorAll('[data-totype]').forEach(x=>x.classList.toggle('ghost', x!==b));
+  }));
+  $('#to_cancel').onclick = closeModal;
+  $('#to_save').onclick = async ()=>{
+    const start = $('#to_start').value, end = $('#to_end').value;
+    if(!start || !end){ toast('Pick both dates'); return; }
+    if(end < start){ toast('End date must be on or after the start date'); return; }
+    const note = $('#to_note').value.trim() || null;
+    const { error } = await db.from('rs_time_off_requests').insert({ member_id: me.id, type, start_date:start, end_date:end, note, status:'pending' });
+    if(error){ toast(error.code==='PGRST205'?'Run migration v35 to enable Time Off':'Could not save'); console.error(error); return; }
+    closeModal(); toast('Request submitted'); await loadAll(); render();
+  };
+}
+
 function renderProjDetail(){
   const p = state.projects.find(p=>p.id===state.projProjectId);
   if(!p){ state.projView='clientProjects'; render(); return; }
@@ -5561,26 +5760,27 @@ function wireSettingsClients(){
 function settingsTeamHtml(){
   return `<div class="card">
     <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Team members</h3>
-    <table><thead><tr><th>Name</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>Name</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th style="text-align:center">Admin</th><th></th></tr></thead><tbody>
     ${state.members.map(m=>`<tr style="${m.active?'':'opacity:.45'}">
       <td><input type="text" data-membername="${m.id}" value="${esc(m.name)}" style="min-width:120px"></td>
       <td>×${m.weight}</td>
       <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_design" ${m.can_design!==false?'checked':''} style="width:auto"></td>
       <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_review" ${m.can_review!==false?'checked':''} style="width:auto"></td>
       <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_animate" ${m.can_animate!==false?'checked':''} style="width:auto"></td>
+      <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:is_admin" ${m.is_admin?'checked':''} style="width:auto"></td>
       <td class="action-cell">
         <button class="btn small ghost" data-mweight="${m.id}">Change factor</button>
         <button class="btn small ghost" data-mactive="${m.id}">${m.active?'Archive':'Restore'}</button>
         ${!m.active? `<button class="btn small danger" data-mdelete="${m.id}">Delete</button>`:''}
       </td>
-    </tr>`).join('') || '<tr><td colspan="6" class="empty">No team members yet.</td></tr>'}
+    </tr>`).join('') || '<tr><td colspan="7" class="empty">No team members yet.</td></tr>'}
     </tbody></table>
     <div class="row-form">
       <input id="m_name" placeholder="Name" style="flex:2">
       <input id="m_weight" type="number" step="0.25" min="0.25" value="1" title="Weighting factor">
       <button class="btn small" id="m_add">Add</button>
     </div>
-    <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Designer/Reviewer/Animator checkboxes control who shows up in those pickers on project tasks. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Designer/Reviewer/Animator checkboxes control who shows up in those pickers on project tasks. Admin controls who can approve Time Off requests. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
   </div>`;
 }
 function wireSettingsTeam(){
@@ -6099,7 +6299,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.61.0';
+const APP_VERSION = '0.62.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
