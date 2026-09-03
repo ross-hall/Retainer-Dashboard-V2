@@ -201,7 +201,7 @@
      mode, light pill + dark text in dark mode) — opaque, so it's legible
      regardless of what colour is underneath (track or any fill state),
      unlike a text-shadow halo which still depends on the background. */
-  .meter-used-label,.meter-pct-label,.meter-compact-used,.meter-compact-pct{position:absolute;top:50%;transform:translateY(-50%);background:var(--ink);color:var(--paper);font-weight:600;padding:3px 9px;border-radius:99px;box-shadow:0 1px 3px rgba(0,0,0,.18);white-space:nowrap;z-index:2;pointer-events:none;font-variant-numeric:tabular-nums}
+  .meter-used-label,.meter-pct-label,.meter-compact-used,.meter-compact-pct{position:absolute;top:50%;transform:translateY(-50%);color:#000;font-weight:600;white-space:nowrap;z-index:2;pointer-events:none;font-variant-numeric:tabular-nums}
   .meter-used-label{left:8px;font-size:12px}
   .meter-pct-label{transform:translate(calc(-100% - 8px),-50%);font-size:11.5px;transition:left .4s ease}
   .meter-compact{position:relative;height:20px;background:var(--track);border-radius:99px;overflow:hidden;margin:10px 0 2px}
@@ -209,8 +209,8 @@
   .meter-compact .fill.warn{background:var(--amber)}
   .meter-compact .fill.over{background:var(--red)}
   .meter-compact .tick{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.35;left:75%}
-  .meter-compact-used{left:6px;font-size:10px;padding:2px 7px}
-  .meter-compact-pct{transform:translate(calc(-100% - 6px),-50%);font-size:10px;padding:2px 7px;transition:left .4s ease}
+  .meter-compact-used{left:6px;font-size:10px}
+  .meter-compact-pct{transform:translate(calc(-100% - 6px),-50%);font-size:10px;transition:left .4s ease}
   .status{margin-top:12px;font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px}
   .status.ok{background:#e8f2ec;color:var(--green)}
   .status.warn{background:var(--amber-bg);color:var(--amber)}
@@ -894,6 +894,8 @@ const DEFAULT_INTERNAL_COLS = ['assignee','priority','due','department'];
 function saveInternalCols(){ store.set('rs_internal_cols', JSON.stringify(Array.from(state.internalCols))); }
 function saveInternalSort(){ store.set('rs_internal_sort', state.internalSort); }
 function saveInternalGroup(){ store.set('rs_internal_group', state.internalGroupBy); }
+function saveTaskSort(){ store.set('rs_task_sort', state.taskSort); }
+function saveTaskGroupBy(){ store.set('rs_task_groupby', state.taskGroupBy); }
 
 let state = { view:'home', clients:[], members:[], tasks:[],
   projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null, retainerTab:'tasks',
@@ -904,6 +906,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
   timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null, appSettings:{},
+  taskSort: store.get('rs_task_sort') || 'manual', taskGroupBy: store.get('rs_task_groupby') || 'none',
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -2491,6 +2494,8 @@ function renderRetainerTasksBodyHtml(c){
   return `${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
     <div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" data-addclienttask="${c.id}">+ Task</button>
+      <button class="btn small ghost" id="taskSortBtn">Sort: ${TASK_SORT_LABELS[state.taskSort]||'Manual'} ▾</button>
+      <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'None'} ▾</button>
       <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
     </div>
     <div class="todo-complete-group">
@@ -2508,6 +2513,7 @@ function renderRetainerTasksBodyHtml(c){
 function wireRetainerTasksBody(c){
   if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
+  wireTaskSortGroupBtns();
   main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
   wireTaskRows(main);
 }
@@ -3764,7 +3770,7 @@ function taskGridColumns(showAnimator, showRetainer){
   return cols.join(' ');
 }
 
-function taskRowHtml(t, showAnimator, showRetainer){
+function taskRowHtml(t, showAnimator, showRetainer, canDrag){
   const cellsHtml = visibleTaskCols(showRetainer).map(k=>{
     let html = TASK_COLUMN_DEFS[k].cell(t);
     if(k==='reviewer' && showAnimator){
@@ -3772,7 +3778,7 @@ function taskRowHtml(t, showAnimator, showRetainer){
     }
     return html;
   }).join('');
-  return `<div class="task-grid-row task-row" draggable="true" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns(showAnimator, showRetainer)}">
+  return `<div class="task-grid-row task-row" draggable="${canDrag===false?'false':'true'}" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns(showAnimator, showRetainer)}">
     <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
     ${cellsHtml}
     <div class="tg-actions">
@@ -3786,8 +3792,70 @@ function resizeHandle(key, storeName){
   return `<span class="col-resize-handle" data-resizecol="${key}" data-widthstore="${storeName}"></span>`;
 }
 
+/* Sort/Group by for project-stage and retainer task tables — one shared
+   global toggle (state.taskSort/taskGroupBy) rather than per-page state,
+   since both call sites render through this same taskTableHtml(). Mirrors
+   the Internal Tasks page's Sort/Group pattern exactly (same label-map +
+   openMenuPopover shape), just against rs_proj_tasks fields instead of
+   rs_internal_tasks ones. Manual drag-reorder (wired separately per stage
+   in renderProjDetail) only makes sense when both are at their defaults —
+   taskRowHtml's canDrag param disables the draggable attribute otherwise,
+   same "canDrag = sort==='manual' && groupBy==='none'" rule Internal Tasks
+   already established. */
+const TASK_SORT_LABELS = { manual:'Manual', due:'Due date', priority:'Priority', title:'Task name', designer:'Designer', status:'Status' };
+const TASK_GROUP_LABELS = { none:'None', status:'Status', priority:'Priority', designer:'Designer' };
+const TASK_PRIORITY_RANK = { Urgent:0, High:1, Medium:2, Low:3 };
+function sortProjTaskList(list){
+  const arr = list.slice();
+  const sort = state.taskSort || 'manual';
+  const designerName = t => { const m = state.members.find(x=>x.id===(t.assigned_designer_ids||[])[0]); return m ? m.name : '￿'; };
+  if(sort==='due') arr.sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
+  else if(sort==='priority') arr.sort((a,b)=> (TASK_PRIORITY_RANK[a.priority]??2) - (TASK_PRIORITY_RANK[b.priority]??2));
+  else if(sort==='title') arr.sort((a,b)=> a.title.localeCompare(b.title));
+  else if(sort==='designer') arr.sort((a,b)=> designerName(a).localeCompare(designerName(b)));
+  else if(sort==='status') arr.sort((a,b)=> statusRecord(a.status).position - statusRecord(b.status).position);
+  else arr.sort((a,b)=>(a.position||0)-(b.position||0));
+  return arr;
+}
+function groupProjTaskList(list){
+  const groupBy = state.taskGroupBy || 'none';
+  if(groupBy==='status'){
+    return taskStatusList().map(s=>({ label:s.name, tasks:list.filter(t=>t.status===s.name) })).filter(g=>g.tasks.length);
+  }
+  if(groupBy==='priority'){
+    return PRIORITIES.slice().reverse().map(p=>({ label:p, tasks:list.filter(t=>(t.priority||'Medium')===p) })).filter(g=>g.tasks.length);
+  }
+  if(groupBy==='designer'){
+    const named = state.members.filter(m=>list.some(t=>(t.assigned_designer_ids||[]).includes(m.id)))
+      .map(m=>({ label:m.name, tasks:list.filter(t=>(t.assigned_designer_ids||[]).includes(m.id)) }))
+      .sort((a,b)=>a.label.localeCompare(b.label));
+    const unassigned = { label:'Unassigned', tasks:list.filter(t=>!(t.assigned_designer_ids||[]).length) };
+    return [...named, unassigned].filter(g=>g.tasks.length);
+  }
+  return [{ label:null, tasks:list }];
+}
+function wireTaskSortGroupBtns(){
+  const sortBtn = $('#taskSortBtn');
+  if(sortBtn) sortBtn.onclick = (e)=>{
+    e.stopPropagation();
+    openMenuPopover(e.currentTarget, Object.entries(TASK_SORT_LABELS).map(([key,label])=>({
+      label: (state.taskSort===key?'✓ ':'')+label,
+      onClick: ()=>{ state.taskSort = key; saveTaskSort(); render(); }
+    })));
+  };
+  const groupBtn = $('#taskGroupBtn');
+  if(groupBtn) groupBtn.onclick = (e)=>{
+    e.stopPropagation();
+    openMenuPopover(e.currentTarget, Object.entries(TASK_GROUP_LABELS).map(([key,label])=>({
+      label: (state.taskGroupBy===key?'✓ ':'')+label,
+      onClick: ()=>{ state.taskGroupBy = key; saveTaskGroupBy(); render(); }
+    })));
+  };
+}
+
 function taskTableHtml(tasks, visibleCount, emptyText, showAnimator, showRetainer){
   if(!tasks.length) return `<div class="task-grid">${emptyStateHtml({ icon:'tray', title: emptyText||'Nothing here yet.' })}</div>`;
+  const canDrag = (state.taskSort||'manual')==='manual' && (state.taskGroupBy||'none')==='none';
   const gridCols = taskGridColumns(showAnimator, showRetainer);
   const headerCells = visibleTaskCols(showRetainer).map(k=>{
     const def = TASK_COLUMN_DEFS[k];
@@ -3800,10 +3868,12 @@ function taskTableHtml(tasks, visibleCount, emptyText, showAnimator, showRetaine
       ${headerCells}
       <div></div>
     </div>`;
-  const rows = tasks.map(t=>taskRowHtml(t, showAnimator, showRetainer)).join('');
-  return `<div class="task-grid">${header}${rows}</div>`;
+  const groups = groupProjTaskList(sortProjTaskList(tasks));
+  return groups.map(g=>`
+    ${g.label!=null? `<div style="margin:${g===groups[0]?'0':'16px'} 0 6px;font-size:12px;font-weight:600;color:var(--muted)">${esc(g.label)} <span style="font-weight:400">${g.tasks.length}</span></div>`:''}
+    <div class="task-grid">${header}${g.tasks.map(t=>taskRowHtml(t, showAnimator, showRetainer, canDrag)).join('')}</div>
+  `).join('');
 }
-
 async function duplicateProjTask(taskId){
   const t = state.projTasks.find(t=>t.id===taskId);
   if(!t) return;
@@ -4964,7 +5034,11 @@ function renderProjDetail(){
   } else if(tab==='deliverables'){
     html += animDeliverablesBodyHtml(p);
   } else {
-    html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
+    html += `<div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn small ghost" id="taskSortBtn">Sort: ${TASK_SORT_LABELS[state.taskSort]||'Manual'} ▾</button>
+      <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'None'} ▾</button>
+      <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
+    </div>`;
     if(!stages.length){
       html += `<div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="addStageBtn">+ Add stage</button></div>`;
     } else {
@@ -5012,6 +5086,7 @@ function renderProjDetail(){
   }
 
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
+  wireTaskSortGroupBtns();
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
   wireTaskRows(main);
   main.querySelectorAll('[data-stagedate]').forEach(el=>el.addEventListener('click', ()=>{
