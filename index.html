@@ -853,7 +853,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.67.0</div>
+    <div id="versionBadge" class="version-badge">v0.68.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -6573,7 +6573,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.67.0';
+const APP_VERSION = '0.68.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7170,7 +7170,42 @@ function openAnimCellModal(shotId, stepId){
   };
 }
 
-/* ================= Public client dashboard (?client=slug) ================= */
+/* ================= Public client dashboard (?client=slug) =================
+   A lightweight speed-bump, not real security — RLS is fully open (see the
+   note at the top of CLAUDE.md) and this PIN lives in plain sight in the JS
+   source, so anyone determined can read it straight out of the page. Its
+   only job is to stop a leaked/forwarded link from being casually opened by
+   someone it wasn't meant for. Remembered per-device via localStorage (not
+   sessionStorage) so a client isn't asked again on every visit. */
+const CLIENT_DASHBOARD_PIN = '8651';
+function clientPinOk(){ return store.get('rs_client_pin_ok')==='1'; }
+function renderClientPinGate(onSuccess){
+  document.body.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper)">
+      <div style="max-width:300px;width:100%;padding:32px;text-align:center;box-sizing:border-box">
+        <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:6px">Enter PIN to continue</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:20px">This dashboard is protected.</div>
+        <form id="pinForm">
+          <input type="password" inputmode="numeric" autocomplete="off" id="pinInput" placeholder="PIN" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:16px;text-align:center;letter-spacing:3px;margin-bottom:12px;background:var(--card);color:var(--ink)">
+          <button type="submit" class="btn" style="width:100%">Continue</button>
+        </form>
+        <div id="pinError" style="color:var(--red);font-size:12.5px;margin-top:10px;display:none">Incorrect PIN — try again.</div>
+      </div>
+    </div>`;
+  const input = document.getElementById('pinInput');
+  document.getElementById('pinForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    if(input.value.trim() === CLIENT_DASHBOARD_PIN){
+      store.set('rs_client_pin_ok', '1');
+      onSuccess();
+    } else {
+      document.getElementById('pinError').style.display = 'block';
+      input.value = '';
+      input.focus();
+    }
+  });
+  input.focus();
+}
 async function bootPublicDashboard(slug, isAdmin, initialPub){
   const { data: client, error } = await db.from('rs_clients').select('*').eq('slug', slug).eq('active', true).maybeSingle();
   if(error || !client){
@@ -7953,7 +7988,12 @@ async function boot(){
 
   const qs = new URLSearchParams(window.location.search);
   const clientSlug = qs.get('client');
-  if(clientSlug){ await bootPublicDashboard(clientSlug, qs.get('admin')==='1'); return; }
+  if(clientSlug){
+    const isAdminReq = qs.get('admin')==='1';
+    if(clientPinOk()) await bootPublicDashboard(clientSlug, isAdminReq);
+    else renderClientPinGate(async ()=>{ await bootPublicDashboard(clientSlug, isAdminReq); });
+    return;
+  }
 
   $('#sidebar').style.display = 'flex';
   $('#themeToggleBtn').addEventListener('click', toggleTheme);
