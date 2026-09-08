@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.68.0**
+Current version: **v0.68.1**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -710,6 +710,10 @@ Font: Inter (unchanged from v0.9.0)
 - **The gate page is a minimal standalone screen** (own `document.body.innerHTML`, not a modal) using the app's existing design tokens (`--paper`/`--card`/`--ink`/`--muted`/`--line`/`--radius-sm`, the shared `.btn` class) so it reads as part of the same product in both light and dark mode, rather than a bare unstyled form.
 - **`reload()`/`jumpToClient()` (both call `bootPublicDashboard` directly, not through `boot()`) don't re-check the PIN** — by the time either runs, the visitor has already passed the gate this session, so re-prompting on every admin write or client-switch would be pure friction with no benefit.
 - Verified live: wrong PIN ("1234") showed the red error and cleared the input; correct PIN ("8651") unlocked and rendered Radyus's real dashboard; navigating to a different client (`athernal-bio&admin=1`) afterward skipped the gate entirely (localStorage flag already set); the internal app (no `?client=` param) boots straight in, completely unaffected; dark mode and the mobile viewport on the gate screen itself.
+
+**What shipped in v0.68.1** (a "Retainer" badge on the public client dashboard's Home greeting, for retainer clients only):
+- **`<h2>Hello, {name}</h2>` gains the same `.retainer-badge` pill** (green, `var(--green-bg)`/`var(--green)`) the internal app already shows next to a retainer client's name (`clientRetainerHeaderHtml`), gated on `client.is_retainer` — no new CSS, purely reusing the existing class inline in the public dashboard's `homeHtml` template.
+- Verified live: Athernal Bio (retainer) shows the badge right next to the greeting in both light and dark mode, wrapping cleanly to its own line on the mobile stack; Radyus (project client, `is_retainer` false) confirmed showing no badge at all.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

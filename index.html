@@ -853,7 +853,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.68.0</div>
+    <div id="versionBadge" class="version-badge">v0.68.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -6573,7 +6573,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.68.0';
+const APP_VERSION = '0.68.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7783,7 +7783,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <div class="pd-materials-grid">${projects.map(pdProjectCardHtml).join('')}</div>
     ` : '';
     const homeHtml = `
-      <h2 style="margin-bottom:0">Hello, ${esc(client.name)}</h2>
+      <h2 style="margin-bottom:0">Hello, ${esc(client.name)}${client.is_retainer? ' <span class="retainer-badge">Retainer</span>':''}</h2>
       <p class="sub" style="margin:10px 0 0;max-width:640px">${esc(DASH_EXPLAINER)}</p>
       ${renewalLineHtml}
       ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
