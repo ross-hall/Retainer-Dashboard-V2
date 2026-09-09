@@ -539,18 +539,57 @@
   .year-today-marker{display:flex;align-items:center;gap:10px;margin:14px 0 10px;color:var(--accent);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
   .year-today-marker::before,.year-today-marker::after{content:'';flex:1;height:1px;background:var(--accent);opacity:.35}
 
-  .gantt-wrap{overflow-x:auto;padding-bottom:8px;padding-top:22px;position:relative}
-  .gantt-header{display:grid;grid-template-columns:180px 1fr;position:relative;height:34px;margin-bottom:6px;min-width:640px}
-  .gantt-month-marker{position:absolute;top:0;font-size:11px;color:var(--muted);border-left:1px solid var(--line);padding-left:6px;white-space:nowrap}
-  .gantt-day-marker{position:absolute;top:0;font-size:9.5px;color:var(--muted);border-left:1px solid var(--line-soft);padding-left:4px;white-space:nowrap}
-  .gantt-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);z-index:3;pointer-events:none}
-  .gantt-today-label{position:absolute;top:2px;font-size:9.5px;font-weight:700;color:#fff;background:var(--accent);padding:1px 5px;border-radius:4px;white-space:nowrap;transform:translateX(-50%);z-index:5;pointer-events:none}
+  /* .gantt-client-row is NOT part of the gantt any more — the Week Tasks page
+     (renderTasksAhead) reuses it as a generic per-client heading row. Left in
+     place deliberately; the chart itself is the .gx-* component below. */
   .gantt-client-row{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;margin:18px 0 8px;color:var(--ink);position:sticky;left:0;width:fit-content;background:var(--paper);padding-right:14px;z-index:2}
-  .gantt-row{display:grid;grid-template-columns:180px 1fr;align-items:center;min-height:38px;border-bottom:1px solid var(--line);min-width:640px}
-  .gantt-label-col{font-size:12.5px;color:var(--muted);padding-right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:sticky;left:0;background:var(--paper);z-index:2}
-  .gantt-track-col{position:relative;height:24px;background:var(--track);border-radius:6px}
-  .gantt-bar{position:absolute;top:2px;height:20px;border-radius:5px;color:#fff;font-size:10.5px;font-weight:500;padding:2px 7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;line-height:1.6}
-  .gantt-kickoff{position:absolute;top:2px;width:3px;height:20px;border-radius:2px;cursor:pointer}
+
+  /* Gantt chart — one shared component (ganttChartHtml/wireGanttChart) used by
+     both Milestones > Gantt and the public client portal's Gantt page. Positions
+     are computed in PIXELS from a px-per-day scale, not percentages, so bars can
+     hold a real minimum width, gridlines/today line land exactly on their date,
+     and the zoom control is a one-variable change. Both host pages sit directly
+     on var(--paper) (no wrapping .card), so that's what the sticky columns mask
+     with — see the v0.62.1 note about --card vs --paper on the Milestones page. */
+  .gx{--gx-label:200px}
+  .gx-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .gx-legend{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-left:auto}
+  .gx-key{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap}
+  .gx-key i{width:13px;height:10px;border-radius:3px;display:block;flex:none}
+  .gx-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:10px}
+  .gx-inner{position:relative}
+  .gx-lines{position:absolute;left:var(--gx-label);top:0;right:0;bottom:0;pointer-events:none;z-index:0;overflow:hidden}
+  .gx-lines i{position:absolute;top:0;bottom:0;width:1px;background:var(--line-soft)}
+  .gx-lines i.mo{background:var(--line)}
+  .gx-lines b{position:absolute;top:0;bottom:0;background:var(--track);opacity:.45}
+  .gx-today{position:absolute;top:18px;bottom:0;width:2px;background:var(--accent);z-index:3;pointer-events:none}
+  .gx-today span{position:absolute;top:-17px;left:50%;transform:translateX(-50%);font-size:9.5px;font-weight:700;color:#fff;background:var(--accent);padding:1px 6px;border-radius:4px;white-space:nowrap}
+  .gx-head{display:grid;grid-template-columns:var(--gx-label) 1fr;position:relative;z-index:6;padding-top:18px}
+  .gx-head-label{position:sticky;left:0;z-index:7;background:var(--paper);border-right:1px solid var(--line)}
+  .gx-head-track{position:relative;height:36px}
+  .gx-mo{position:absolute;top:0;height:17px;line-height:17px;font-size:10.5px;font-weight:600;color:var(--ink);border-left:1px solid var(--line);padding-left:6px;white-space:nowrap;overflow:hidden}
+  .gx-tick{position:absolute;top:20px;line-height:14px;font-size:9.5px;color:var(--muted);padding-left:4px;white-space:nowrap}
+  .gx-group{position:sticky;left:0;width:fit-content;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--ink);margin:16px 0 4px;padding-right:14px;background:var(--paper);z-index:5}
+  .gx-row{display:grid;grid-template-columns:var(--gx-label) 1fr;align-items:center;min-height:44px;border-top:1px solid var(--line-soft);position:relative}
+  .gx-row:hover .gx-track{background:var(--row-hover)}
+  .gx-label{position:sticky;left:0;z-index:5;background:var(--paper);border-right:1px solid var(--line);height:44px;padding-right:12px;display:flex;align-items:center;gap:7px;min-width:0}
+  .gx-name{font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+  .gx-count{font-size:10px;font-weight:700;color:var(--muted);background:var(--track);border-radius:99px;padding:2px 7px;flex:none}
+  .gx-track{position:relative;height:44px;border-radius:6px}
+  .gx-bar{position:absolute;top:11px;height:22px;border-radius:6px;font-size:10.5px;font-weight:600;line-height:22px;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;box-sizing:border-box}
+  .gx-bar:hover,.gx-ms:hover{filter:brightness(1.07)}
+  .gx-ms{position:absolute;top:15px;width:14px;height:14px;border-radius:4px;transform:rotate(45deg);cursor:pointer;box-sizing:border-box}
+  .gx-out{position:absolute;top:11px;line-height:22px;font-size:10.5px;font-weight:500;color:var(--muted);white-space:nowrap;pointer-events:none}
+  .gx-bar.done{background:var(--green-bg);color:var(--green);box-shadow:inset 0 0 0 1px var(--green)}
+  .gx-bar.late{background:var(--red-bg);color:var(--red);box-shadow:inset 0 0 0 1px var(--red)}
+  .gx-ms.done{background:var(--green-bg);box-shadow:inset 0 0 0 2px var(--green)}
+  .gx-ms.late{background:var(--red-bg);box-shadow:inset 0 0 0 2px var(--red)}
+  .gx-empty{padding:18px 0}
+  @media(max-width:760px){
+    .gx{--gx-label:124px}
+    .gx-legend{margin-left:0;gap:10px}
+    .gx-name{font-size:11.5px}
+  }
 
   .anim-grid th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:relative}
   .anim-grid td{border-bottom:1px solid var(--line)}
@@ -853,7 +892,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.70.0</div>
+    <div id="versionBadge" class="version-badge">v0.71.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -908,6 +947,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
   timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null, appSettings:{}, clientContacts:[],
   taskSort: store.get('rs_task_sort') || 'due', taskSortDir: store.get('rs_task_sortdir') || 'asc', taskGroupBy: store.get('rs_task_groupby') || 'taskstatus',
+  ganttScale: store.get('rs_gantt_scale') || 'weeks',
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -3146,107 +3186,250 @@ function milestoneItemChip(item, weekStyle){
   return retainerMilestoneChipHtml(item.t, cl, weekStyle);
 }
 
+/* ── Gantt chart ─────────────────────────────────────────────────────────────
+   ONE shared renderer behind both Milestones > Gantt (cross-client) and the
+   public client portal's Gantt page (a single client). Deliberately
+   argument-driven — it reads nothing out of `state` — because the public
+   dashboard path skips loadAll() and only hand-populates a few state keys, so a
+   global-reading helper would silently see empty arrays there (same rule as
+   nextIncompleteStage). Callers hand in already-shaped groups/rows/stages and
+   the click attributes they want on each mark, so this file knows nothing about
+   either page's navigation model.
+
+   Geometry is in PIXELS off a px-per-day scale, not percentages. That's what
+   makes a minimum bar width, exact gridline/today placement, and the zoom
+   control all fall out for free — the old percentage version needed a
+   calc(180px + (100% - 180px) * frac) fudge just to place the today line.     */
+const GANTT_SCALES = { days:{px:26,label:'Days'}, weeks:{px:9,label:'Weeks'}, months:{px:3.4,label:'Months'} };
+const GANTT_SCALE_KEYS = ['days','weeks','months'];
+const GANTT_STATE_LABEL = { done:'Complete', late:'Overdue', now:'In progress', next:'Upcoming' };
+/* Complete beats overdue on purpose — a stage that landed late but is finished
+   is done, not a red flag. "now" is the row's first incomplete stage, matching
+   nextIncompleteStage()/the portal's "Current" pill rather than inventing a
+   second, subtly different rule for this one chart. */
+function ganttStageState(s, isCurrent, todayIso){
+  if(s.complete) return 'done';
+  if(s.dueIso < todayIso) return 'late';
+  return isCurrent ? 'now' : 'next';
+}
+
+function ganttToolbarHtml(scaleKey, opts){
+  const attr = opts.scaleAttr || 'data-gxscale';
+  const zoom = `<div class="view-toggle" style="margin-bottom:0">${GANTT_SCALE_KEYS.map(k=>
+    `<button type="button" class="btn small ${k===scaleKey?'':'ghost'}" ${attr}="${k}">${GANTT_SCALES[k].label}</button>`).join('')}</div>`;
+  // The In progress/Upcoming swatches take the caller's colour because those two
+  // states are drawn in each row's own client colour; Complete/Overdue are fixed
+  // theme tokens. opacity (not mutedBg) so a CSS var works here as well as a hex.
+  const c = opts.legendColor || 'var(--accent)';
+  const legend = `<div class="gx-legend">
+    <span class="gx-key"><i style="background:${c}"></i>In progress</span>
+    <span class="gx-key"><i style="background:${c};opacity:.3"></i>Upcoming</span>
+    <span class="gx-key"><i style="background:var(--green-bg);box-shadow:inset 0 0 0 1px var(--green)"></i>Complete</span>
+    <span class="gx-key"><i style="background:var(--red-bg);box-shadow:inset 0 0 0 1px var(--red)"></i>Overdue</span>
+  </div>`;
+  return `<div class="gx-toolbar">${zoom}<button type="button" class="btn small ghost" data-gxtoday="1">Today</button>${legend}</div>`;
+}
+
+function ganttChartHtml(opts){
+  const groups = (opts.groups||[])
+    .map(g=>({ ...g, rows:(g.rows||[]).filter(r=>r.stages && r.stages.length) }))
+    .filter(g=>g.rows.length);
+  if(!groups.length) return `<div class="empty gx-empty">${esc(opts.emptyText||'Nothing scheduled yet.')}</div>`;
+
+  const todayIso = opts.todayIso || iso(new Date());
+  const scaleKey = GANTT_SCALES[opts.scale] ? opts.scale : 'weeks';
+  const pxDay = GANTT_SCALES[scaleKey].px;
+  const LABEL = 200;          // keep in sync with --gx-label
+  const DAY_MS = 86400000;
+
+  // A window around today (1 month back, 6 forward), widened to cover every real
+  // date, then snapped out to whole months so the month band reads cleanly.
+  // Deliberately shorter than the 12-month window this chart used to force —
+  // most of that span was empty future months you had to scroll past.
+  let minD=null, maxD=null;
+  groups.forEach(g=>g.rows.forEach(r=>r.stages.forEach(s=>{
+    const d = new Date(s.dueIso+'T00:00');
+    if(!minD||d<minD) minD=d;
+    if(!maxD||d>maxD) maxD=d;
+  })));
+  const todayD = new Date(todayIso+'T00:00');
+  let start = new Date(todayD); start.setMonth(start.getMonth()-1);
+  let end = new Date(todayD); end.setMonth(end.getMonth()+6);
+  if(minD && minD<start) start = new Date(minD);
+  if(maxD && maxD>end) end = new Date(maxD);
+  start = new Date(start.getFullYear(), start.getMonth(), 1);
+  end = new Date(end.getFullYear(), end.getMonth()+1, 0);
+
+  // Both sides normalised to local midnight so a DST shift can't round a day off.
+  const dayIndex = d => Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate()) - start)/DAY_MS);
+  const x = d => dayIndex(d)*pxDay;
+  const totalDays = dayIndex(end)+1;
+  const trackW = Math.max(Math.round(totalDays*pxDay), 320);
+  const innerW = LABEL + trackW;
+
+  const months = [];
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  while(cur<=end){
+    const next = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+    const left = x(cur);
+    months.push({ left, w: Math.min(x(next), trackW)-left, label: cur.toLocaleDateString('en-GB',{month:'short',year:'numeric'}) });
+    cur = next;
+  }
+
+  // Gridlines are the thing that makes a bar's position actually readable —
+  // without them you have to trace up to the header to tell what a bar spans.
+  // Density follows the zoom: every weekday at Days (weekends shaded), every
+  // Monday at Weeks, month boundaries only at Months.
+  let ticks='', lines='', bands='';
+  months.forEach(m=>{ if(m.left>0) lines += `<i class="mo" style="left:${m.left}px"></i>`; });
+  if(scaleKey!=='months'){
+    for(let i=0;i<totalDays;i++){
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate()+i);
+      const dow = d.getDay();
+      if(scaleKey==='days'){
+        if(dow===6) bands += `<b style="left:${i*pxDay}px;width:${2*pxDay}px"></b>`;
+        if(dow===0||dow===6) continue;
+        lines += `<i style="left:${i*pxDay}px"></i>`;
+        ticks += `<div class="gx-tick" style="left:${i*pxDay}px">${d.getDate()}</div>`;
+      } else if(dow===1){
+        lines += `<i style="left:${i*pxDay}px"></i>`;
+        ticks += `<div class="gx-tick" style="left:${i*pxDay}px">${esc(fmtDate(d))}</div>`;
+      }
+    }
+  }
+
+  const showToday = todayD>=start && todayD<=end;
+  const todayHtml = showToday
+    ? `<div class="gx-today" style="left:${Math.round(LABEL + x(todayD) + pxDay/2)}px"><span>Today</span></div>` : '';
+
+  const rowHtml = (r)=>{
+    const color = r.color || '#2383e2';
+    const stages = r.stages;
+    const currentIdx = stages.findIndex(s=>!s.complete);
+    let seg = '';
+    stages.forEach((s,i)=>{
+      const d = new Date(s.dueIso+'T00:00');
+      const st = ganttStageState(s, i===currentIdx, todayIso);
+      const tip = `${s.name} — due ${fmtDate(d)} · ${GANTT_STATE_LABEL[st]}`;
+      const style = st==='now'  ? `background:${color};color:${contrastText(color)}`
+                  : st==='next' ? `background:${mutedBg(color)};color:${color};box-shadow:inset 0 0 0 1px ${color}`
+                  : '';
+      if(i===0){
+        // The first dated stage has no predecessor to span from, so it's a real
+        // labelled milestone marker rather than the 3px sliver this used to draw
+        // — which was effectively invisible and impossible to click. Label it to
+        // the right when nothing follows closely (the common single-dated-stage
+        // case), else to the LEFT, since the next stage's bar starts immediately
+        // after this date and would sit under a right-hand label.
+        const cx = x(d)+pxDay/2;
+        const after = (i+1<stages.length) ? x(new Date(stages[i+1].dueIso+'T00:00'))+pxDay : trackW;
+        seg += `<div class="gx-ms ${st}" style="left:${Math.round(cx-7)}px;${style}" title="${esc(tip)}" ${s.attrs||''}></div>`;
+        if(pxDay>=9){
+          if(after-(cx+9) > 46) seg += `<div class="gx-out" style="left:${Math.round(cx+11)}px">${esc(s.name)}</div>`;
+          else if(cx>56) seg += `<div class="gx-out" style="left:${Math.round(cx-13)}px;transform:translateX(-100%)">${esc(s.name)}</div>`;
+        }
+        return;
+      }
+      const sX = x(new Date(stages[i-1].dueIso+'T00:00'))+pxDay;
+      const w = Math.max(x(d)+pxDay-sX, 5);
+      const inside = w>=54;
+      seg += `<div class="gx-bar ${st}" style="left:${Math.round(sX)}px;width:${Math.round(w)}px;${style}" title="${esc(tip)}" ${s.attrs||''}>${inside?esc(s.name):''}</div>`;
+      if(inside) return;
+      // Too narrow to hold its own label — spill it to the right, but only when
+      // there's genuine room before the next bar, or labels turn to mush.
+      const nextStart = (i+1<stages.length) ? x(new Date(stages[i+1].dueIso+'T00:00'))+pxDay : trackW;
+      const at = sX+w+6;
+      if(pxDay>=9 && nextStart-at > 46) seg += `<div class="gx-out" style="left:${Math.round(at)}px">${esc(s.name)}</div>`;
+    });
+    const dot = r.color ? `<span class="dot" style="background:${r.color}"></span>` : '';
+    const count = r.total ? `<span class="gx-count">${r.done}/${r.total}</span>` : '';
+    return `<div class="gx-row">
+      <div class="gx-label">${dot}<span class="gx-name" title="${esc(r.label)}">${esc(r.label)}</span>${count}</div>
+      <div class="gx-track">${seg}</div>
+    </div>`;
+  };
+
+  const body = groups.map(g=>
+    `${g.label? `<div class="gx-group"><span class="dot" style="background:${g.color||'var(--accent)'}"></span>${esc(g.label)}</div>`:''}${g.rows.map(rowHtml).join('')}`
+  ).join('');
+
+  return `${ganttToolbarHtml(scaleKey, opts)}
+    <div class="gx">
+      <div class="gx-scroll">
+        <div class="gx-inner" style="width:${innerW}px">
+          <div class="gx-lines">${bands}${lines}</div>
+          ${todayHtml}
+          <div class="gx-head">
+            <div class="gx-head-label"></div>
+            <div class="gx-head-track">${months.map(m=>`<div class="gx-mo" style="left:${m.left}px;width:${m.w}px">${esc(m.label)}</div>`).join('')}${ticks}</div>
+          </div>
+          ${body}
+        </div>
+      </div>
+    </div>`;
+}
+
+/* Shared wiring for every gantt on the page: land scrolled to today (rather
+   than at the far-left edge of the range) and re-centre on the Today button. */
+function wireGanttChart(root){
+  (root||document).querySelectorAll('.gx').forEach(gx=>{
+    const scroll = gx.querySelector('.gx-scroll');
+    const marker = gx.querySelector('.gx-today');
+    if(!scroll) return;
+    // The sticky label column overlays the left of the scroll viewport, so
+    // anything scrolled to an x below it is hidden behind it, not visible.
+    const label = parseFloat(getComputedStyle(gx).getPropertyValue('--gx-label')) || 200;
+    // A bar/diamond's offsetParent is its .gx-track, so its own offsetLeft is
+    // track-relative; the today line's is .gx-inner, which already includes the
+    // label column. Normalise both to inner coordinates before comparing.
+    const marks = Array.from(gx.querySelectorAll('.gx-bar,.gx-ms'));
+    const toToday = ()=>{
+      let target = marker ? Math.max(0, marker.offsetLeft - (label+60)) : 0;
+      // Landing on today only helps if there's something to see there. A client
+      // whose stages all sit in the past would otherwise open this page on an
+      // empty stretch of calendar and think the chart was broken — so when no
+      // mark falls in the resulting viewport, fall back to the nearest one.
+      const inView = marks.some(m=>{
+        const l = label + m.offsetLeft;
+        return (l + m.offsetWidth) - target > label + 8 && l - target < scroll.clientWidth - 8;
+      });
+      if(!inView && marks.length){
+        const anchor = marker ? marker.offsetLeft - label : 0;
+        const nearest = marks.reduce((a,b)=> Math.abs(b.offsetLeft-anchor) < Math.abs(a.offsetLeft-anchor) ? b : a);
+        target = Math.max(0, nearest.offsetLeft - 60);
+      }
+      scroll.scrollLeft = target;
+    };
+    toToday();
+    const btn = gx.parentElement && gx.parentElement.querySelector('[data-gxtoday]');
+    if(btn) btn.addEventListener('click', toToday);
+  });
+}
+
 function renderGanttBody(){
   const projects = state.projects.filter(p=>p.active && !state.milestoneHidden.has(p.client_id) && !state.milestoneTypeHidden.has(p.project_type));
-  const rows = [];
-  let minDate = null, maxDate = null;
+  const byClient = {};
   projects.forEach(p=>{
     const client = state.clients.find(c=>c.id===p.client_id);
     if(!client) return;
-    const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
-    const dated = stages.filter(s=>s.due_date);
-    if(!dated.length) return;
-    dated.forEach(s=>{
-      const d = new Date(s.due_date+'T00:00');
-      if(!minDate || d<minDate) minDate = d;
-      if(!maxDate || d>maxDate) maxDate = d;
-    });
-    rows.push({ p, client, stages });
+    const all = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
+    const stages = all.filter(s=>s.due_date).map(s=>({
+      id:s.id, name:s.name, dueIso:s.due_date,
+      complete: stageStatus(s.id)==='Complete',
+      attrs: `data-msitem="stage:${s.id}" draggable="true"`
+    }));
+    if(!stages.length) return;
+    const color = colorFor(client);
+    const g = byClient[client.id] = byClient[client.id] || { label:client.name, color, rows:[] };
+    g.rows.push({ id:p.id, label:p.name, color, done:all.filter(s=>stageStatus(s.id)==='Complete').length, total:all.length, stages });
   });
-  if(!rows.length) return `<div class="empty">No projects with stage due dates yet — set due dates on stages to see them here.</div>`;
-
-  // Always span at least a full year around today so the chart is
-  // consistently scrollable regardless of how few stage dates happen to be
-  // set, widened further if real data falls outside that window — same
-  // "pad to cover real data" pattern Work Schedule's continuous range uses.
-  const todayAnchor = new Date(iso(new Date())+'T00:00');
-  let rangeStart = new Date(todayAnchor); rangeStart.setMonth(rangeStart.getMonth()-2);
-  let rangeEnd = new Date(todayAnchor); rangeEnd.setMonth(rangeEnd.getMonth()+10);
-  if(minDate < rangeStart) rangeStart = new Date(minDate);
-  if(maxDate > rangeEnd) rangeEnd = new Date(maxDate);
-  minDate = rangeStart; minDate.setDate(minDate.getDate()-3);
-  maxDate = rangeEnd; maxDate.setDate(maxDate.getDate()+3);
-  const totalMs = maxDate - minDate;
-  const totalDays = Math.max(1, Math.round(totalMs/86400000));
-  const pct = d => Math.max(0, Math.min(100, (d-minDate)/totalMs*100));
-  const LABEL_COL = 180;
-  const trackLeft = p => `calc(${LABEL_COL}px + (100% - ${LABEL_COL}px) * ${(p/100).toFixed(4)})`;
-
-  const monthMarkers = [];
-  let cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-  while(cursor<=maxDate){
-    monthMarkers.push({ label:cursor.toLocaleDateString('en-GB',{month:'short',year:'numeric'}), left:pct(cursor) });
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
-  }
-
-  // Day-level ticks on the X axis, spaced out depending on the total span so
-  // labels stay readable — the wrap scrolls horizontally (and widens via the
-  // min-width below) rather than cramming every date into a fixed width.
-  const stepDays = totalDays<=21 ? 1 : totalDays<=60 ? 3 : totalDays<=120 ? 7 : 14;
-  const today = new Date(iso(new Date())+'T00:00');
-  const showToday = today>=minDate && today<=maxDate;
-  const todayLeft = showToday ? trackLeft(pct(today)) : null;
-  const dayMarkers = [];
-  let dcursor = new Date(minDate);
-  while(dcursor<=maxDate){
-    // Skip a tick that would sit right under the "Today" pill — avoids the
-    // two labels overlapping when today happens to fall near a tick.
-    if(!showToday || Math.abs(dcursor-today)/86400000 > 1.5){
-      dayMarkers.push({ label:dcursor.toLocaleDateString('en-GB',{day:'numeric',month:'short'}), left:pct(dcursor) });
-    }
-    dcursor.setDate(dcursor.getDate()+stepDays);
-  }
-  const minWidthPx = Math.max(640, LABEL_COL + dayMarkers.length*64);
-
-  const byClient = {};
-  rows.forEach(r=>{ (byClient[r.client.id] = byClient[r.client.id] || { client:r.client, items:[] }).items.push(r); });
-
-  let html = `<div class="gantt-wrap">
-    <div class="gantt-header" style="min-width:${minWidthPx}px">
-      <div class="gantt-label-col"></div>
-      <div class="gantt-track-col" style="background:none">${monthMarkers.map(m=>`<div class="gantt-month-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
-      <div class="gantt-track-col" style="background:none;position:absolute;top:16px;left:${LABEL_COL}px;right:0;height:16px">${dayMarkers.map(m=>`<div class="gantt-day-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
-    </div>`;
-
-  Object.values(byClient).forEach(group=>{
-    const barColor = colorFor(group.client);
-    html += `<div class="gantt-client-row"><span class="dot" style="background:${barColor}"></span>${esc(group.client.name)}</div>`;
-    group.items.forEach(({p,stages})=>{
-      let segs = '';
-      let prevDate = null;
-      stages.forEach(s=>{
-        if(!s.due_date) return;
-        const d = new Date(s.due_date+'T00:00');
-        if(prevDate){
-          const left = pct(prevDate);
-          const width = Math.max(pct(d)-left, 0.6);
-          segs += `<div class="gantt-bar" draggable="true" data-msitem="stage:${s.id}" style="left:${left}%;width:${width}%;background:${barColor}" title="${esc(s.name)} — due ${fmtDate(d)}">${esc(s.name)}</div>`;
-        } else {
-          segs += `<div class="gantt-kickoff" data-msitem="stage:${s.id}" style="left:${pct(d)}%;background:${barColor}" title="Kickoff — ${fmtDate(d)}"></div>`;
-        }
-        prevDate = d;
-      });
-      html += `<div class="gantt-row" style="min-width:${minWidthPx}px"><div class="gantt-label-col">${esc(p.name)}</div><div class="gantt-track-col">${segs}</div></div>`;
-    });
+  return ganttChartHtml({
+    groups: Object.values(byClient).sort((a,b)=>a.label.localeCompare(b.label)),
+    todayIso: iso(new Date()),
+    scale: state.ganttScale,
+    scaleAttr: 'data-mgscale',
+    emptyText: 'No projects with stage due dates yet — set due dates on stages to see them here.'
   });
-
-  if(showToday){
-    html += `<div class="gantt-today-line" style="left:${todayLeft}"></div>
-      <div class="gantt-today-label" style="left:${todayLeft}">Today</div>`;
-  }
-
-  html += `</div>`;
-  return html;
 }
 
 function renderMilestones(){
@@ -3352,9 +3535,12 @@ function renderMilestones(){
   // so today's month is at the top (past months are still there, just
   // scrolled-to via scrolling up, and rendered dimmed via .past).
   if(state.milestoneViewMode==='gantt'){
-    const wrap = main.querySelector('.gantt-wrap');
-    const line = wrap && wrap.querySelector('.gantt-today-line');
-    if(wrap && line) wrap.scrollLeft = Math.max(0, line.offsetLeft-100);
+    main.querySelectorAll('[data-mgscale]').forEach(el=>el.addEventListener('click', ()=>{
+      state.ganttScale = el.dataset.mgscale;
+      store.set('rs_gantt_scale', state.ganttScale);
+      renderMilestones();
+    }));
+    wireGanttChart(main);
   } else if(state.milestoneViewMode==='year'){
     const marker = $('#yearTodayMarker');
     if(marker) marker.scrollIntoView({ block:'start' });
@@ -6709,7 +6895,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.70.0';
+const APP_VERSION = '0.71.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7419,7 +7605,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   // every admin write: add material, toggle a date, drag a task to a new
   // day, etc.) passes the page's current view/selection back in here so an
   // admin action doesn't bounce the client back to Home mid-browse.
-  const pub = initialPub ? { ...initialPub } : { view:'home', projectId: null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
+  const pub = initialPub ? { ganttScale:'weeks', ...initialPub } : { view:'home', projectId: null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth(), ganttScale:'weeks' };
   // Reserve the scrollbar gutter permanently — without this, a short page
   // (Home) has no vertical scrollbar while a tall one (a project with lots
   // of materials) does, and the centered max-width container shifts a few
@@ -7980,92 +8166,44 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ${timelineRows || `<div class="empty" style="padding:20px 0">No dates scheduled yet.</div>`}
     `;
 
-    // Gantt — a real bar-chart view of this client's own active projects'
-    // stage due dates, reusing the exact .gantt-* classes/behaviour the
-    // internal Milestones > Gantt view already established (same "always
-    // spans >=1 year around today" padding, sticky label column, connected
-    // kickoff-tick/bar segments, auto-scroll-to-today on open) rather than
-    // inventing a second bar-chart component — just scoped to one project
-    // per row instead of grouped by client, since this page only ever shows
-    // one client's own projects. Respects hide_due_date_from_client the same
-    // way Timeline does: a hidden stage is excluded from a client's own
-    // segment chain entirely (not just relabeled), since a bar's position
-    // would otherwise leak the real date anyway; admin mode includes every
-    // dated stage so segments read the way the internal team actually sees them.
-    const ganttRows = projects.map(p=>{
-      const all = stagesFor(p.id).filter(s=>s.due_date);
-      const stages = isAdmin ? all : all.filter(s=>!s.hide_due_date_from_client);
-      return { p, stages };
-    }).filter(r=>r.stages.length);
-    let ganttHtml = `<h2 style="margin-bottom:0">Gantt</h2><p class="sub" style="margin:10px 0 22px">A visual timeline across your active projects.</p>`;
-    if(!ganttRows.length){
-      ganttHtml += `<div class="empty" style="padding:20px 0">No dates scheduled yet.</div>`;
-    } else {
-      let minDate=null, maxDate=null;
-      ganttRows.forEach(({stages})=> stages.forEach(s=>{
-        const d = new Date(s.due_date+'T00:00');
-        if(!minDate||d<minDate) minDate=d;
-        if(!maxDate||d>maxDate) maxDate=d;
-      }));
-      const todayAnchor = new Date(todayIso+'T00:00');
-      let rangeStart = new Date(todayAnchor); rangeStart.setMonth(rangeStart.getMonth()-2);
-      let rangeEnd = new Date(todayAnchor); rangeEnd.setMonth(rangeEnd.getMonth()+10);
-      if(minDate<rangeStart) rangeStart = new Date(minDate);
-      if(maxDate>rangeEnd) rangeEnd = new Date(maxDate);
-      minDate = rangeStart; minDate.setDate(minDate.getDate()-3);
-      maxDate = rangeEnd; maxDate.setDate(maxDate.getDate()+3);
-      const totalMs = maxDate-minDate;
-      const totalDays = Math.max(1, Math.round(totalMs/86400000));
-      const gpct = d => Math.max(0, Math.min(100, (d-minDate)/totalMs*100));
-      const LABEL_COL = 180;
-      const trackLeft = p => `calc(${LABEL_COL}px + (100% - ${LABEL_COL}px) * ${(p/100).toFixed(4)})`;
-      const monthMarkers = [];
-      let cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-      while(cursor<=maxDate){
-        monthMarkers.push({ label:cursor.toLocaleDateString('en-GB',{month:'short',year:'numeric'}), left:gpct(cursor) });
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
-      }
-      const stepDays = totalDays<=21 ? 1 : totalDays<=60 ? 3 : totalDays<=120 ? 7 : 14;
-      const showToday = todayAnchor>=minDate && todayAnchor<=maxDate;
-      const todayLeft = showToday ? trackLeft(gpct(todayAnchor)) : null;
-      const dayMarkers = [];
-      let dcursor = new Date(minDate);
-      while(dcursor<=maxDate){
-        if(!showToday || Math.abs(dcursor-todayAnchor)/86400000 > 1.5){
-          dayMarkers.push({ label:dcursor.toLocaleDateString('en-GB',{day:'numeric',month:'short'}), left:gpct(dcursor) });
-        }
-        dcursor.setDate(dcursor.getDate()+stepDays);
-      }
-      const minWidthPx = Math.max(640, LABEL_COL + dayMarkers.length*64);
-      let track = `<div class="gantt-wrap">
-        <div class="gantt-header" style="min-width:${minWidthPx}px">
-          <div class="gantt-label-col"></div>
-          <div class="gantt-track-col" style="background:none">${monthMarkers.map(m=>`<div class="gantt-month-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
-          <div class="gantt-track-col" style="background:none;position:absolute;top:16px;left:${LABEL_COL}px;right:0;height:16px">${dayMarkers.map(m=>`<div class="gantt-day-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
-        </div>`;
-      ganttRows.forEach(({p,stages})=>{
-        let segs = '';
-        let prevDate = null;
-        stages.forEach(s=>{
-          const d = new Date(s.due_date+'T00:00');
-          if(prevDate){
-            const left = gpct(prevDate);
-            const width = Math.max(gpct(d)-left, 0.6);
-            segs += `<div class="gantt-bar" data-pdstage="${s.id}" data-pdstageproj="${p.id}" style="left:${left}%;width:${width}%;background:${accent};cursor:pointer" title="${esc(s.name)} — due ${fmtDate(d)}">${esc(s.name)}</div>`;
-          } else {
-            segs += `<div class="gantt-kickoff" data-pdstage="${s.id}" data-pdstageproj="${p.id}" style="left:${gpct(d)}%;background:${accent};cursor:pointer" title="Kickoff — ${fmtDate(d)}"></div>`;
-          }
-          prevDate = d;
-        });
-        track += `<div class="gantt-row" style="min-width:${minWidthPx}px"><div class="gantt-label-col">${esc(p.project_type)}</div><div class="gantt-track-col">${segs}</div></div>`;
-      });
-      if(showToday){
-        track += `<div class="gantt-today-line" style="left:${todayLeft}"></div>
-          <div class="gantt-today-label" style="left:${todayLeft}">Today</div>`;
-      }
-      track += `</div>`;
-      ganttHtml += track;
-    }
+    // Gantt — a bar-chart view of this client's own active projects, built by
+    // the shared ganttChartHtml() the internal Milestones > Gantt page also
+    // uses, so both charts stay identical in behaviour by construction rather
+    // than by two copies of the same date maths being kept in sync by hand.
+    // One row per project (no group header — this page only ever shows one
+    // client). Respects hide_due_date_from_client the same way Timeline does,
+    // but stricter: a hidden stage is dropped from the client's chain entirely
+    // rather than relabeled, since a bar's POSITION leaks the date just as
+    // effectively as printing it; admin mode includes every dated stage.
+    const ganttGroups = [{
+      label: '',
+      rows: projects.map(p=>{
+        const all = stagesFor(p.id);
+        const dated = all.filter(s=>s.due_date && (isAdmin || !s.hide_due_date_from_client));
+        return {
+          id: p.id,
+          label: p.project_type,
+          color: accent,
+          done: all.filter(s=>stageStatus(s.id)==='Complete').length,
+          total: all.length,
+          stages: dated.map(s=>({
+            id:s.id, name:s.name, dueIso:s.due_date,
+            complete: stageStatus(s.id)==='Complete',
+            attrs: `data-pdstage="${s.id}" data-pdstageproj="${p.id}"`
+          }))
+        };
+      })
+    }];
+    const ganttHtml = `<h2 style="margin-bottom:0">Gantt</h2>
+      <p class="sub" style="margin:10px 0 22px">Every stage across your active projects, on one timeline. Click a bar to open that stage.</p>
+      ${ganttChartHtml({
+        groups: ganttGroups,
+        todayIso,
+        scale: pub.ganttScale,
+        scaleAttr: 'data-pdgscale',
+        legendColor: accent,
+        emptyText: 'No dates scheduled yet.'
+      })}`;
 
     const contentHtml = (pub.view==='project' && proj) ? projectHtml
       : (pub.view==='timeline' && projects.length) ? timelineHtml
@@ -8129,12 +8267,11 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
     document.querySelectorAll('[data-pdopenproj]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdopenproj; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-openlink]').forEach(el=>el.addEventListener('click', ()=> window.open(el.dataset.openlink, '_blank', 'noopener,noreferrer')));
     document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; if(el.dataset.pdstageproj) pub.projectId = el.dataset.pdstageproj; pub.view='project'; paint(); }));
-    // Land the Gantt view scrolled to "today" rather than the start of its
-    // date range, same behaviour as the internal Milestones > Gantt view.
+    // Gantt zoom + land scrolled to "today" — wireGanttChart is the same shared
+    // wiring the internal Milestones > Gantt page uses.
     if(pub.view==='gantt'){
-      const gwrap = document.querySelector('.gantt-wrap');
-      const gline = gwrap && gwrap.querySelector('.gantt-today-line');
-      if(gwrap && gline) gwrap.scrollLeft = Math.max(0, gline.offsetLeft-100);
+      document.querySelectorAll('[data-pdgscale]').forEach(el=>el.addEventListener('click', ()=>{ pub.ganttScale = el.dataset.pdgscale; paint(); }));
+      wireGanttChart(document);
     }
     document.querySelectorAll('[data-calnav]').forEach(el=>el.addEventListener('click', ()=>{
       let m = pub.calM + (+el.dataset.calnav);
