@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.71.0**
+Current version: **v0.71.1**
 
 Backend: Supabase (PostgreSQL)
 - URL: `https://glbfuurfebepqzvlkjwa.supabase.co`
@@ -744,6 +744,12 @@ Font: Inter (unchanged from v0.9.0)
 - Rows grew 38px→44px with a hover tint, the label column 180px→200px and now carries a client dot + the project name + a `2/5` stage-count pill (same language as the portal nav and the Active Projects cards).
 - **`.gantt-client-row` was deliberately left in place** — it is no longer part of the chart, but the Week Tasks page (`renderTasksAhead`) reuses it as a generic per-client heading row. Every other `.gantt-*` class was deleted as genuinely dead; the chart is now the `.gx-*` family.
 - Verified live: all three zooms on both charts; the Today button restoring the exact auto-scroll offset (575px) after scrolling away; a bar's `data-msitem`/`draggable="true"` intact so Milestones' drag-to-reschedule still works; clicking a milestone diamond opening `openStagePreviewModal` internally ("Stage 0 Kickoff · Atransen") and navigating to the right stage on the portal (Radyus Branding → Kickoff, Completed); the empty-today fallback confirmed by measurement (portal lands at 262px showing both of Radyus's past kickoffs instead of two blank rows); Week Tasks confirmed still rendering its 3 `.gantt-client-row` headings; light and dark mode on both charts; the mobile stack (`--gx-label` correctly 124px, chart scrolling inside its own container with no horizontal body overflow).
+
+**What shipped in v0.71.1** (breadcrumb separators changed from `/` to a chevron arrow):
+- **`.breadcrumb .sep` is now a CSS-drawn chevron**, not a typed character — a 5×5 box with only its top and right borders set, rotated 45°, in `var(--ink-light)` at `.75` opacity. Borders rather than a `›`/`→` glyph so it renders identically regardless of the font stack, and it scales with the token system in both themes (`--ink-light` is defined in the light and dark blocks alike).
+- **The glyph now lives in exactly one place.** All 7 call sites went from `<span class="sep">/</span>` to an empty `<span class="sep"></span>`, so the separator is defined once in CSS instead of being retyped in every breadcrumb — changing it again is a one-line edit.
+- **Deliberately kept as its own flex item rather than a `::before` on the buttons.** Auto-injecting the separator via `.breadcrumb > *:not(:first-child)::before` would have removed the spans entirely, but it also pulls the arrow inside each button's click target and its `:hover{text-decoration:underline}` — a worse trade than one empty span per separator.
+- Verified live across every breadcrumb in the app — `renderClientListTable` (Graphics › Client list), `renderProjClientProjects` (Graphics › Radyus), `clientRetainerHeaderHtml` (Clients › Athernal Bio), `renderArchived` (Settings › Archived), `animProjectHeaderHtml` (Animation › Atransen), and the only 3-level one, `renderProjDetail` (Graphics › Radyus › Branding, two chevrons) — plus computed style (5×5, `matrix(0.707…)` = 45°, `rgb(154,152,143)`), `getBoundingClientRect()` confirming the chevron's vertical midpoint matches the adjacent text exactly (offBy 0) with a symmetric 6px gap either side, and both light and dark mode.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
