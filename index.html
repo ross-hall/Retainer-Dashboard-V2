@@ -853,7 +853,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.69.0</div>
+    <div id="versionBadge" class="version-badge">v0.70.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -6709,7 +6709,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.69.0';
+const APP_VERSION = '0.70.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7807,6 +7807,11 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <span class="pd-nav-group-icon" style="${timelineActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
           <span class="pd-nav-group-label">Timeline</span>
         </button>` : '';
+      const ganttActive = pub.view==='gantt';
+      const ganttBtn = projects.length ? `<button type="button" class="pd-nav-group ${ganttActive?'active':''}" data-pdgantt="1" style="${ganttActive?`color:${accent}`:''}">
+          <span class="pd-nav-group-icon" style="${ganttActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M4 5h9M4 5v14M4 12h13M4 19h6"/></svg></span>
+          <span class="pd-nav-group-label">Gantt</span>
+        </button>` : '';
       const allTasksActive = pub.view==='alltasks';
       const allTasksBtn = !projects.length ? `<button type="button" class="pd-nav-group ${allTasksActive?'active':''}" data-pdalltasks="1" style="${allTasksActive?`color:${accent}`:''}">
           <span class="pd-nav-group-icon" style="${allTasksActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M8 6h12M8 12h12M8 18h12"/><path d="m4 6 .01.01M4 12l.01.01M4 18l.01.01" stroke-width="2.4" stroke-linecap="round"/></svg></span>
@@ -7817,7 +7822,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <span class="pd-nav-group-icon" style="${calendarActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
           <span class="pd-nav-group-label">Calendar</span>
         </button>` : '';
-      const globalNav = `<div style="margin-bottom:26px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}${allTasksBtn}${calendarBtn}</div>`;
+      const globalNav = `<div style="margin-bottom:26px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}${ganttBtn}${allTasksBtn}${calendarBtn}</div>`;
       const footerLink = `<a class="pd-nav-footer-link" href="${esc(websiteHref)}" target="_blank" rel="noopener">${LINK_ICONS.link} Reciprocal Space</a>`;
       // Who's actually handling this account — optional (dash_contact_name/
       // _role, set from the internal app's client edit modal), so this
@@ -7975,8 +7980,96 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ${timelineRows || `<div class="empty" style="padding:20px 0">No dates scheduled yet.</div>`}
     `;
 
+    // Gantt — a real bar-chart view of this client's own active projects'
+    // stage due dates, reusing the exact .gantt-* classes/behaviour the
+    // internal Milestones > Gantt view already established (same "always
+    // spans >=1 year around today" padding, sticky label column, connected
+    // kickoff-tick/bar segments, auto-scroll-to-today on open) rather than
+    // inventing a second bar-chart component — just scoped to one project
+    // per row instead of grouped by client, since this page only ever shows
+    // one client's own projects. Respects hide_due_date_from_client the same
+    // way Timeline does: a hidden stage is excluded from a client's own
+    // segment chain entirely (not just relabeled), since a bar's position
+    // would otherwise leak the real date anyway; admin mode includes every
+    // dated stage so segments read the way the internal team actually sees them.
+    const ganttRows = projects.map(p=>{
+      const all = stagesFor(p.id).filter(s=>s.due_date);
+      const stages = isAdmin ? all : all.filter(s=>!s.hide_due_date_from_client);
+      return { p, stages };
+    }).filter(r=>r.stages.length);
+    let ganttHtml = `<h2 style="margin-bottom:0">Gantt</h2><p class="sub" style="margin:10px 0 22px">A visual timeline across your active projects.</p>`;
+    if(!ganttRows.length){
+      ganttHtml += `<div class="empty" style="padding:20px 0">No dates scheduled yet.</div>`;
+    } else {
+      let minDate=null, maxDate=null;
+      ganttRows.forEach(({stages})=> stages.forEach(s=>{
+        const d = new Date(s.due_date+'T00:00');
+        if(!minDate||d<minDate) minDate=d;
+        if(!maxDate||d>maxDate) maxDate=d;
+      }));
+      const todayAnchor = new Date(todayIso+'T00:00');
+      let rangeStart = new Date(todayAnchor); rangeStart.setMonth(rangeStart.getMonth()-2);
+      let rangeEnd = new Date(todayAnchor); rangeEnd.setMonth(rangeEnd.getMonth()+10);
+      if(minDate<rangeStart) rangeStart = new Date(minDate);
+      if(maxDate>rangeEnd) rangeEnd = new Date(maxDate);
+      minDate = rangeStart; minDate.setDate(minDate.getDate()-3);
+      maxDate = rangeEnd; maxDate.setDate(maxDate.getDate()+3);
+      const totalMs = maxDate-minDate;
+      const totalDays = Math.max(1, Math.round(totalMs/86400000));
+      const gpct = d => Math.max(0, Math.min(100, (d-minDate)/totalMs*100));
+      const LABEL_COL = 180;
+      const trackLeft = p => `calc(${LABEL_COL}px + (100% - ${LABEL_COL}px) * ${(p/100).toFixed(4)})`;
+      const monthMarkers = [];
+      let cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+      while(cursor<=maxDate){
+        monthMarkers.push({ label:cursor.toLocaleDateString('en-GB',{month:'short',year:'numeric'}), left:gpct(cursor) });
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
+      }
+      const stepDays = totalDays<=21 ? 1 : totalDays<=60 ? 3 : totalDays<=120 ? 7 : 14;
+      const showToday = todayAnchor>=minDate && todayAnchor<=maxDate;
+      const todayLeft = showToday ? trackLeft(gpct(todayAnchor)) : null;
+      const dayMarkers = [];
+      let dcursor = new Date(minDate);
+      while(dcursor<=maxDate){
+        if(!showToday || Math.abs(dcursor-todayAnchor)/86400000 > 1.5){
+          dayMarkers.push({ label:dcursor.toLocaleDateString('en-GB',{day:'numeric',month:'short'}), left:gpct(dcursor) });
+        }
+        dcursor.setDate(dcursor.getDate()+stepDays);
+      }
+      const minWidthPx = Math.max(640, LABEL_COL + dayMarkers.length*64);
+      let track = `<div class="gantt-wrap">
+        <div class="gantt-header" style="min-width:${minWidthPx}px">
+          <div class="gantt-label-col"></div>
+          <div class="gantt-track-col" style="background:none">${monthMarkers.map(m=>`<div class="gantt-month-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
+          <div class="gantt-track-col" style="background:none;position:absolute;top:16px;left:${LABEL_COL}px;right:0;height:16px">${dayMarkers.map(m=>`<div class="gantt-day-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
+        </div>`;
+      ganttRows.forEach(({p,stages})=>{
+        let segs = '';
+        let prevDate = null;
+        stages.forEach(s=>{
+          const d = new Date(s.due_date+'T00:00');
+          if(prevDate){
+            const left = gpct(prevDate);
+            const width = Math.max(gpct(d)-left, 0.6);
+            segs += `<div class="gantt-bar" data-pdstage="${s.id}" data-pdstageproj="${p.id}" style="left:${left}%;width:${width}%;background:${accent};cursor:pointer" title="${esc(s.name)} — due ${fmtDate(d)}">${esc(s.name)}</div>`;
+          } else {
+            segs += `<div class="gantt-kickoff" data-pdstage="${s.id}" data-pdstageproj="${p.id}" style="left:${gpct(d)}%;background:${accent};cursor:pointer" title="Kickoff — ${fmtDate(d)}"></div>`;
+          }
+          prevDate = d;
+        });
+        track += `<div class="gantt-row" style="min-width:${minWidthPx}px"><div class="gantt-label-col">${esc(p.project_type)}</div><div class="gantt-track-col">${segs}</div></div>`;
+      });
+      if(showToday){
+        track += `<div class="gantt-today-line" style="left:${todayLeft}"></div>
+          <div class="gantt-today-label" style="left:${todayLeft}">Today</div>`;
+      }
+      track += `</div>`;
+      ganttHtml += track;
+    }
+
     const contentHtml = (pub.view==='project' && proj) ? projectHtml
       : (pub.view==='timeline' && projects.length) ? timelineHtml
+      : (pub.view==='gantt' && projects.length) ? ganttHtml
       : (pub.view==='alltasks' && !projects.length) ? allTasksHtml
       : (pub.view==='calendar' && !projects.length) ? calendarPageHtml
       : homeHtml;
@@ -8029,12 +8122,20 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
     document.querySelectorAll('[data-pdhome]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='home'; paint(); }));
     document.querySelectorAll('[data-pdtimeline]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='timeline'; paint(); }));
+    document.querySelectorAll('[data-pdgantt]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='gantt'; paint(); }));
     document.querySelectorAll('[data-pdalltasks]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='alltasks'; paint(); }));
     document.querySelectorAll('[data-pdcalendar]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='calendar'; paint(); }));
     document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-pdopenproj]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdopenproj; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-openlink]').forEach(el=>el.addEventListener('click', ()=> window.open(el.dataset.openlink, '_blank', 'noopener,noreferrer')));
     document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; if(el.dataset.pdstageproj) pub.projectId = el.dataset.pdstageproj; pub.view='project'; paint(); }));
+    // Land the Gantt view scrolled to "today" rather than the start of its
+    // date range, same behaviour as the internal Milestones > Gantt view.
+    if(pub.view==='gantt'){
+      const gwrap = document.querySelector('.gantt-wrap');
+      const gline = gwrap && gwrap.querySelector('.gantt-today-line');
+      if(gwrap && gline) gwrap.scrollLeft = Math.max(0, gline.offsetLeft-100);
+    }
     document.querySelectorAll('[data-calnav]').forEach(el=>el.addEventListener('click', ()=>{
       let m = pub.calM + (+el.dataset.calnav);
       let y = pub.calY;
