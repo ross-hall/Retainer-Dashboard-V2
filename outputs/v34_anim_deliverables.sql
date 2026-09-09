@@ -32,8 +32,20 @@ create table if not exists rs_anim_deliverables (
   created_at timestamptz not null default now()
 );
 
-alter table rs_anim_deliverable_columns disable row level security;
-alter table rs_anim_deliverables disable row level security;
+-- RLS: enable + the standard authenticated-only policy, matching v41.
+-- This file originally ended with `disable row level security` — correct under
+-- the old convention, but actively harmful now that v41 has run: it would have
+-- re-opened this table to the anon key. Safe to run before or after v41.
+alter table rs_anim_deliverable_columns enable row level security;
+drop policy if exists rs_authenticated_all on rs_anim_deliverable_columns;
+create policy rs_authenticated_all on rs_anim_deliverable_columns
+  for all to authenticated using (true) with check (true);
+revoke all on rs_anim_deliverable_columns from anon;
+alter table rs_anim_deliverables enable row level security;
+drop policy if exists rs_authenticated_all on rs_anim_deliverables;
+create policy rs_authenticated_all on rs_anim_deliverables
+  for all to authenticated using (true) with check (true);
+revoke all on rs_anim_deliverables from anon;
 
 -- Seeds the same 10 columns the feature originally shipped with, so a fresh
 -- install matches the client-supplied spec table out of the box.

@@ -14,4 +14,12 @@ where assignee_id is not null and assignee_ids = '{}';
 -- migrated cleanly.
 
 -- Match v21's RLS fix for this table (harmless if it's already off).
-alter table rs_internal_tasks disable row level security;
+-- RLS: enable + the standard authenticated-only policy, matching v41.
+-- This file originally ended with `disable row level security` — correct under
+-- the old convention, but actively harmful now that v41 has run: it would have
+-- re-opened this table to the anon key. Safe to run before or after v41.
+alter table rs_internal_tasks enable row level security;
+drop policy if exists rs_authenticated_all on rs_internal_tasks;
+create policy rs_authenticated_all on rs_internal_tasks
+  for all to authenticated using (true) with check (true);
+revoke all on rs_internal_tasks from anon;

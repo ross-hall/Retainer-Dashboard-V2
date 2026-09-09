@@ -108,6 +108,10 @@
   #sidebar .sidebar-user{display:flex;align-items:center;gap:9px;padding:8px;border-top:1px solid var(--line);margin-top:8px;flex:none}
   #sidebar .sidebar-user .nav-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;color:var(--ink)}
   #sidebar.collapsed .sidebar-user{justify-content:center;padding:8px 0}
+  #sidebar .sidebar-user .nav-label{flex:1;min-width:0}
+  #sidebar .sidebar-signout{flex:none;display:flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;background:none;border:none;color:var(--muted);border-radius:6px;cursor:pointer;transition:background var(--fast) var(--ease),color var(--fast) var(--ease)}
+  #sidebar .sidebar-signout:hover{background:var(--track);color:var(--ink)}
+  #sidebar.collapsed .sidebar-signout{display:none}
   #sidebar .sidebar-search-btn{display:flex;align-items:center;gap:9px;width:100%;background:var(--card);border:1px solid var(--line);color:var(--muted);padding:7px 8px;font-size:13px;border-radius:7px;cursor:pointer;margin-bottom:10px;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
   #sidebar .sidebar-search-btn:hover{background:var(--track)}
   #sidebar .sidebar-search-btn svg{width:16px;height:16px;flex:none;opacity:.8}
@@ -897,8 +901,11 @@
     <div class="sidebar-user" id="sidebarUser" style="display:none">
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
+      <button class="nav-label sidebar-signout" id="sidebarSignOut" title="Sign out" aria-label="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M15 17v1.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V7"/><path d="M10 12h9.5m0 0-3-3m3 3-3 3"/></svg>
+      </button>
     </div>
-    <div id="versionBadge" class="version-badge">v0.71.1</div>
+    <div id="versionBadge" class="version-badge">v0.73.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -2255,8 +2262,25 @@ function projectTypeIconHtml(typeName, size){
 }
 const RETAINER_DELIVERY_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:-2px"><rect x="5" y="4" width="14" height="17" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 
-const CURRENT_USER_NAME = 'Ross Hall'; // no login system yet — hardcoded to one team member
-function currentUser(){ return state.members.find(m=>(m.name||'').trim().toLowerCase()===CURRENT_USER_NAME.toLowerCase()); }
+/* Who's using the app. AUTH_EMAIL is set once in boot() from the Supabase Auth
+   session, so currentUser() stays synchronous for the ~dozen render paths that
+   call it inline. Matching is on rs_members.email (migration v39).
+
+   The CURRENT_USER_NAME fallback is deliberate and load-bearing during rollout:
+   until v39 is run and each member's email is filled in from Settings > Team
+   members, there's no email to match on, so identity falls back to exactly the
+   old hardcoded-name behaviour. That's what lets the login screen ship before
+   RLS does without changing who the app thinks you are. */
+const CURRENT_USER_NAME = 'Ross Hall'; // fallback only — used until rs_members.email is set
+let AUTH_EMAIL = null;
+function currentUser(){
+  const members = state.members || [];
+  if(AUTH_EMAIL){
+    const byEmail = members.find(m=>(m.email||'').trim().toLowerCase()===AUTH_EMAIL);
+    if(byEmail) return byEmail;
+  }
+  return members.find(m=>(m.name||'').trim().toLowerCase()===CURRENT_USER_NAME.toLowerCase());
+}
 
 function homeTaskContextHtml(t){
   if(t.project_id){
@@ -6331,9 +6355,10 @@ function wireSettingsClients(){
 function settingsTeamHtml(){
   return `<div class="card">
     <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Team members</h3>
-    <table><thead><tr><th>Name</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th style="text-align:center">Admin</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>Name</th><th>Login email</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th style="text-align:center">Admin</th><th></th></tr></thead><tbody>
     ${state.members.map(m=>`<tr style="${m.active?'':'opacity:.45'}">
       <td><input type="text" data-membername="${m.id}" value="${esc(m.name)}" style="min-width:120px"></td>
+      <td><input type="email" data-memberemail="${m.id}" value="${esc(m.email||'')}" placeholder="—" style="min-width:170px"></td>
       <td>×${m.weight}</td>
       <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_design" ${m.can_design!==false?'checked':''} style="width:auto"></td>
       <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_review" ${m.can_review!==false?'checked':''} style="width:auto"></td>
@@ -6344,7 +6369,7 @@ function settingsTeamHtml(){
         <button class="btn small ghost" data-mactive="${m.id}">${m.active?'Archive':'Restore'}</button>
         ${!m.active? `<button class="btn small danger" data-mdelete="${m.id}">Delete</button>`:''}
       </td>
-    </tr>`).join('') || '<tr><td colspan="7" class="empty">No team members yet.</td></tr>'}
+    </tr>`).join('') || '<tr><td colspan="8" class="empty">No team members yet.</td></tr>'}
     </tbody></table>
     <div class="row-form">
       <input id="m_name" placeholder="Name" style="flex:2">
@@ -6383,6 +6408,21 @@ function wireSettingsTeam(){
     if(error){ toast('Could not save'); return; }
     await loadAll();
   }));
+  // Links a member row to their Supabase Auth login (migration v39). Stored
+  // lowercased because currentUser() matches case-insensitively, and the unique
+  // index is on lower(email) — keeping the stored value normalised means the two
+  // can never disagree about whether a duplicate exists.
+  main.querySelectorAll('[data-memberemail]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const raw = inp.value.trim().toLowerCase();
+      const { error } = await db.from('rs_members').update({ email: raw || null }).eq('id', inp.dataset.memberemail);
+      if(error){
+        toast(error.code==='PGRST204' ? 'Run migration v39 to enable logins' : (error.code==='23505' ? 'Another member already uses that email' : 'Could not save email'));
+        return;
+      }
+      toast(raw ? 'Login email saved' : 'Login email cleared'); await loadAll();
+    });
+  });
   main.querySelectorAll('[data-membername]').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
       const name = inp.value.trim();
@@ -6901,7 +6941,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.71.1';
+const APP_VERSION = '0.73.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -7507,6 +7547,54 @@ function openAnimCellModal(shotId, stepId){
    sessionStorage) so a client isn't asked again on every visit. */
 const CLIENT_DASHBOARD_PIN = '8651';
 function clientPinOk(){ return store.get('rs_client_pin_ok')==='1'; }
+/* Sign-in screen for the INTERNAL app only — the client portal (?client=slug)
+   never reaches this and stays open to clients, gated by its own PIN.
+   Deliberately email+password rather than a magic link: Supabase's built-in
+   email service is rate-limited and explicitly not for production use, and a
+   team of nine hitting that limit would be locked out of their own tracker.
+   Accounts are created by an admin in Supabase > Authentication > Users; there
+   is no self-signup, and no password reset in-app (an admin resets it there). */
+function renderLoginGate(){
+  document.body.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper)">
+      <div style="max-width:320px;width:100%;padding:32px;box-sizing:border-box">
+        <div style="display:flex;align-items:center;gap:9px;justify-content:center;margin-bottom:18px">
+          <span style="width:26px;height:26px;border-radius:8px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">RS</span>
+          <span style="font-size:15px;font-weight:600;color:var(--ink)">Reciprocal Space</span>
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:18px;text-align:center">Sign in to continue.</div>
+        <form id="loginForm">
+          <input type="email" id="loginEmail" autocomplete="username" placeholder="Email" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:14px;margin-bottom:8px;background:var(--card);color:var(--ink);font-family:inherit">
+          <input type="password" id="loginPass" autocomplete="current-password" placeholder="Password" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:14px;margin-bottom:12px;background:var(--card);color:var(--ink);font-family:inherit">
+          <button type="submit" class="btn" id="loginBtn" style="width:100%">Sign in</button>
+        </form>
+        <div id="loginError" style="color:var(--red);font-size:12.5px;margin-top:10px;text-align:center;display:none"></div>
+      </div>
+    </div>`;
+  const email = document.getElementById('loginEmail');
+  const pass = document.getElementById('loginPass');
+  const err = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  document.getElementById('loginForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    err.style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    const { error } = await db.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
+    if(error){
+      err.textContent = error.message || 'Could not sign in.';
+      err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Sign in';
+      pass.value = ''; pass.focus();
+      return;
+    }
+    // Reload rather than hand-running boot()'s wiring: the whole app shell has
+    // to initialise from scratch anyway, and a reload is the one path
+    // guaranteed to match a normal signed-in visit.
+    location.reload();
+  });
+  email.focus();
+}
+
 function renderClientPinGate(onSuccess){
   document.body.innerHTML = `
     <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper)">
@@ -7534,15 +7622,32 @@ function renderClientPinGate(onSuccess){
   });
   input.focus();
 }
-async function bootPublicDashboard(slug, isAdmin, initialPub){
-  const { data: client, error } = await db.from('rs_clients').select('*').eq('slug', slug).eq('active', true).maybeSingle();
-  if(error || !client){
-    document.body.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper);text-align:center">
-      <div><div style="font-size:16px;color:var(--ink);margin-bottom:8px;font-weight:600">Dashboard not found</div>
-      <div style="font-size:13px;color:var(--muted)">This link may have changed or been removed.</div></div>
-    </div>`;
-    return;
+/* Everything the portal needs for one client, in one call.
+   Prefers client_portal() (migration v40) — a security definer function that is
+   the ONLY thing anon can touch once RLS is on (v41), because RLS itself can't
+   express "this visitor may read exactly one client": the slug is a parameter
+   the visitor controls, so any policy permissive enough to serve the portal
+   serves every client's data. The function's body is the access rule instead.
+   Falls back to the original direct-table reads when v40 hasn't run, so this
+   ships safely ahead of the migration. */
+async function fetchClientPortal(slug){
+  const { data, error } = await db.rpc('client_portal', { p_slug: slug });
+  if(!error){
+    if(!data) return null;
+    return {
+      client: data.client, projects: data.projects||[], stages: data.stages||[],
+      categories: data.categories||[], links: data.links||[],
+      stageTasks: data.stage_tasks||[], retainerTasks: data.retainer_tasks||[],
+      taskStatuses: data.task_statuses||[]
+    };
   }
+  console.warn('client_portal() not available — run outputs/v40_client_portal_rpc.sql (portal is on the legacy anon-read path; do NOT run v41 yet)', error);
+  return await fetchClientPortalLegacy(slug);
+}
+
+async function fetchClientPortalLegacy(slug){
+  const { data: client, error } = await db.from('rs_clients').select('*').eq('slug', slug).eq('active', true).maybeSingle();
+  if(error || !client) return null;
   const { data: projects } = await db.from('rs_projects').select('*').eq('client_id', client.id).eq('active', true).order('name');
   const projectIds = (projects||[]).map(p=>p.id);
   const stagesRes = projectIds.length ? await db.from('rs_project_stages').select('*').in('project_id', projectIds).order('position') : { data: [] };
@@ -7588,17 +7693,37 @@ async function bootPublicDashboard(slug, isAdmin, initialPub){
       ? db.from('rs_proj_tasks').select('*').eq('client_id', client.id).is('project_id', null).not('due_date','is',null)
       : { data: [] }
   ]);
-  state.projTasks = tasksRes.data||[];
-  state.taskStatuses = (statusesRes.data && statusesRes.data.length) ? statusesRes.data : DEFAULT_TASK_STATUSES;
-  state.stageCategories = categories;
-  state.stageLinks = links;
-  // Only fetched for admins — the client-facing read-only view has no use
-  // for a directory of every other client, and there's no reason to widen
-  // what an unauthenticated ?client=slug link can see.
+  return {
+    client, projects: projects||[], stages, categories, links,
+    stageTasks: tasksRes.data||[], retainerTasks: retainerTasksRes.data||[],
+    taskStatuses: statusesRes.data||[]
+  };
+}
+
+async function bootPublicDashboard(slug, isAdmin, initialPub){
+  const portal = await fetchClientPortal(slug);
+  if(!portal || !portal.client){
+    document.body.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper);text-align:center">
+      <div><div style="font-size:16px;color:var(--ink);margin-bottom:8px;font-weight:600">Dashboard not found</div>
+      <div style="font-size:13px;color:var(--muted)">This link may have changed or been removed.</div></div>
+    </div>`;
+    return;
+  }
+  // stageStatus()/isCompleteStatus() (shared with the internal app) read from
+  // state — populate just enough of it here since the public path skips loadAll().
+  // openStageCategoryModal/openStageLinkModal (used in admin mode) also read
+  // state.stageCategories/stageLinks to work out new-item positions.
+  state.projTasks = portal.stageTasks;
+  state.taskStatuses = portal.taskStatuses.length ? portal.taskStatuses : DEFAULT_TASK_STATUSES;
+  state.stageCategories = portal.categories;
+  state.stageLinks = portal.links;
+  // Admin-only, and admin mode now requires a login — so this is an ordinary
+  // authenticated read and stays a direct table query rather than going through
+  // client_portal() (which is scoped to exactly one client by design).
   const otherClients = isAdmin
     ? (await db.from('rs_clients').select('id,name,slug').eq('active', true).order('name')).data || []
     : [];
-  renderPublicDashboard(client, projects||[], stages, categories, links, !!isAdmin, retainerTasksRes.data||[], initialPub, otherClients);
+  renderPublicDashboard(portal.client, portal.projects, portal.stages, portal.categories, portal.links, !!isAdmin, portal.retainerTasks, initialPub, otherClients);
 }
 
 function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks, initialPub, otherClients){
@@ -8370,10 +8495,30 @@ async function boot(){
   const clientSlug = qs.get('client');
   if(clientSlug){
     const isAdminReq = qs.get('admin')==='1';
-    if(clientPinOk()) await bootPublicDashboard(clientSlug, isAdminReq);
-    else renderClientPinGate(async ()=>{ await bootPublicDashboard(clientSlug, isAdminReq); });
+    // Admin mode edits real data, so it now requires a signed-in team member —
+    // previously anyone who had the &admin=1 URL could write. A plain
+    // ?client=slug visit never touches auth and stays open to clients.
+    // renderLoginGate reloads on success, which returns here with the same URL
+    // (admin flag intact) and a session in hand.
+    const start = async ()=>{
+      if(!isAdminReq){ await bootPublicDashboard(clientSlug, false); return; }
+      const { data:{ session } } = await db.auth.getSession();
+      if(!session){ renderLoginGate(); return; }
+      AUTH_EMAIL = (session.user.email||'').trim().toLowerCase();
+      await bootPublicDashboard(clientSlug, true);
+    };
+    if(clientPinOk()) await start();
+    else renderClientPinGate(start);
     return;
   }
+
+  // The internal app requires a signed-in team member. This gate is what makes
+  // RLS meaningful later (v41) — until requests carry an identity, no policy can
+  // tell the team apart from anyone else holding the anon key. Deliberately
+  // AFTER the ?client= branch above, so client portals stay open to clients.
+  const { data:{ session } } = await db.auth.getSession();
+  if(!session){ renderLoginGate(); return; }
+  AUTH_EMAIL = (session.user.email||'').trim().toLowerCase();
 
   $('#sidebar').style.display = 'flex';
   $('#themeToggleBtn').addEventListener('click', toggleTheme);
@@ -8390,6 +8535,10 @@ async function boot(){
   });
   $('#mobileNavBackdrop').addEventListener('click', closeMobileNav);
   $('#brandBtn').addEventListener('click', ()=>{ state.view='home'; render(); });
+  $('#sidebarSignOut').addEventListener('click', async ()=>{
+    await db.auth.signOut();
+    location.reload();
+  });
   document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{
     state.view = b.dataset.view;
     if(state.view==='projects'){ state.projView='clients'; state.projClientId=null; state.projProjectId=null; }
