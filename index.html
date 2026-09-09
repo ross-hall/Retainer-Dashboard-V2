@@ -853,7 +853,7 @@
       <span class="avatar" id="sidebarUserAvatar"></span>
       <span class="nav-label" id="sidebarUserName"></span>
     </div>
-    <div id="versionBadge" class="version-badge">v0.68.1</div>
+    <div id="versionBadge" class="version-badge">v0.69.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -906,7 +906,7 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
-  timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null, appSettings:{},
+  timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null, appSettings:{}, clientContacts:[],
   taskSort: store.get('rs_task_sort') || 'due', taskSortDir: store.get('rs_task_sortdir') || 'asc', taskGroupBy: store.get('rs_task_groupby') || 'taskstatus',
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
@@ -1278,7 +1278,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc,tor,aps] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc,tor,aps,ccn] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -1302,7 +1302,8 @@ async function loadAll(){
     db.from('rs_anim_deliverables').select('*').order('position'),
     db.from('rs_anim_deliverable_columns').select('*').order('position'),
     db.from('rs_time_off_requests').select('*').order('start_date',{ascending:false}),
-    db.from('rs_app_settings').select('*')
+    db.from('rs_app_settings').select('*'),
+    db.from('rs_client_contacts').select('*').order('position')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -1323,10 +1324,12 @@ async function loadAll(){
   state.timeOffRequests = tor.data||[];
   state.appSettings = {};
   (aps.data||[]).forEach(row=>{ state.appSettings[row.key] = row.value; });
+  state.clientContacts = ccn.data||[];
   if(adl.error) console.warn('Animation deliverables table not found — run outputs/v34_anim_deliverables.sql', adl.error);
   if(adc.error) console.warn('Animation deliverable columns table not found — run outputs/v34_anim_deliverables.sql', adc.error);
   if(tor.error) console.warn('Time off requests table not found — run outputs/v35_time_off.sql', tor.error);
   if(aps.error) console.warn('App settings table not found — run outputs/v37_app_settings.sql', aps.error);
+  if(ccn.error) console.warn('Client contacts table not found — run outputs/v38_client_contacts.sql', ccn.error);
   if(tls.error) console.warn('Tools table not found — run outputs/v24_tools.sql', tls.error);
   if(cl.error) console.warn('Checklists tables not found — run outputs/v23_qa_checklist.sql', cl.error);
   if(clt.error) console.warn('Checklist templates tables not found — run outputs/v25_checklist_templates.sql', clt.error);
@@ -1767,6 +1770,11 @@ function openNewClientModal(){
         </select></div>
         <div><label>Renews on</label><select id="nc_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('')}</select></div>
       </div>
+      <div class="full">
+        <label>Contacts <span style="color:var(--muted);font-weight:400">(optional — add as many as you need)</span></label>
+        <div id="nc_contacts_list"></div>
+        <button type="button" class="btn small ghost" id="nc_add_contact" style="margin-top:2px">+ Add another contact</button>
+      </div>
     </form>
     <div class="modal-actions">
       <div class="right">
@@ -1777,6 +1785,26 @@ function openNewClientModal(){
   `);
   $('#nc_isretainer').addEventListener('change', e=>{ $('#nc_retainer_fields').style.display = e.target.checked?'contents':'none'; });
   wireColorCircle('nc_color', CLIENT_PALETTE);
+  // Intake-form contact rows — deliberately plain DOM nodes appended to
+  // #nc_contacts_list rather than a re-rendered template, since this modal
+  // has no re-render-in-place loop (unlike openClientContactsModal, which
+  // redraws after every mutation) — appending/removing a row here is a pure
+  // client-side list edit with nothing to persist until Save.
+  function addContactRow(){
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center';
+    row.innerHTML = `
+      <input type="text" data-ncname placeholder="Name" style="flex:1 1 130px">
+      <input type="text" data-ncrole placeholder="Role" style="flex:1 1 110px">
+      <input type="email" data-ncemail placeholder="Email" style="flex:1 1 150px">
+      <input type="tel" data-ncphone placeholder="Phone" style="flex:1 1 110px">
+      <button type="button" class="btn small ghost" title="Remove contact" style="flex:none">✕</button>
+    `;
+    row.querySelector('button').onclick = ()=> row.remove();
+    $('#nc_contacts_list').appendChild(row);
+  }
+  addContactRow();
+  $('#nc_add_contact').onclick = addContactRow;
   $('#nc_cancel').onclick = closeModal;
   $('#nc_save').onclick = async ()=>{
     const name = $('#nc_name').value.trim();
@@ -1788,12 +1816,117 @@ function openNewClientModal(){
     const miro_link_external = $('#nc_miro_ext').value.trim() || null;
     const miro_link_internal = $('#nc_miro_int').value.trim() || null;
     const slug = uniqueSlug(name);
+    const contacts = Array.from($('#nc_contacts_list').children).map(row=>({
+      name: row.querySelector('[data-ncname]').value.trim(),
+      role: row.querySelector('[data-ncrole]').value.trim() || null,
+      email: row.querySelector('[data-ncemail]').value.trim() || null,
+      phone: row.querySelector('[data-ncphone]').value.trim() || null
+    })).filter(ct=>ct.name);
     const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, dash_accent_color:color, is_retainer, miro_link_external, miro_link_internal, slug }).select().single();
     if(error){ toast('Could not create client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
-    closeModal(); toast('Client created');
+    if(contacts.length){
+      const { error: ctErr } = await db.from('rs_client_contacts').insert(contacts.map((ct,i)=>({ ...ct, client_id:data.id, position:i })));
+      if(ctErr){ toast(ctErr.code==='PGRST205'?'Client created — run migration v38 to save contacts':'Client created, but contacts could not be saved'); console.error(ctErr); }
+      else toast('Client created');
+    } else {
+      toast('Client created');
+    }
+    closeModal();
     state.projClientId = data.id; state.projView = is_retainer ? 'retainerTasks' : 'clientProjects'; state.retainerTab = 'tasks';
     await refreshProjectView();
+  };
+}
+
+/* Multiple named contacts per client (rs_client_contacts, outputs/v38_client_contacts.sql)
+   — distinct from rs_clients.dash_contact_name/dash_contact_role (v31), the single
+   point-of-contact shown on the PUBLIC dashboard's nav. This is the internal-only
+   list, reachable from the "Contact info" button on a client's Graphics page
+   (renderProjClientProjects) and seedable from the New Client intake form above. */
+function clientContactsFor(clientId){
+  return (state.clientContacts||[]).filter(x=>x.client_id===clientId).sort((a,b)=>(a.position||0)-(b.position||0));
+}
+function clientContactRowHtml(ct){
+  const links = [];
+  if(ct.email) links.push(`<a href="mailto:${esc(ct.email)}" style="color:var(--accent)">${esc(ct.email)}</a>`);
+  if(ct.phone) links.push(`<a href="tel:${esc(ct.phone)}" style="color:var(--accent)">${esc(ct.phone)}</a>`);
+  return `<div class="card" style="padding:12px 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+    <div>
+      <div style="font-weight:600">${esc(ct.name)}${ct.role?` <span style="font-weight:400;color:var(--muted)">· ${esc(ct.role)}</span>`:''}</div>
+      ${links.length? `<div style="margin-top:4px;font-size:12.5px;display:flex;gap:12px;flex-wrap:wrap">${links.join('')}</div>`:''}
+    </div>
+    <div style="display:flex;gap:6px;flex:none">
+      <button type="button" class="btn small ghost" data-editcontact="${ct.id}">Edit</button>
+      <button type="button" class="btn small ghost" data-deletecontact="${ct.id}">Delete</button>
+    </div>
+  </div>`;
+}
+function openClientContactsModal(clientId){
+  const c = state.clients.find(x=>x.id===clientId);
+  if(!c) return;
+  const contacts = clientContactsFor(clientId);
+  showModal(`
+    <h3>Contacts — ${esc(c.name)}</h3>
+    <div style="max-height:50vh;overflow-y:auto;margin-bottom:14px">
+      ${contacts.length? contacts.map(clientContactRowHtml).join('') : `<div class="empty" style="padding:16px 0">No contacts added yet.</div>`}
+    </div>
+    <div class="modal-actions">
+      <button class="btn small ghost" id="cc_add">+ Add contact</button>
+      <div class="right"><button class="btn" id="cc_done">Done</button></div>
+    </div>
+  `);
+  $('#cc_done').onclick = closeModal;
+  $('#cc_add').onclick = ()=> openClientContactFieldModal(clientId, null);
+  document.querySelectorAll('[data-editcontact]').forEach(b=>b.onclick = ()=> openClientContactFieldModal(clientId, b.dataset.editcontact));
+  document.querySelectorAll('[data-deletecontact]').forEach(b=>b.onclick = async ()=>{
+    const ct = contacts.find(x=>x.id===b.dataset.deletecontact);
+    if(!confirm(`Delete contact "${ct.name}"?`)) return;
+    const { error } = await db.from('rs_client_contacts').delete().eq('id', ct.id);
+    if(error){ toast('Delete failed'); return; }
+    await loadAll(); openClientContactsModal(clientId);
+  });
+}
+function openClientContactFieldModal(clientId, contactId){
+  const isNew = !contactId;
+  const ct = isNew ? null : clientContactsFor(clientId).find(x=>x.id===contactId);
+  showModal(`
+    <h3>${isNew?'Add contact':'Edit contact'}</h3>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Name</label><input type="text" id="ctf_name" value="${esc(ct?ct.name:'')}" placeholder="e.g. Jane Smith"></div>
+      <div class="full"><label>Role <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="ctf_role" value="${esc(ct&&ct.role||'')}" placeholder="e.g. Marketing Director"></div>
+      <div><label>Email <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="email" id="ctf_email" value="${esc(ct&&ct.email||'')}" placeholder="jane@client.com"></div>
+      <div><label>Phone <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="tel" id="ctf_phone" value="${esc(ct&&ct.phone||'')}" placeholder="+44 ..."></div>
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn danger" id="ctf_delete">Delete</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="ctf_cancel">Cancel</button>
+        <button class="btn" id="ctf_save">${isNew?'Add contact':'Save changes'}</button>
+      </div>
+    </div>
+  `);
+  $('#ctf_cancel').onclick = ()=> openClientContactsModal(clientId);
+  if(!isNew) $('#ctf_delete').onclick = async ()=>{
+    if(!confirm(`Delete contact "${ct.name}"?`)) return;
+    const { error } = await db.from('rs_client_contacts').delete().eq('id', contactId);
+    if(error){ toast('Delete failed'); return; }
+    await loadAll(); openClientContactsModal(clientId);
+  };
+  $('#ctf_save').onclick = async ()=>{
+    const name = $('#ctf_name').value.trim();
+    if(!name){ toast('Give the contact a name'); return; }
+    const role = $('#ctf_role').value.trim() || null;
+    const email = $('#ctf_email').value.trim() || null;
+    const phone = $('#ctf_phone').value.trim() || null;
+    if(isNew){
+      const existing = clientContactsFor(clientId);
+      const { error } = await db.from('rs_client_contacts').insert({ client_id:clientId, name, role, email, phone, position: existing.length });
+      if(error){ toast(error.code==='PGRST205'?'Run migration v38 to enable contacts':'Could not save'); console.error(error); return; }
+    } else {
+      const { error } = await db.from('rs_client_contacts').update({ name, role, email, phone }).eq('id', contactId);
+      if(error){ toast('Could not save'); console.error(error); return; }
+    }
+    await loadAll(); openClientContactsModal(clientId);
   };
 }
 
@@ -3433,6 +3566,7 @@ function renderProjClientProjects(){
   // etc. project) stays, since its main type isn't animation and it's still
   // a normal Graphics project with an extra tab.
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active && !isAnimationType(p.project_type)).sort((a,b)=> a.name.localeCompare(b.name));
+  const contactCount = clientContactsFor(c.id).length;
 
   let html = `<div class="breadcrumb"><button data-bc="clients">Graphics</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
     <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h2>
@@ -3440,6 +3574,7 @@ function renderProjClientProjects(){
       <button class="btn small" id="newProjectBtn">+ New project</button>
       ${miroButtonsHtml(c)}
       ${dashboardLinkButtonHtml(c)}
+      <button class="btn small ghost" id="clientContactsBtn">Contact info${contactCount? ` (${contactCount})`:''}</button>
       <button class="btn small ghost" id="editClientBtn2">Edit client</button>
     </div>`;
 
@@ -3485,6 +3620,7 @@ function renderProjClientProjects(){
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
   $('#newProjectBtn').onclick = ()=> openProjectModal(null, c.id);
   $('#editClientBtn2').onclick = ()=> openClientEditModal(c.id);
+  $('#clientContactsBtn').onclick = ()=> openClientContactsModal(c.id);
   wireMiroButtons();
   main.querySelectorAll('[data-projdetail]').forEach(el=>el.addEventListener('click', ()=>{
     state.projProjectId = el.dataset.projdetail; state.projView='project'; render();
@@ -6573,7 +6709,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.68.1';
+const APP_VERSION = '0.69.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
