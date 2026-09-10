@@ -11,11 +11,16 @@ const store = {
 };
 /* Column visibility/order persistence — read once at startup, written back
    any time the user toggles or reorders columns in the Columns popover. */
-const DEFAULT_TASK_COL_ORDER = ['status','priority','designer','reviewer','hours','due','retainer'];
+const DEFAULT_TASK_COL_ORDER = ['status','priority','people','hours','estimate','due','retainer'];
 function loadStoredSet(key, fallback){
   const raw = store.get(key);
   if(!raw) return new Set(fallback);
   try{ return new Set(JSON.parse(raw)); }catch(e){ return new Set(fallback); }
+}
+function loadStoredObj(key){
+  const raw = store.get(key);
+  if(!raw) return {};
+  try{ const o = JSON.parse(raw); return (o && typeof o==='object' && !Array.isArray(o)) ? o : {}; }catch(e){ return {}; }
 }
 function loadStoredArray(key, fallback){
   const raw = store.get(key);
@@ -23,21 +28,32 @@ function loadStoredArray(key, fallback){
   try{ const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : fallback.slice(); }catch(e){ return fallback.slice(); }
 }
 function saveTaskCols(){ store.set('rs_task_cols', JSON.stringify(Array.from(state.taskCols))); }
+function saveColWidths(){
+  store.set('rs_task_col_widths', JSON.stringify(state.taskColWidths));
+  store.set('rs_tasksahead_col_widths', JSON.stringify(state.tasksAheadColWidths));
+}
 function saveTaskColOrder(){ store.set('rs_task_col_order', JSON.stringify(state.taskColOrder)); }
 function saveHomeCols(){ store.set('rs_home_cols', JSON.stringify(Array.from(state.homeCols))); }
 const DEFAULT_INTERNAL_COLS = ['assignee','priority','due','department'];
 function saveInternalCols(){ store.set('rs_internal_cols', JSON.stringify(Array.from(state.internalCols))); }
 function saveInternalSort(){ store.set('rs_internal_sort', state.internalSort); }
 function saveInternalGroup(){ store.set('rs_internal_group', state.internalGroupBy); }
+function saveTaskSort(){ store.set('rs_task_sort', state.taskSort); }
+function saveTaskSortDir(){ store.set('rs_task_sortdir', state.taskSortDir); }
+function saveTaskGroupBy(){ store.set('rs_task_groupby', state.taskGroupBy); }
 
 let state = { view:'home', clients:[], members:[], tasks:[],
   projects:[], stages:[], projTasks:[], projectTypes:[], projView:'clients', projClientId:null, projProjectId:null, retainerTab:'tasks',
-  taskCols:loadStoredSet('rs_task_cols', ['status','designer','reviewer','hours','due','priority','retainer']),
+  taskCols:loadStoredSet('rs_task_cols', ['status','people','hours','estimate','due','priority','retainer']),
   taskColOrder:loadStoredArray('rs_task_col_order', DEFAULT_TASK_COL_ORDER),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
-  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false, taskColWidths:{}, tasksAheadColWidths:{}, taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
+  homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false,
+  taskColWidths:loadStoredObj('rs_task_col_widths'), tasksAheadColWidths:loadStoredObj('rs_tasksahead_col_widths'), taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
+  timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null, appSettings:{}, clientContacts:[],
+  taskSort: store.get('rs_task_sort') || 'due', taskSortDir: store.get('rs_task_sortdir') || 'asc', taskGroupBy: store.get('rs_task_groupby') || 'taskstatus',
+  ganttScale: store.get('rs_gantt_scale') || 'weeks',
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
   internalSort: store.get('rs_internal_sort') || 'manual',
   internalGroupBy: store.get('rs_internal_group') || 'none' };
@@ -286,7 +302,7 @@ const DEFAULT_TASK_STATUSES = [
   {name:'Pause',color:'#94A3B8',position:6,is_complete:false},
   {name:'Complete',color:'#2FB380',position:7,is_complete:true}
 ];
-const TASK_COLUMNS = [['status','Status'],['designer','Designer'],['reviewer','Reviewer'],['hours','Hours'],['due','Due date'],['priority','Priority'],['retainer','Retainer']];
+const TASK_COLUMNS = [['status','Status'],['people','People'],['hours','Hours'],['estimate','Est.'],['due','Due date'],['priority','Priority'],['retainer','Retainer']];
 function taskStatusList(){ return (state.taskStatuses.length?state.taskStatuses:DEFAULT_TASK_STATUSES).slice().sort((a,b)=>a.position-b.position); }
 function taskStatusNames(){ return taskStatusList().map(s=>s.name); }
 function statusRecord(s){ return (state.taskStatuses.length?state.taskStatuses:DEFAULT_TASK_STATUSES).find(x=>x.name===s) || DEFAULT_TASK_STATUSES[0]; }
@@ -309,6 +325,20 @@ function mutedBg(hex){
 }
 
 function initials(name){ const p=(name||'').trim().split(/\s+/); return ((p[0]?.[0]||'')+(p[1]?.[0]||'')).toUpperCase() || '?'; }
+
+/* rs_app_settings is a simple global key/value store (outputs/v37_app_settings.sql)
+   for app-wide numbers/toggles that aren't tied to any one client, project, or
+   member — starts with just the holiday-days-per-year allowance, edited from
+   Settings > Admin settings. */
+function appSetting(key, fallback){
+  const v = state.appSettings ? state.appSettings[key] : undefined;
+  return v!=null ? v : fallback;
+}
+const DEFAULT_HOLIDAY_DAYS_PER_YEAR = 25;
+function holidayDaysPerYear(){
+  const n = Number(appSetting('holiday_days_per_year', DEFAULT_HOLIDAY_DAYS_PER_YEAR));
+  return Number.isFinite(n) ? n : DEFAULT_HOLIDAY_DAYS_PER_YEAR;
+}
 function avatarHtml(member){ if(!member) return ''; return `<span class="avatar" style="background:${clientColor(member.id)}" title="${esc(member.name)}">${initials(member.name)}</span>`; }
 function avatarWithName(member){ return member ? `<span style="display:inline-flex;align-items:center;gap:6px">${avatarHtml(member)}${esc(member.name)}</span>` : '<span style="color:var(--muted)">—</span>'; }
 function avatarGroupHtml(ids){
@@ -329,9 +359,10 @@ function settingsAt(history, dateObj){
 
 /* Usage is the sum of two sources: legacy ad-hoc rs_tasks rows (pre-dating per-task time entries)
    plus rs_proj_task_entries for this client's tasks — the latter is the only system still being
-   written to, so it must count toward the same total or the allowance meter silently undercounts. */
-function clientUsage(client, taskList){
-  const cyc = cycleFor(client.renewal_day);
+   written to, so it must count toward the same total or the allowance meter silently undercounts.
+   Factored out of clientUsage() so the same computation can be re-run against the *previous* cycle
+   for rollover math without duplicating the filter/sum logic. */
+function usageForCycle(client, cyc, taskList){
   const s = iso(cyc.start), e = iso(cyc.end);
   const tasks = (taskList||state.tasks).filter(t => t.client_id===client.id && t.task_date>=s && t.task_date<=e);
   const entryRows = (state.projTaskEntries||[]).filter(en=>{
@@ -357,7 +388,62 @@ function clientUsage(client, taskList){
     used += val;
     perMember[key] = (perMember[key]||0) + val;
   });
-  return { cyc, tasks, entryRows, used, perMember, pct: client.retainer_hours>0 ? used/client.retainer_hours*100 : 0 };
+  return { tasks, entryRows, used, perMember };
+}
+/* Outstanding estimated effort on this client's retainer work for one cycle —
+   the "to do" band on the usage bars, distinct from hours actually logged.
+
+   Netted against hours already logged on each task: a task estimated at 10h with
+   4h logged contributes 6h, not 10. Without that, a part-finished task would be
+   counted twice — once in `used` via its time entries, and again in full as an
+   estimate — and the bar would overstate the projection.
+
+   Scope matches usageForCycle's: anything counting toward the retainer for this
+   client, due inside the cycle. Undated tasks ARE included — they're outstanding
+   work on this retainer that hasn't been scheduled yet, and excluding them would
+   quietly under-report the projection. Complete tasks are excluded; their real
+   cost is already in `used`. */
+function estimatedForCycle(client, cyc){
+  const s = iso(cyc.start), e = iso(cyc.end);
+  return (state.projTasks||[]).reduce((n,t)=>{
+    if(!t.counts_toward_retainer || t.estimated_hours==null) return n;
+    if(isCompleteStatus(t.status)) return n;
+    if(t.due_date && (t.due_date<s || t.due_date>e)) return n;
+    const cl = taskClient(t);
+    if(!cl || cl.id!==client.id) return n;
+    return n + Math.max(0, (+t.estimated_hours||0) - taskHoursTotal(t.id));
+  }, 0);
+}
+
+function clientUsage(client, taskList){
+  const cyc = cycleFor(client.renewal_day);
+  const cur = usageForCycle(client, cyc, taskList);
+  // Both rollover directions only look one cycle back (not a cumulative
+  // multi-cycle carry) and share the same previous-cycle lookup — a cycle
+  // is never simultaneously under AND over budget, so only one of the two
+  // ever actually applies regardless of which toggles are on.
+  let rolloverHours = 0, overageDeduction = 0;
+  if((client.rollover_hours || client.rollover_overage) && client.retainer_hours>0){
+    const prevRef = new Date(cyc.start); prevRef.setDate(prevRef.getDate()-1);
+    const prevCyc = cycleFor(client.renewal_day, prevRef);
+    const prevUsage = usageForCycle(client, prevCyc, taskList);
+    // Unused hours from last cycle top up this cycle's allowance.
+    if(client.rollover_hours) rolloverHours = Math.max(0, client.retainer_hours - prevUsage.used);
+    // Hours over budget last cycle are deducted from this cycle's allowance
+    // instead — floored at 0 below, so a bad month can't push the client
+    // into a negative allowance.
+    if(client.rollover_overage) overageDeduction = Math.max(0, prevUsage.used - client.retainer_hours);
+  }
+  const effectiveHours = Math.max(0, (client.retainer_hours||0) + rolloverHours - overageDeduction);
+  // The per-client toggle is applied here rather than in each meter, so every
+  // bar (and anything else reading usage) honours it from one place. Defaults
+  // to on: pre-v42 `show_estimates` is undefined, and estimated_hours doesn't
+  // exist either, so `estimated` is 0 and nothing renders regardless.
+  const estimated = client.show_estimates===false ? 0 : estimatedForCycle(client, cyc);
+  return { cyc, tasks:cur.tasks, entryRows:cur.entryRows, used:cur.used, perMember:cur.perMember,
+    rolloverHours, overageDeduction, effectiveHours,
+    pct: effectiveHours>0 ? cur.used/effectiveHours*100 : 0,
+    estimated, estPct: effectiveHours>0 ? estimated/effectiveHours*100 : 0 };
 }
 
 /* ---------- data ---------- */
@@ -371,7 +457,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc,tor,aps,ccn] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -393,7 +479,10 @@ async function loadAll(){
     db.from('rs_checklist_templates').select('*').order('position'),
     db.from('rs_checklist_template_items').select('*').order('position'),
     db.from('rs_anim_deliverables').select('*').order('position'),
-    db.from('rs_anim_deliverable_columns').select('*').order('position')
+    db.from('rs_anim_deliverable_columns').select('*').order('position'),
+    db.from('rs_time_off_requests').select('*').order('start_date',{ascending:false}),
+    db.from('rs_app_settings').select('*'),
+    db.from('rs_client_contacts').select('*').order('position')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -411,8 +500,15 @@ async function loadAll(){
   state.tools = tls.data||[];
   state.animDeliverables = adl.data||[];
   state.animDeliverableColumns = (adc.data && adc.data.length) ? adc.data : [];
+  state.timeOffRequests = tor.data||[];
+  state.appSettings = {};
+  (aps.data||[]).forEach(row=>{ state.appSettings[row.key] = row.value; });
+  state.clientContacts = ccn.data||[];
   if(adl.error) console.warn('Animation deliverables table not found — run outputs/v34_anim_deliverables.sql', adl.error);
   if(adc.error) console.warn('Animation deliverable columns table not found — run outputs/v34_anim_deliverables.sql', adc.error);
+  if(tor.error) console.warn('Time off requests table not found — run outputs/v35_time_off.sql', tor.error);
+  if(aps.error) console.warn('App settings table not found — run outputs/v37_app_settings.sql', aps.error);
+  if(ccn.error) console.warn('Client contacts table not found — run outputs/v38_client_contacts.sql', ccn.error);
   if(tls.error) console.warn('Tools table not found — run outputs/v24_tools.sql', tls.error);
   if(cl.error) console.warn('Checklists tables not found — run outputs/v23_qa_checklist.sql', cl.error);
   if(clt.error) console.warn('Checklist templates tables not found — run outputs/v25_checklist_templates.sql', clt.error);
@@ -473,7 +569,9 @@ function openMultiPillPopover(anchorEl, options, isChecked, onToggle){
   const checkSvg = '<svg class="pill-popover-check" viewBox="0 0 16 16" width="13" height="13"><path d="M13.5 4.5l-7 7L3 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   function draw(){
     pop.innerHTML = options.length
-      ? options.map(o=>`<button type="button" class="pill-popover-item" data-mpval="${esc(o.value)}">${o.html}${isChecked(o.value)?checkSvg:''}</button>`).join('')
+      ? options.map(o=> o.header
+          ? `<div class="pill-popover-group">${esc(o.header)}</div>`
+          : `<button type="button" class="pill-popover-item" data-mpval="${esc(o.value)}">${o.html}${isChecked(o.value)?checkSvg:''}</button>`).join('')
       : '<div class="empty" style="padding:6px 4px">Nothing to choose from</div>';
     pop.querySelectorAll('[data-mpval]').forEach(b=>b.addEventListener('click', (e)=>{
       e.stopPropagation();
@@ -853,6 +951,11 @@ function openNewClientModal(){
         </select></div>
         <div><label>Renews on</label><select id="nc_renew">${Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('')}</select></div>
       </div>
+      <div class="full">
+        <label>Contacts <span style="color:var(--muted);font-weight:400">(optional — add as many as you need)</span></label>
+        <div id="nc_contacts_list"></div>
+        <button type="button" class="btn small ghost" id="nc_add_contact" style="margin-top:2px">+ Add another contact</button>
+      </div>
     </form>
     <div class="modal-actions">
       <div class="right">
@@ -863,6 +966,26 @@ function openNewClientModal(){
   `);
   $('#nc_isretainer').addEventListener('change', e=>{ $('#nc_retainer_fields').style.display = e.target.checked?'contents':'none'; });
   wireColorCircle('nc_color', CLIENT_PALETTE);
+  // Intake-form contact rows — deliberately plain DOM nodes appended to
+  // #nc_contacts_list rather than a re-rendered template, since this modal
+  // has no re-render-in-place loop (unlike openClientContactsModal, which
+  // redraws after every mutation) — appending/removing a row here is a pure
+  // client-side list edit with nothing to persist until Save.
+  function addContactRow(){
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center';
+    row.innerHTML = `
+      <input type="text" data-ncname placeholder="Name" style="flex:1 1 130px">
+      <input type="text" data-ncrole placeholder="Role" style="flex:1 1 110px">
+      <input type="email" data-ncemail placeholder="Email" style="flex:1 1 150px">
+      <input type="tel" data-ncphone placeholder="Phone" style="flex:1 1 110px">
+      <button type="button" class="btn small ghost" title="Remove contact" style="flex:none">✕</button>
+    `;
+    row.querySelector('button').onclick = ()=> row.remove();
+    $('#nc_contacts_list').appendChild(row);
+  }
+  addContactRow();
+  $('#nc_add_contact').onclick = addContactRow;
   $('#nc_cancel').onclick = closeModal;
   $('#nc_save').onclick = async ()=>{
     const name = $('#nc_name').value.trim();
@@ -874,12 +997,137 @@ function openNewClientModal(){
     const miro_link_external = $('#nc_miro_ext').value.trim() || null;
     const miro_link_internal = $('#nc_miro_int').value.trim() || null;
     const slug = uniqueSlug(name);
+    const contacts = Array.from($('#nc_contacts_list').children).map(row=>({
+      name: row.querySelector('[data-ncname]').value.trim(),
+      role: row.querySelector('[data-ncrole]').value.trim() || null,
+      email: row.querySelector('[data-ncemail]').value.trim() || null,
+      phone: row.querySelector('[data-ncphone]').value.trim() || null
+    })).filter(ct=>ct.name);
     const { data, error } = await db.from('rs_clients').insert({ name, retainer_hours, renewal_day, color, dash_accent_color:color, is_retainer, miro_link_external, miro_link_internal, slug }).select().single();
     if(error){ toast('Could not create client'); console.error(error); return; }
     if(is_retainer) await db.from('rs_client_settings_history').insert({ client_id:data.id, retainer_hours, renewal_day, effective_from:'2000-01-01' });
-    closeModal(); toast('Client created');
+    if(contacts.length){
+      const { error: ctErr } = await db.from('rs_client_contacts').insert(contacts.map((ct,i)=>({ ...ct, client_id:data.id, position:i })));
+      if(ctErr){ toast(ctErr.code==='PGRST205'?'Client created — run migration v38 to save contacts':'Client created, but contacts could not be saved'); console.error(ctErr); }
+      else toast('Client created');
+    } else {
+      toast('Client created');
+    }
+    closeModal();
     state.projClientId = data.id; state.projView = is_retainer ? 'retainerTasks' : 'clientProjects'; state.retainerTab = 'tasks';
     await refreshProjectView();
+  };
+}
+
+/* Multiple named contacts per client (rs_client_contacts, outputs/v38_client_contacts.sql)
+   — distinct from rs_clients.dash_contact_name/dash_contact_role (v31), the single
+   point-of-contact shown on the PUBLIC dashboard's nav. This is the internal-only
+   list, reachable from the "Contact info" button on a client's Graphics page
+   (renderProjClientProjects) and seedable from the New Client intake form above. */
+/* One "Contact info" affordance, two shapes — a real button for page headers
+   (Graphics client page, retainer client page) and a menu row for the card
+   kebabs (Graphics client cards, Animation project cards). Both carry the same
+   count badge, and both are wired by wireContactInfoBtns/openClientContactsModal,
+   so adding a third surface means one call, not a fourth copy of this markup. */
+function contactInfoBtnHtml(clientId){
+  const n = clientContactsFor(clientId).length;
+  return `<button class="btn small ghost" data-contactinfo="${clientId}">Contact info${n?` (${n})`:''}</button>`;
+}
+function contactInfoMenuItem(clientId){
+  const n = clientContactsFor(clientId).length;
+  return { label:`Contact info${n?` (${n})`:''}`, onClick:()=> openClientContactsModal(clientId) };
+}
+function wireContactInfoBtns(root){
+  (root||document).querySelectorAll('[data-contactinfo]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openClientContactsModal(el.dataset.contactinfo);
+  }));
+}
+
+function clientContactsFor(clientId){
+  return (state.clientContacts||[]).filter(x=>x.client_id===clientId).sort((a,b)=>(a.position||0)-(b.position||0));
+}
+function clientContactRowHtml(ct){
+  const links = [];
+  if(ct.email) links.push(`<a href="mailto:${esc(ct.email)}" style="color:var(--accent)">${esc(ct.email)}</a>`);
+  if(ct.phone) links.push(`<a href="tel:${esc(ct.phone)}" style="color:var(--accent)">${esc(ct.phone)}</a>`);
+  return `<div class="card" style="padding:12px 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+    <div>
+      <div style="font-weight:600">${esc(ct.name)}${ct.role?` <span style="font-weight:400;color:var(--muted)">· ${esc(ct.role)}</span>`:''}</div>
+      ${links.length? `<div style="margin-top:4px;font-size:12.5px;display:flex;gap:12px;flex-wrap:wrap">${links.join('')}</div>`:''}
+    </div>
+    <div style="display:flex;gap:6px;flex:none">
+      <button type="button" class="btn small ghost" data-editcontact="${ct.id}">Edit</button>
+      <button type="button" class="btn small ghost" data-deletecontact="${ct.id}">Delete</button>
+    </div>
+  </div>`;
+}
+function openClientContactsModal(clientId){
+  const c = state.clients.find(x=>x.id===clientId);
+  if(!c) return;
+  const contacts = clientContactsFor(clientId);
+  showModal(`
+    <h3>Contacts — ${esc(c.name)}</h3>
+    <div style="max-height:50vh;overflow-y:auto;margin-bottom:14px">
+      ${contacts.length? contacts.map(clientContactRowHtml).join('') : `<div class="empty" style="padding:16px 0">No contacts added yet.</div>`}
+    </div>
+    <div class="modal-actions">
+      <button class="btn small ghost" id="cc_add">+ Add contact</button>
+      <div class="right"><button class="btn" id="cc_done">Done</button></div>
+    </div>
+  `);
+  $('#cc_done').onclick = closeModal;
+  $('#cc_add').onclick = ()=> openClientContactFieldModal(clientId, null);
+  document.querySelectorAll('[data-editcontact]').forEach(b=>b.onclick = ()=> openClientContactFieldModal(clientId, b.dataset.editcontact));
+  document.querySelectorAll('[data-deletecontact]').forEach(b=>b.onclick = async ()=>{
+    const ct = contacts.find(x=>x.id===b.dataset.deletecontact);
+    if(!confirm(`Delete contact "${ct.name}"?`)) return;
+    const { error } = await db.from('rs_client_contacts').delete().eq('id', ct.id);
+    if(error){ toast('Delete failed'); return; }
+    await loadAll(); openClientContactsModal(clientId);
+  });
+}
+function openClientContactFieldModal(clientId, contactId){
+  const isNew = !contactId;
+  const ct = isNew ? null : clientContactsFor(clientId).find(x=>x.id===contactId);
+  showModal(`
+    <h3>${isNew?'Add contact':'Edit contact'}</h3>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Name</label><input type="text" id="ctf_name" value="${esc(ct?ct.name:'')}" placeholder="e.g. Jane Smith"></div>
+      <div class="full"><label>Role <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="text" id="ctf_role" value="${esc(ct&&ct.role||'')}" placeholder="e.g. Marketing Director"></div>
+      <div><label>Email <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="email" id="ctf_email" value="${esc(ct&&ct.email||'')}" placeholder="jane@client.com"></div>
+      <div><label>Phone <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="tel" id="ctf_phone" value="${esc(ct&&ct.phone||'')}" placeholder="+44 ..."></div>
+    </form>
+    <div class="modal-actions">
+      ${!isNew? `<button class="btn danger" id="ctf_delete">Delete</button>`:'<span></span>'}
+      <div class="right">
+        <button class="btn ghost" id="ctf_cancel">Cancel</button>
+        <button class="btn" id="ctf_save">${isNew?'Add contact':'Save changes'}</button>
+      </div>
+    </div>
+  `);
+  $('#ctf_cancel').onclick = ()=> openClientContactsModal(clientId);
+  if(!isNew) $('#ctf_delete').onclick = async ()=>{
+    if(!confirm(`Delete contact "${ct.name}"?`)) return;
+    const { error } = await db.from('rs_client_contacts').delete().eq('id', contactId);
+    if(error){ toast('Delete failed'); return; }
+    await loadAll(); openClientContactsModal(clientId);
+  };
+  $('#ctf_save').onclick = async ()=>{
+    const name = $('#ctf_name').value.trim();
+    if(!name){ toast('Give the contact a name'); return; }
+    const role = $('#ctf_role').value.trim() || null;
+    const email = $('#ctf_email').value.trim() || null;
+    const phone = $('#ctf_phone').value.trim() || null;
+    if(isNew){
+      const existing = clientContactsFor(clientId);
+      const { error } = await db.from('rs_client_contacts').insert({ client_id:clientId, name, role, email, phone, position: existing.length });
+      if(error){ toast(error.code==='PGRST205'?'Run migration v38 to enable contacts':'Could not save'); console.error(error); return; }
+    } else {
+      const { error } = await db.from('rs_client_contacts').update({ name, role, email, phone }).eq('id', contactId);
+      if(error){ toast('Could not save'); console.error(error); return; }
+    }
+    await loadAll(); openClientContactsModal(clientId);
   };
 }
 
@@ -1142,7 +1390,7 @@ function render(){
     titleEl.textContent = activeLabel ? activeLabel.textContent : 'Reciprocal Space';
   }
   closeMobileNav();
-  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation, internal:renderInternalTasks, checklists:renderChecklistsHub, tools:renderTools}[state.view])();
+  ({home:renderHome, tasksahead:renderTasksAhead, projects:renderProjects, milestones:renderMilestones, settings:renderSettings, archived:renderArchived, animation:renderAnimation, internal:renderInternalTasks, checklists:renderChecklistsHub, tools:renderTools, timeoff:renderTimeOff}[state.view])();
   main.classList.remove('fade-in'); void main.offsetWidth; main.classList.add('fade-in');
 }
 
@@ -1162,8 +1410,25 @@ function projectTypeIconHtml(typeName, size){
 }
 const RETAINER_DELIVERY_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:-2px"><rect x="5" y="4" width="14" height="17" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 
-const CURRENT_USER_NAME = 'Ross Hall'; // no login system yet — hardcoded to one team member
-function currentUser(){ return state.members.find(m=>(m.name||'').trim().toLowerCase()===CURRENT_USER_NAME.toLowerCase()); }
+/* Who's using the app. AUTH_EMAIL is set once in boot() from the Supabase Auth
+   session, so currentUser() stays synchronous for the ~dozen render paths that
+   call it inline. Matching is on rs_members.email (migration v39).
+
+   The CURRENT_USER_NAME fallback is deliberate and load-bearing during rollout:
+   until v39 is run and each member's email is filled in from Settings > Team
+   members, there's no email to match on, so identity falls back to exactly the
+   old hardcoded-name behaviour. That's what lets the login screen ship before
+   RLS does without changing who the app thinks you are. */
+const CURRENT_USER_NAME = 'Ross Hall'; // fallback only — used until rs_members.email is set
+let AUTH_EMAIL = null;
+function currentUser(){
+  const members = state.members || [];
+  if(AUTH_EMAIL){
+    const byEmail = members.find(m=>(m.email||'').trim().toLowerCase()===AUTH_EMAIL);
+    if(byEmail) return byEmail;
+  }
+  return members.find(m=>(m.name||'').trim().toLowerCase()===CURRENT_USER_NAME.toLowerCase());
+}
 
 function homeTaskContextHtml(t){
   if(t.project_id){
@@ -1330,20 +1595,43 @@ function renderHome(){
 }
 
 
-function meterHtml(u, retainerHours){
+/* Shared by both meters. Clamped to whatever room is left after the used fill,
+   so a big estimate can't overflow the bar — the tooltip still reports the true
+   figure, and the band simply saturates at the end of the allowance. */
+function estBandHtml(u, fillPct){
+  const est = u.estimated||0;
+  if(est<=0) return '';
+  const w = Math.max(0, Math.min(u.estPct||0, 100-fillPct));
+  if(w<=0) return '';
+  const projected = (u.used||0) + est;
+  return `<div class="fill-est" style="left:${fillPct}%;width:${w}%" title="${esc(fmtH(est))} estimated on to-do tasks · ${esc(fmtH(projected))} of ${esc(fmtH(u.effectiveHours))} projected"></div>`;
+}
+function meterHtml(u){
   const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
+  const fillPct = Math.min(u.pct,100);
+  const labelPct = Math.max(fillPct, 16);
   return `<div class="meter-wrap">
       <div class="meter">
-        <div class="fill ${cls}" style="width:${Math.min(u.pct,100)}%"></div>
+        <div class="fill ${cls}" style="width:${fillPct}%"></div>
+        ${estBandHtml(u, fillPct)}
         <div class="tick"></div>
         <div class="tick-label">75%</div>
+        <span class="meter-used-label">${fmtH(u.used)} of ${fmtH(u.effectiveHours)}</span>
+        <span class="meter-pct-label" style="left:${labelPct}%">${Math.round(u.pct)}%</span>
       </div>
-      <div class="meter-stats"><span>${fmtH(u.used)} of ${fmtH(retainerHours)}</span><span class="pct">${Math.round(u.pct)}%</span></div>
     </div>`;
 }
 function compactMeterHtml(u){
-  const cls = u.pct>=75?'over':'';
-  return `<div class="meter-compact"><div class="fill ${cls}" style="width:${Math.min(u.pct,100)}%"></div><div class="tick"></div></div>`;
+  const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
+  const fillPct = Math.min(u.pct,100);
+  const labelPct = Math.max(fillPct, 22);
+  return `<div class="meter-compact">
+      <div class="fill ${cls}" style="width:${fillPct}%"></div>
+      ${estBandHtml(u, fillPct)}
+      <div class="tick"></div>
+      <span class="meter-compact-used">${fmtH(u.used)}</span>
+      <span class="meter-compact-pct" style="left:${labelPct}%">${Math.round(u.pct)}%</span>
+    </div>`;
 }
 function daysUntilLabel(date){
   const today = new Date(); today.setHours(0,0,0,0);
@@ -1478,14 +1766,18 @@ function dashboardLinkButtonHtml(c){
 // replacing the old boxed header + Allowance View switch-toggle.
 function clientRetainerHeaderHtml(c, tab){
   const u = clientUsage(c);
-  return `<div class="breadcrumb"><button data-bc="clients">Clients</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+  const pausedBadge = c.retainer_paused ? `<span class="retainer-badge" style="background:var(--amber-bg);color:var(--amber)">Paused</span>` : '';
+  const meterOrPaused = c.retainer_paused
+    ? `<div class="cycle" style="margin:8px 0 0">⏸ Retainer paused — usage tracking is hidden until this is resumed in Retainer settings.</div>`
+    : meterHtml(u);
+  return `<div class="breadcrumb"><button data-bc="clients">Clients</button><span class="sep"></span><span class="current">${esc(c.name)}</span></div>
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
-      <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span></h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}${dashboardLinkButtonHtml(c)}</div>
+      <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="retainer-badge">Retainer</span>${pausedBadge}</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${miroButtonsHtml(c)}${dashboardLinkButtonHtml(c)}${contactInfoBtnHtml(c.id)}<button class="btn small ghost" data-retainersettings="${c.id}">Retainer settings</button></div>
     </div>
     <div style="margin-bottom:20px">
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:2px">${renewsInDays(u.cyc.next)} (${fmtDate(u.cyc.next)})</div>
-      ${meterHtml(u, c.retainer_hours)}
+      ${meterOrPaused}
     </div>
     <div class="pd-tabs" style="padding:0;margin-bottom:24px">
       <button type="button" class="pd-tab ${tab==='tasks'?'active':''}" data-retainertab="tasks" style="${tab==='tasks'?'color:var(--accent);border-color:var(--accent)':''}">Home</button>
@@ -1494,11 +1786,62 @@ function clientRetainerHeaderHtml(c, tab){
 }
 function wireClientRetainerHeader(){
   if($('[data-bc="clients"]')) $('[data-bc="clients"]').onclick = ()=>{ state.view='projects'; state.projView='clients'; render(); };
+  wireContactInfoBtns(main);
+  main.querySelectorAll('[data-retainersettings]').forEach(el=>el.addEventListener('click', ()=> openRetainerSettingsModal(el.dataset.retainersettings)));
   main.querySelectorAll('[data-retainertab]').forEach(el=>el.addEventListener('click', ()=>{
     state.retainerTab = el.dataset.retainertab;
     render();
   }));
   wireMiroButtons();
+}
+
+/* Deliberately separate from openClientEditModal — that modal already owns
+   retainer_hours/renewal_day and their settings-history side effects
+   (rs_client_settings_history), which these two new toggles don't need to
+   touch. Needs outputs/v36_retainer_rollover_pause.sql (rs_clients.rollover_hours
+   + retainer_paused) — degrades gracefully (toast, no local state change)
+   until that's run. */
+function openRetainerSettingsModal(clientId){
+  const c = state.clients.find(x=>x.id===clientId);
+  if(!c) return;
+  showModal(`
+    <h3>Retainer settings</h3>
+    <form class="log" style="max-width:none">
+      <div class="full">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:500"><input type="checkbox" id="rs_rollover" ${c.rollover_hours?'checked':''} style="width:auto"> Roll over unused hours</label>
+        <div style="font-size:12px;color:var(--muted);margin-left:24px">Hours left over at the end of a cycle carry into next cycle's allowance, one cycle at a time.</div>
+      </div>
+      <div class="full">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:500"><input type="checkbox" id="rs_overage" ${c.rollover_overage?'checked':''} style="width:auto"> Roll over hours gone over</label>
+        <div style="font-size:12px;color:var(--muted);margin-left:24px">If a cycle finishes over its allowance, the extra hours are deducted from next cycle's allowance instead, one cycle at a time. Noted on the Monthly Allowance tab.</div>
+      </div>
+      <div class="full">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:500"><input type="checkbox" id="rs_estimates" ${c.show_estimates===false?'':'checked'} style="width:auto"> Show time estimates on the usage bar</label>
+        <div style="font-size:12px;color:var(--muted);margin-left:24px">Adds a light grey band for estimated hours still outstanding on to-do tasks, so the bar reads as used / to do / remaining.</div>
+      </div>
+      <div class="full">
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-weight:500"><input type="checkbox" id="rs_paused" ${c.retainer_paused?'checked':''} style="width:auto"> Pause retainer</label>
+        <div style="font-size:12px;color:var(--muted);margin-left:24px">Hides the usage meter and marks the retainer as paused until this is turned off again.</div>
+      </div>
+    </form>
+    <div class="modal-actions">
+      <span></span>
+      <div class="right">
+        <button class="btn ghost" id="rs_cancel">Cancel</button>
+        <button class="btn" id="rs_save">Save</button>
+      </div>
+    </div>
+  `);
+  $('#rs_cancel').onclick = closeModal;
+  $('#rs_save').onclick = async ()=>{
+    const rollover_hours = $('#rs_rollover').checked;
+    const rollover_overage = $('#rs_overage').checked;
+    const retainer_paused = $('#rs_paused').checked;
+    const show_estimates = $('#rs_estimates').checked;
+    const { error } = await db.from('rs_clients').update({ rollover_hours, rollover_overage, retainer_paused, show_estimates }).eq('id', c.id);
+    if(error){ toast(error.code==='PGRST204'?'Run migration v36/v42 to enable retainer settings':'Could not save'); console.error(error); return; }
+    closeModal(); toast('Retainer settings saved'); await loadAll(); render();
+  };
 }
 
 function renderClientTasksView(c){
@@ -1515,30 +1858,21 @@ function renderClientTasksView(c){
 
 function renderRetainerTasksBodyHtml(c){
   const tasks = state.projTasks.filter(t=>t.client_id===c.id && !t.project_id).sort((a,b)=>(a.position||0)-(b.position||0));
-  const todo = tasks.filter(t=>!isCompleteStatus(t.status));
-  const done = tasks.filter(t=>isCompleteStatus(t.status));
   const legacyProjects = state.projects.filter(p=>p.client_id===c.id);
   const visibleCount = 1 + TASK_COLUMNS.filter(([k])=>state.taskCols.has(k)).length;
   return `${legacyProjects.length? `<div class="banner"><div>📁</div><div>This client has ${legacyProjects.length} project${legacyProjects.length===1?'':'s'} from before this changed. <button class="btn small ghost" id="viewLegacyProjects" style="margin-left:8px">View projects</button></div></div>`:''}
     <div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" data-addclienttask="${c.id}">+ Task</button>
+      <button class="btn small ghost" id="taskSortBtn">${taskSortButtonLabel()}</button>
+      <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'Task status'} ▾</button>
       <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
     </div>
-    <div class="todo-complete-group">
-      <div class="stage-section" style="margin-bottom:0;padding-bottom:24px">
-        <div class="stage-head"><h4>To do</h4></div>
-        <div class="card" style="padding:8px 12px">${taskTableHtml(todo, visibleCount, 'Nothing to do yet.')}</div>
-        <div style="margin-top:10px"><button class="btn small ghost" data-addclienttask="${c.id}">+ Task</button></div>
-      </div>
-      <div class="stage-section" style="margin:24px 0 0">
-        <div class="stage-head"><h4>Completed</h4></div>
-        <div class="card" style="padding:8px 12px">${taskTableHtml(done, visibleCount, 'Nothing completed yet.')}</div>
-      </div>
-    </div>`;
+    ${taskCardGroupsHtml(tasks, visibleCount, 'No tasks yet.')}`;
 }
 function wireRetainerTasksBody(c){
   if($('#viewLegacyProjects')) $('#viewLegacyProjects').onclick = ()=>{ state.projView='clientProjects'; render(); };
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
+  wireTaskSortGroupBtns();
   main.querySelectorAll('[data-addclienttask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { clientId:el.dataset.addclienttask })));
   wireTaskRows(main);
 }
@@ -1602,8 +1936,9 @@ async function loadRetainerAllowanceBody(c){
     historyHtml = `<div class="history-list"><b style="display:block;margin-bottom:4px;color:var(--ink)">Retainer history</b>${rows}</div>`;
   }
 
-  let html = `<div class="sub">${fmtH(c.retainer_hours)} retainer · renews on the ${ordinal(c.renewal_day)} · tasks below are organised by billing month</div>
-    ${historyHtml}`;
+  // No summary line here — the hours, renewal day and allowance meter are all
+  // already in clientRetainerHeaderHtml directly above this tab.
+  let html = historyHtml;
 
   if(undated.length){
     html += `<div class="banner"><div>🕓</div><div><strong>${undated.length} task${undated.length===1?'':'s'}</strong> ${undated.length===1?'has':'have'} no due date or work date yet, so ${undated.length===1?'it':'they'} can't be placed in a billing month.
@@ -1613,6 +1948,11 @@ async function loadRetainerAllowanceBody(c){
     </div></div>`;
   }
 
+  // Only the current cycle's overage-deduction note is shown here — past
+  // cycles keep showing their own historical retainer_hours/pct untouched
+  // (settingsAt's snapshot at the time), so this is additive context on the
+  // live cycle rather than a retroactive rewrite of what already happened.
+  const u = clientUsage(c);
   if(!keys.length){
     html += `<div class="empty">No tasks logged for this client yet.</div>`;
   } else {
@@ -1624,6 +1964,9 @@ async function loadRetainerAllowanceBody(c){
       const badgeCls = pct>=100?'over':pct>=75?'warn':'ok';
       const badgeText = pct>=100 ? `${Math.round(pct)}% · over` : pct>=75 ? `${Math.round(pct)}% · reaching limit` : `${Math.round(pct)}%`;
       const items = (projGroups[key]||[]).sort((a,b)=> (a.work_date||a.due_date||'').localeCompare(b.work_date||b.due_date||''));
+      const overageNote = (isCurrent && u.overageDeduction>0)
+        ? `<div style="margin-top:8px;font-size:12.5px;color:var(--red);background:var(--red-bg);padding:7px 11px;border-radius:8px">⚠ ${fmtH(u.overageDeduction)} carried over from last cycle's overage — this cycle's allowance is reduced to ${fmtH(u.effectiveHours)}.</div>`
+        : '';
       html += `<div class="cycle-block">
         <div class="cb-head">
           <h4>${fmtDateY(g.cyc.start)} – ${fmtDateY(g.cyc.end)} ${isCurrent?'<span class="badge">(current cycle)</span>':''}</h4>
@@ -1632,6 +1975,7 @@ async function loadRetainerAllowanceBody(c){
             <button class="btn small ghost" data-pdf="${key}">PDF</button>
           </span>
         </div>
+        ${overageNote}
         <div class="card" style="padding:8px 12px">
           ${items.length? `<table><thead><tr><th>Task</th><th>Date</th><th>Assigned</th><th>Hours (entries)</th><th style="text-align:center">Tracked</th><th></th></tr></thead>
           <tbody>${items.map(pt=>{
@@ -1855,6 +2199,54 @@ function openStageLinkModal(categoryId, linkId, onDone){
   };
 }
 
+/* Read-first details for one task, opened from a calendar chip. The stage
+   equivalent (openStagePreviewModal, below) already worked this way; task chips
+   were the odd one out — they called jumpToProjTask, which navigated the whole
+   app to the task's project/retainer page AND opened the edit form, so glancing
+   at "what is this thing on Tuesday?" cost you your place in the calendar.
+   Editing is still one click away, it's just no longer the default. */
+function openTaskPreviewModal(taskId){
+  const t = state.projTasks.find(x=>x.id===taskId); if(!t) return;
+  const proj = t.project_id ? state.projects.find(p=>p.id===t.project_id) : null;
+  const cl = taskClient(t);
+  const stage = t.stage_id ? state.stages.find(x=>x.id===t.stage_id) : null;
+  const color = statusColor(t.status);
+  const logged = taskEntriesFor(t.id).length ? taskHoursTotal(t.id) : (t.recorded_hours!=null ? t.recorded_hours : null);
+  const row = (label, value)=> value ? `<div style="display:flex;gap:12px;padding:7px 0;border-top:1px solid var(--line-soft)">
+      <div style="width:120px;flex:none;color:var(--muted);font-size:12.5px">${esc(label)}</div>
+      <div style="font-size:13px;min-width:0">${value}</div>
+    </div>` : '';
+  const people = [['Designers', t.assigned_designer_ids], ['Reviewers', t.assigned_reviewer_ids], ['Animators', t.assigned_animator_ids]]
+    .map(([label, ids])=> (ids&&ids.length) ? row(label, avatarGroupHtml(ids)) : '').join('');
+  showModal(`
+    <h3 style="display:flex;align-items:center;gap:9px"><span class="status-dot" style="background:${color}"></span>${esc(t.title)}</h3>
+    <div class="sub">${esc(cl?cl.name:'')}${proj?' · '+esc(proj.name):''}${stage?' · '+esc(stage.name):''}</div>
+    <div style="margin-top:14px">
+      ${row('Status', `<span class="status-pill" style="background:${mutedBg(color)};color:${color}">${statusIcon(t.status)} ${esc(t.status||'To do')}</span>`)}
+      ${row('Priority', t.priority ? esc(t.priority) : '')}
+      ${row('Due', t.due_date ? esc(fmtDateY(new Date(t.due_date+'T00:00'))) : '')}
+      ${row('Estimate', t.estimated_hours!=null ? esc(fmtH(t.estimated_hours)) : '')}
+      ${row('Logged', logged!=null ? esc(fmtH(logged)) : '')}
+      ${people}
+      ${row('Retainer', t.counts_toward_retainer ? 'Counts toward the retainer' : '')}
+    </div>
+    <div class="modal-actions">
+      <span></span>
+      <div class="right">
+        <button class="btn ghost" id="tp_close">Close</button>
+        <button class="btn ghost" id="tp_open">Open in context</button>
+        <button class="btn" id="tp_edit">Edit task</button>
+      </div>
+    </div>
+  `);
+  $('#tp_close').onclick = closeModal;
+  // Edit in place — deliberately does NOT navigate, so closing the edit form
+  // leaves you on the calendar where you started.
+  $('#tp_edit').onclick = ()=>{ closeModal(); openProjTaskModal(t.id, {}); };
+  // The old behaviour, kept as an explicit choice rather than the default.
+  $('#tp_open').onclick = ()=>{ closeModal(); navigateToTaskContext(t.id); };
+}
+
 function openStagePreviewModal(stageId){
   const s = state.stages.find(s=>s.id===stageId); if(!s) return;
   const proj = state.projects.find(p=>p.id===s.project_id); if(!proj) return;
@@ -1919,7 +2311,7 @@ function attachMilestoneInteractions(){
     el.addEventListener('click', ()=>{
       const [type,id] = el.dataset.msitem.split(':');
       if(type==='stage') openStagePreviewModal(id);
-      else jumpToProjTask(id);
+      else openTaskPreviewModal(id);
     });
     el.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', el.dataset.msitem); e.dataTransfer.effectAllowed='move'; });
   });
@@ -2040,98 +2432,250 @@ function milestoneItemChip(item, weekStyle){
   return retainerMilestoneChipHtml(item.t, cl, weekStyle);
 }
 
+/* ── Gantt chart ─────────────────────────────────────────────────────────────
+   ONE shared renderer behind both Milestones > Gantt (cross-client) and the
+   public client portal's Gantt page (a single client). Deliberately
+   argument-driven — it reads nothing out of `state` — because the public
+   dashboard path skips loadAll() and only hand-populates a few state keys, so a
+   global-reading helper would silently see empty arrays there (same rule as
+   nextIncompleteStage). Callers hand in already-shaped groups/rows/stages and
+   the click attributes they want on each mark, so this file knows nothing about
+   either page's navigation model.
+
+   Geometry is in PIXELS off a px-per-day scale, not percentages. That's what
+   makes a minimum bar width, exact gridline/today placement, and the zoom
+   control all fall out for free — the old percentage version needed a
+   calc(180px + (100% - 180px) * frac) fudge just to place the today line.     */
+const GANTT_SCALES = { days:{px:26,label:'Days'}, weeks:{px:9,label:'Weeks'}, months:{px:3.4,label:'Months'} };
+const GANTT_SCALE_KEYS = ['days','weeks','months'];
+const GANTT_STATE_LABEL = { done:'Complete', late:'Overdue', now:'In progress', next:'Upcoming' };
+/* Complete beats overdue on purpose — a stage that landed late but is finished
+   is done, not a red flag. "now" is the row's first incomplete stage, matching
+   nextIncompleteStage()/the portal's "Current" pill rather than inventing a
+   second, subtly different rule for this one chart. */
+function ganttStageState(s, isCurrent, todayIso){
+  if(s.complete) return 'done';
+  if(s.dueIso < todayIso) return 'late';
+  return isCurrent ? 'now' : 'next';
+}
+
+function ganttToolbarHtml(scaleKey, opts){
+  const attr = opts.scaleAttr || 'data-gxscale';
+  const zoom = `<div class="view-toggle" style="margin-bottom:0">${GANTT_SCALE_KEYS.map(k=>
+    `<button type="button" class="btn small ${k===scaleKey?'':'ghost'}" ${attr}="${k}">${GANTT_SCALES[k].label}</button>`).join('')}</div>`;
+  // The In progress/Upcoming swatches take the caller's colour because those two
+  // states are drawn in each row's own client colour; Complete/Overdue are fixed
+  // theme tokens. opacity (not mutedBg) so a CSS var works here as well as a hex.
+  const c = opts.legendColor || 'var(--accent)';
+  const legend = `<div class="gx-legend">
+    <span class="gx-key"><i style="background:${c}"></i>In progress</span>
+    <span class="gx-key"><i style="background:${c};opacity:.3"></i>Upcoming</span>
+    <span class="gx-key"><i style="background:var(--green-bg);box-shadow:inset 0 0 0 1px var(--green)"></i>Complete</span>
+    <span class="gx-key"><i style="background:var(--red-bg);box-shadow:inset 0 0 0 1px var(--red)"></i>Overdue</span>
+  </div>`;
+  return `<div class="gx-toolbar">${zoom}<button type="button" class="btn small ghost" data-gxtoday="1">Today</button>${legend}</div>`;
+}
+
+function ganttChartHtml(opts){
+  const groups = (opts.groups||[])
+    .map(g=>({ ...g, rows:(g.rows||[]).filter(r=>r.stages && r.stages.length) }))
+    .filter(g=>g.rows.length);
+  if(!groups.length) return `<div class="empty gx-empty">${esc(opts.emptyText||'Nothing scheduled yet.')}</div>`;
+
+  const todayIso = opts.todayIso || iso(new Date());
+  const scaleKey = GANTT_SCALES[opts.scale] ? opts.scale : 'weeks';
+  const pxDay = GANTT_SCALES[scaleKey].px;
+  const LABEL = 200;          // keep in sync with --gx-label
+  const DAY_MS = 86400000;
+
+  // A window around today (1 month back, 6 forward), widened to cover every real
+  // date, then snapped out to whole months so the month band reads cleanly.
+  // Deliberately shorter than the 12-month window this chart used to force —
+  // most of that span was empty future months you had to scroll past.
+  let minD=null, maxD=null;
+  groups.forEach(g=>g.rows.forEach(r=>r.stages.forEach(s=>{
+    const d = new Date(s.dueIso+'T00:00');
+    if(!minD||d<minD) minD=d;
+    if(!maxD||d>maxD) maxD=d;
+  })));
+  const todayD = new Date(todayIso+'T00:00');
+  let start = new Date(todayD); start.setMonth(start.getMonth()-1);
+  let end = new Date(todayD); end.setMonth(end.getMonth()+6);
+  if(minD && minD<start) start = new Date(minD);
+  if(maxD && maxD>end) end = new Date(maxD);
+  start = new Date(start.getFullYear(), start.getMonth(), 1);
+  end = new Date(end.getFullYear(), end.getMonth()+1, 0);
+
+  // Both sides normalised to local midnight so a DST shift can't round a day off.
+  const dayIndex = d => Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate()) - start)/DAY_MS);
+  const x = d => dayIndex(d)*pxDay;
+  const totalDays = dayIndex(end)+1;
+  const trackW = Math.max(Math.round(totalDays*pxDay), 320);
+  const innerW = LABEL + trackW;
+
+  const months = [];
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  while(cur<=end){
+    const next = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+    const left = x(cur);
+    months.push({ left, w: Math.min(x(next), trackW)-left, label: cur.toLocaleDateString('en-GB',{month:'short',year:'numeric'}) });
+    cur = next;
+  }
+
+  // Gridlines are the thing that makes a bar's position actually readable —
+  // without them you have to trace up to the header to tell what a bar spans.
+  // Density follows the zoom: every weekday at Days (weekends shaded), every
+  // Monday at Weeks, month boundaries only at Months.
+  let ticks='', lines='', bands='';
+  months.forEach(m=>{ if(m.left>0) lines += `<i class="mo" style="left:${m.left}px"></i>`; });
+  if(scaleKey!=='months'){
+    for(let i=0;i<totalDays;i++){
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate()+i);
+      const dow = d.getDay();
+      if(scaleKey==='days'){
+        if(dow===6) bands += `<b style="left:${i*pxDay}px;width:${2*pxDay}px"></b>`;
+        if(dow===0||dow===6) continue;
+        lines += `<i style="left:${i*pxDay}px"></i>`;
+        ticks += `<div class="gx-tick" style="left:${i*pxDay}px">${d.getDate()}</div>`;
+      } else if(dow===1){
+        lines += `<i style="left:${i*pxDay}px"></i>`;
+        ticks += `<div class="gx-tick" style="left:${i*pxDay}px">${esc(fmtDate(d))}</div>`;
+      }
+    }
+  }
+
+  const showToday = todayD>=start && todayD<=end;
+  const todayHtml = showToday
+    ? `<div class="gx-today" style="left:${Math.round(LABEL + x(todayD) + pxDay/2)}px"><span>Today</span></div>` : '';
+
+  const rowHtml = (r)=>{
+    const color = r.color || '#2383e2';
+    const stages = r.stages;
+    const currentIdx = stages.findIndex(s=>!s.complete);
+    let seg = '';
+    stages.forEach((s,i)=>{
+      const d = new Date(s.dueIso+'T00:00');
+      const st = ganttStageState(s, i===currentIdx, todayIso);
+      const tip = `${s.name} — due ${fmtDate(d)} · ${GANTT_STATE_LABEL[st]}`;
+      const style = st==='now'  ? `background:${color};color:${contrastText(color)}`
+                  : st==='next' ? `background:${mutedBg(color)};color:${color};box-shadow:inset 0 0 0 1px ${color}`
+                  : '';
+      if(i===0){
+        // The first dated stage has no predecessor to span from, so it's a real
+        // labelled milestone marker rather than the 3px sliver this used to draw
+        // — which was effectively invisible and impossible to click. Label it to
+        // the right when nothing follows closely (the common single-dated-stage
+        // case), else to the LEFT, since the next stage's bar starts immediately
+        // after this date and would sit under a right-hand label.
+        const cx = x(d)+pxDay/2;
+        const after = (i+1<stages.length) ? x(new Date(stages[i+1].dueIso+'T00:00'))+pxDay : trackW;
+        seg += `<div class="gx-ms ${st}" style="left:${Math.round(cx-7)}px;${style}" title="${esc(tip)}" ${s.attrs||''}></div>`;
+        if(pxDay>=9){
+          if(after-(cx+9) > 46) seg += `<div class="gx-out" style="left:${Math.round(cx+11)}px">${esc(s.name)}</div>`;
+          else if(cx>56) seg += `<div class="gx-out" style="left:${Math.round(cx-13)}px;transform:translateX(-100%)">${esc(s.name)}</div>`;
+        }
+        return;
+      }
+      const sX = x(new Date(stages[i-1].dueIso+'T00:00'))+pxDay;
+      const w = Math.max(x(d)+pxDay-sX, 5);
+      const inside = w>=54;
+      seg += `<div class="gx-bar ${st}" style="left:${Math.round(sX)}px;width:${Math.round(w)}px;${style}" title="${esc(tip)}" ${s.attrs||''}>${inside?esc(s.name):''}</div>`;
+      if(inside) return;
+      // Too narrow to hold its own label — spill it to the right, but only when
+      // there's genuine room before the next bar, or labels turn to mush.
+      const nextStart = (i+1<stages.length) ? x(new Date(stages[i+1].dueIso+'T00:00'))+pxDay : trackW;
+      const at = sX+w+6;
+      if(pxDay>=9 && nextStart-at > 46) seg += `<div class="gx-out" style="left:${Math.round(at)}px">${esc(s.name)}</div>`;
+    });
+    const dot = r.color ? `<span class="dot" style="background:${r.color}"></span>` : '';
+    const count = r.total ? `<span class="gx-count">${r.done}/${r.total}</span>` : '';
+    return `<div class="gx-row">
+      <div class="gx-label">${dot}<span class="gx-name" title="${esc(r.label)}">${esc(r.label)}</span>${count}</div>
+      <div class="gx-track">${seg}</div>
+    </div>`;
+  };
+
+  const body = groups.map(g=>
+    `${g.label? `<div class="gx-group"><span class="dot" style="background:${g.color||'var(--accent)'}"></span>${esc(g.label)}</div>`:''}${g.rows.map(rowHtml).join('')}`
+  ).join('');
+
+  return `${ganttToolbarHtml(scaleKey, opts)}
+    <div class="gx">
+      <div class="gx-scroll">
+        <div class="gx-inner" style="width:${innerW}px">
+          <div class="gx-lines">${bands}${lines}</div>
+          ${todayHtml}
+          <div class="gx-head">
+            <div class="gx-head-label"></div>
+            <div class="gx-head-track">${months.map(m=>`<div class="gx-mo" style="left:${m.left}px;width:${m.w}px">${esc(m.label)}</div>`).join('')}${ticks}</div>
+          </div>
+          ${body}
+        </div>
+      </div>
+    </div>`;
+}
+
+/* Shared wiring for every gantt on the page: land scrolled to today (rather
+   than at the far-left edge of the range) and re-centre on the Today button. */
+function wireGanttChart(root){
+  (root||document).querySelectorAll('.gx').forEach(gx=>{
+    const scroll = gx.querySelector('.gx-scroll');
+    const marker = gx.querySelector('.gx-today');
+    if(!scroll) return;
+    // The sticky label column overlays the left of the scroll viewport, so
+    // anything scrolled to an x below it is hidden behind it, not visible.
+    const label = parseFloat(getComputedStyle(gx).getPropertyValue('--gx-label')) || 200;
+    // A bar/diamond's offsetParent is its .gx-track, so its own offsetLeft is
+    // track-relative; the today line's is .gx-inner, which already includes the
+    // label column. Normalise both to inner coordinates before comparing.
+    const marks = Array.from(gx.querySelectorAll('.gx-bar,.gx-ms'));
+    const toToday = ()=>{
+      let target = marker ? Math.max(0, marker.offsetLeft - (label+60)) : 0;
+      // Landing on today only helps if there's something to see there. A client
+      // whose stages all sit in the past would otherwise open this page on an
+      // empty stretch of calendar and think the chart was broken — so when no
+      // mark falls in the resulting viewport, fall back to the nearest one.
+      const inView = marks.some(m=>{
+        const l = label + m.offsetLeft;
+        return (l + m.offsetWidth) - target > label + 8 && l - target < scroll.clientWidth - 8;
+      });
+      if(!inView && marks.length){
+        const anchor = marker ? marker.offsetLeft - label : 0;
+        const nearest = marks.reduce((a,b)=> Math.abs(b.offsetLeft-anchor) < Math.abs(a.offsetLeft-anchor) ? b : a);
+        target = Math.max(0, nearest.offsetLeft - 60);
+      }
+      scroll.scrollLeft = target;
+    };
+    toToday();
+    const btn = gx.parentElement && gx.parentElement.querySelector('[data-gxtoday]');
+    if(btn) btn.addEventListener('click', toToday);
+  });
+}
+
 function renderGanttBody(){
   const projects = state.projects.filter(p=>p.active && !state.milestoneHidden.has(p.client_id) && !state.milestoneTypeHidden.has(p.project_type));
-  const rows = [];
-  let minDate = null, maxDate = null;
+  const byClient = {};
   projects.forEach(p=>{
     const client = state.clients.find(c=>c.id===p.client_id);
     if(!client) return;
-    const stages = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
-    const dated = stages.filter(s=>s.due_date);
-    if(!dated.length) return;
-    dated.forEach(s=>{
-      const d = new Date(s.due_date+'T00:00');
-      if(!minDate || d<minDate) minDate = d;
-      if(!maxDate || d>maxDate) maxDate = d;
-    });
-    rows.push({ p, client, stages });
+    const all = state.stages.filter(s=>s.project_id===p.id).sort((a,b)=>a.position-b.position);
+    const stages = all.filter(s=>s.due_date).map(s=>({
+      id:s.id, name:s.name, dueIso:s.due_date,
+      complete: stageStatus(s.id)==='Complete',
+      attrs: `data-msitem="stage:${s.id}" draggable="true"`
+    }));
+    if(!stages.length) return;
+    const color = colorFor(client);
+    const g = byClient[client.id] = byClient[client.id] || { label:client.name, color, rows:[] };
+    g.rows.push({ id:p.id, label:p.name, color, done:all.filter(s=>stageStatus(s.id)==='Complete').length, total:all.length, stages });
   });
-  if(!rows.length) return `<div class="empty">No projects with stage due dates yet — set due dates on stages to see them here.</div>`;
-
-  minDate = new Date(minDate); minDate.setDate(minDate.getDate()-3);
-  maxDate = new Date(maxDate); maxDate.setDate(maxDate.getDate()+3);
-  const totalMs = maxDate - minDate;
-  const totalDays = Math.max(1, Math.round(totalMs/86400000));
-  const pct = d => Math.max(0, Math.min(100, (d-minDate)/totalMs*100));
-  const LABEL_COL = 180;
-  const trackLeft = p => `calc(${LABEL_COL}px + (100% - ${LABEL_COL}px) * ${(p/100).toFixed(4)})`;
-
-  const monthMarkers = [];
-  let cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-  while(cursor<=maxDate){
-    monthMarkers.push({ label:cursor.toLocaleDateString('en-GB',{month:'short',year:'numeric'}), left:pct(cursor) });
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
-  }
-
-  // Day-level ticks on the X axis, spaced out depending on the total span so
-  // labels stay readable — the wrap scrolls horizontally (and widens via the
-  // min-width below) rather than cramming every date into a fixed width.
-  const stepDays = totalDays<=21 ? 1 : totalDays<=60 ? 3 : totalDays<=120 ? 7 : 14;
-  const today = new Date(iso(new Date())+'T00:00');
-  const showToday = today>=minDate && today<=maxDate;
-  const todayLeft = showToday ? trackLeft(pct(today)) : null;
-  const dayMarkers = [];
-  let dcursor = new Date(minDate);
-  while(dcursor<=maxDate){
-    // Skip a tick that would sit right under the "Today" pill — avoids the
-    // two labels overlapping when today happens to fall near a tick.
-    if(!showToday || Math.abs(dcursor-today)/86400000 > 1.5){
-      dayMarkers.push({ label:dcursor.toLocaleDateString('en-GB',{day:'numeric',month:'short'}), left:pct(dcursor) });
-    }
-    dcursor.setDate(dcursor.getDate()+stepDays);
-  }
-  const minWidthPx = Math.max(640, LABEL_COL + dayMarkers.length*64);
-
-  const byClient = {};
-  rows.forEach(r=>{ (byClient[r.client.id] = byClient[r.client.id] || { client:r.client, items:[] }).items.push(r); });
-
-  let html = `<div class="gantt-wrap">
-    <div class="gantt-header" style="min-width:${minWidthPx}px">
-      <div class="gantt-label-col"></div>
-      <div class="gantt-track-col" style="background:none">${monthMarkers.map(m=>`<div class="gantt-month-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
-      <div class="gantt-track-col" style="background:none;position:absolute;top:16px;left:${LABEL_COL}px;right:0;height:16px">${dayMarkers.map(m=>`<div class="gantt-day-marker" style="left:${m.left}%">${esc(m.label)}</div>`).join('')}</div>
-    </div>`;
-
-  Object.values(byClient).forEach(group=>{
-    const barColor = colorFor(group.client);
-    html += `<div class="gantt-client-row"><span class="dot" style="background:${barColor}"></span>${esc(group.client.name)}</div>`;
-    group.items.forEach(({p,stages})=>{
-      let segs = '';
-      let prevDate = null;
-      stages.forEach(s=>{
-        if(!s.due_date) return;
-        const d = new Date(s.due_date+'T00:00');
-        if(prevDate){
-          const left = pct(prevDate);
-          const width = Math.max(pct(d)-left, 0.6);
-          segs += `<div class="gantt-bar" draggable="true" data-msitem="stage:${s.id}" style="left:${left}%;width:${width}%;background:${barColor}" title="${esc(s.name)} — due ${fmtDate(d)}">${esc(s.name)}</div>`;
-        } else {
-          segs += `<div class="gantt-kickoff" data-msitem="stage:${s.id}" style="left:${pct(d)}%;background:${barColor}" title="Kickoff — ${fmtDate(d)}"></div>`;
-        }
-        prevDate = d;
-      });
-      html += `<div class="gantt-row" style="min-width:${minWidthPx}px"><div class="gantt-label-col">${esc(p.name)}</div><div class="gantt-track-col">${segs}</div></div>`;
-    });
+  return ganttChartHtml({
+    groups: Object.values(byClient).sort((a,b)=>a.label.localeCompare(b.label)),
+    todayIso: iso(new Date()),
+    scale: state.ganttScale,
+    scaleAttr: 'data-mgscale',
+    emptyText: 'No projects with stage due dates yet — set due dates on stages to see them here.'
   });
-
-  if(showToday){
-    html += `<div class="gantt-today-line" style="left:${todayLeft}"></div>
-      <div class="gantt-today-label" style="left:${todayLeft}">Today</div>`;
-  }
-
-  html += `</div>`;
-  return html;
 }
 
 function renderMilestones(){
@@ -2169,23 +2713,33 @@ function renderMilestones(){
       <div class="week-grid" style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px">${cells}</div>`;
   } else if(state.milestoneViewMode==='year'){
     const y = anchor.getFullYear();
+    const todayD = new Date(iso(new Date())+'T00:00');
+    const isCurrentYear = y===todayD.getFullYear();
+    const curMonth = todayD.getMonth(), curDay = todayD.getDate();
     let months = '';
     for(let m=0;m<12;m++){
       const daysIn = new Date(y,m+1,0).getDate();
+      const isPastMonth = isCurrentYear && m<curMonth;
+      const isTodayMonth = isCurrentYear && m===curMonth;
       const rows = [];
       for(let d=1; d<=daysIn; d++){
+        if(isTodayMonth && d===curDay){
+          rows.push(`<div class="year-today-marker" id="yearTodayMarker"><span>Today — ${fmtDate(todayD)}</span></div>`);
+        }
         const dIso = iso(new Date(y,m,d));
+        const isPastRow = isTodayMonth && d<curDay;
         (byDay[dIso]||[]).forEach(item=>{
+          const rowCls = `year-row${isPastRow?' past':''}`;
           if(item.type==='stage'){
             const cl = state.clients.find(c=>c.id===item.proj.client_id);
-            rows.push(`<div class="year-row"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="stage:${item.s.id}">${esc(cl?cl.name:'')} — ${esc(item.proj.name)} · ${esc(item.s.name)}</span></div>`);
+            rows.push(`<div class="${rowCls}"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="stage:${item.s.id}">${esc(cl?cl.name:'')} — ${esc(item.proj.name)} · ${esc(item.s.name)}</span></div>`);
           } else {
             const cl = state.clients.find(c=>c.id===item.t.client_id);
-            rows.push(`<div class="year-row"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="task:${item.t.id}">${esc(cl?cl.name:'')} — ${esc(item.t.title)} <span style="color:var(--muted)">(retainer)</span></span></div>`);
+            rows.push(`<div class="${rowCls}"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="task:${item.t.id}">${esc(cl?cl.name:'')} — ${esc(item.t.title)} <span style="color:var(--muted)">(retainer)</span></span></div>`);
           }
         });
       }
-      if(rows.length) months += `<div class="year-month"><h4>${new Date(y,m,1).toLocaleDateString('en-GB',{month:'long'})}</h4>${rows.join('')}</div>`;
+      if(rows.length) months += `<div class="year-month${isPastMonth?' past':''}"><h4>${new Date(y,m,1).toLocaleDateString('en-GB',{month:'long'})}</h4>${rows.join('')}</div>`;
     }
     body = `<div class="cal-head"><button class="btn ghost small" id="mPrev">←</button><h3>${y}</h3><button class="btn ghost small" id="mNext">→</button><button class="btn ghost small" id="mToday">Today</button></div>
       ${months || '<div class="empty">No milestones this year.</div>'}`;
@@ -2220,6 +2774,23 @@ function renderMilestones(){
   };
   if($('#mToday')) $('#mToday').onclick = ()=>{ state.milestoneAnchor = new Date(); renderMilestones(); };
   attachMilestoneInteractions();
+
+  // Land on "today" by default rather than the start of the range — the
+  // gantt scrolls horizontally so today sits near the left edge (leaving
+  // room to scroll right into the future); the year view scrolls vertically
+  // so today's month is at the top (past months are still there, just
+  // scrolled-to via scrolling up, and rendered dimmed via .past).
+  if(state.milestoneViewMode==='gantt'){
+    main.querySelectorAll('[data-mgscale]').forEach(el=>el.addEventListener('click', ()=>{
+      state.ganttScale = el.dataset.mgscale;
+      store.set('rs_gantt_scale', state.ganttScale);
+      renderMilestones();
+    }));
+    wireGanttChart(main);
+  } else if(state.milestoneViewMode==='year'){
+    const marker = $('#yearTodayMarker');
+    if(marker) marker.scrollIntoView({ block:'start' });
+  }
 }
 
 /* One "row" per project (with a scope summary via projectDetailsSummary),
@@ -2286,7 +2857,7 @@ function renderClientListTable(){
     `).join('');
   }
 
-  let html = `<div class="breadcrumb"><button data-bc="clients">Graphics</button><span class="sep">/</span><span class="current">Client list</span></div>
+  let html = `<div class="breadcrumb"><button data-bc="clients">Graphics</button><span class="sep"></span><span class="current">Client list</span></div>
     <h2>Client list</h2>
     <div class="sub">Every client and project at a glance — grouped and sorted however's useful.</div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">
@@ -2331,8 +2902,8 @@ function clientCardHtml(c){
       <h3 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}<span class="home-count">${openTasks.length}</span>
         <span class="card-actions"><button class="btn small ghost menu-dots" data-clientmenu="${c.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>
       </h3>
-      <div class="cycle">${renewsInDays(u.cyc.next)}</div>
-      ${compactMeterHtml(u)}
+      <div class="cycle">${renewsInDays(u.cyc.next)}${c.retainer_paused?' · <span style="color:var(--amber)">⏸ Paused</span>':''}</div>
+      ${c.retainer_paused ? '' : compactMeterHtml(u)}
     </div>`;
   }
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active);
@@ -2400,7 +2971,7 @@ function renderProjClients(){
   main.querySelectorAll('[data-clientmenu]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     const cl = state.clients.find(c=>c.id===el.dataset.clientmenu);
-    const items = [{ label:'Edit client', onClick:()=> openClientEditModal(cl.id) }];
+    const items = [{ label:'Edit client', onClick:()=> openClientEditModal(cl.id) }, contactInfoMenuItem(cl.id)];
     if(cl.miro_link_external) items.push({ label:'Open Miro (external) ↗', onClick:()=> window.open(cl.miro_link_external,'_blank') });
     if(cl.miro_link_internal) items.push({ label:'Open Miro (internal) ↗', onClick:()=> window.open(cl.miro_link_internal,'_blank') });
     if(cl.slug) items.push({ label:'View dashboard ↗', onClick:()=> window.open(`${window.location.origin}${window.location.pathname}?client=${cl.slug}&admin=1`,'_blank') });
@@ -2428,12 +2999,13 @@ function renderProjClientProjects(){
   // a normal Graphics project with an extra tab.
   const projects = state.projects.filter(p=>p.client_id===c.id && p.active && !isAnimationType(p.project_type)).sort((a,b)=> a.name.localeCompare(b.name));
 
-  let html = `<div class="breadcrumb"><button data-bc="clients">Graphics</button><span class="sep">/</span><span class="current">${esc(c.name)}</span></div>
+  let html = `<div class="breadcrumb"><button data-bc="clients">Graphics</button><span class="sep"></span><span class="current">${esc(c.name)}</span></div>
     <h2 style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}</h2>
     <div style="margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn small" id="newProjectBtn">+ New project</button>
       ${miroButtonsHtml(c)}
       ${dashboardLinkButtonHtml(c)}
+      ${contactInfoBtnHtml(c.id)}
       <button class="btn small ghost" id="editClientBtn2">Edit client</button>
     </div>`;
 
@@ -2479,6 +3051,7 @@ function renderProjClientProjects(){
   $('[data-bc="clients"]').onclick = ()=>{ state.projView='clients'; render(); };
   $('#newProjectBtn').onclick = ()=> openProjectModal(null, c.id);
   $('#editClientBtn2').onclick = ()=> openClientEditModal(c.id);
+  wireContactInfoBtns(main);
   wireMiroButtons();
   main.querySelectorAll('[data-projdetail]').forEach(el=>el.addEventListener('click', ()=>{
     state.projProjectId = el.dataset.projdetail; state.projView='project'; render();
@@ -2503,9 +3076,44 @@ function renderProjClientProjects(){
   }));
 }
 
-function pillSelectorHtml(members, selectedIds){
-  if(!members.length) return '<div class="empty" style="padding:4px 0">No eligible team members — check Settings</div>';
-  return `<div class="pill-select">${members.map(m=>`<button type="button" class="member-pill ${selectedIds.includes(m.id)?'selected':''}" data-pillmember="${m.id}"><span class="avatar" style="background:${clientColor(m.id)}">${initials(m.name)}</span>${esc(m.name)}</button>`).join('')}</div>`;
+/* Multi-select people field for the task modal. Same hidden-input carrier as
+   statusFieldHtml/dateFieldHtml, so the save handler reads one value instead of
+   scraping `.selected` classes back out of the DOM, and the same
+   openMultiPillPopover as every task row so picking people looks identical
+   wherever you do it. */
+function assigneeFieldHtml(id, pool, selectedIds){
+  const sel = (selectedIds||[]).filter(x=>pool.some(m=>m.id===x));
+  if(!pool.length) return '<div class="empty" style="padding:4px 0">No eligible team members — check Settings</div>';
+  return `<button type="button" class="assignee-field" id="${id}_btn">${assigneeChipsHtml(pool, sel)}${PILL_CHEVRON_SVG}</button>
+    <input type="hidden" id="${id}" value="${sel.join(',')}">`;
+}
+function assigneeChipsHtml(pool, sel){
+  if(!sel.length) return '<span class="assignee-empty">Unassigned</span>';
+  return sel.map(id=>{
+    const m = pool.find(x=>x.id===id);
+    return m ? `<span class="assignee-chip"><span class="avatar" style="background:${clientColor(m.id)}">${initials(m.name)}</span>${esc(m.name)}</span>` : '';
+  }).join('');
+}
+function wireAssigneeField(id, pool){
+  const btn = document.getElementById(id+'_btn');
+  const hidden = document.getElementById(id);
+  if(!btn || !hidden) return;
+  btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const cur = new Set((hidden.value||'').split(',').filter(Boolean));
+    const options = pool.map(m=>({ value:m.id, html:`<span style="display:inline-flex;align-items:center;gap:8px">${avatarHtml(m)}${esc(m.name)}</span>` }));
+    // Local only — nothing is written until the modal's own Save, unlike the
+    // task-row picker which persists each toggle immediately.
+    openMultiPillPopover(btn, options, v=>cur.has(v), (v, checked)=>{
+      checked ? cur.add(v) : cur.delete(v);
+      hidden.value = Array.from(cur).join(',');
+      btn.innerHTML = assigneeChipsHtml(pool, Array.from(cur)) + PILL_CHEVRON_SVG;
+    });
+  });
+}
+function assigneeFieldValue(id){
+  const el = document.getElementById(id);
+  return el ? (el.value||'').split(',').filter(Boolean) : [];
 }
 
 function taskEntriesFor(taskId){ return (state.projTaskEntries||[]).filter(e=>e.proj_task_id===taskId).sort((a,b)=>a.work_date.localeCompare(b.work_date)); }
@@ -2701,7 +3309,10 @@ function nextIncompleteStage(stages){
   return (stages||[]).slice().sort((a,b)=>(a.position||0)-(b.position||0)).find(s=>stageStatus(s.id)!=='Complete') || null;
 }
 
-const TASK_COL_DEFAULTS = { status:205, priority:104, designer:88, reviewer:88, animator:88, hours:64, due:104, retainer:80 };
+// Every key in TASK_COLUMN_DEFS needs a width here — colWidth() would otherwise
+// emit "undefinedpx", which invalidates the whole grid-template-columns
+// declaration and collapses the table into a single stacked column.
+const TASK_COL_DEFAULTS = { status:205, priority:104, people:132, hours:64, estimate:64, due:104, retainer:80 };
 const TASKSAHEAD_COL_DEFAULTS = { due:96, project:150, status:205, priority:96, assigned:88 };
 function colWidth(store, key, defaults){ return (store[key] || defaults[key]) + 'px'; }
 
@@ -2717,9 +3328,13 @@ function taskClient(t){
 const TASK_COLUMN_DEFS = {
   status:   { label:'Status',   cell:(t)=>`<div>${statusPillBtnHtml(t)}</div>` },
   priority: { label:'Priority', cell:(t)=>`<div>${priorityPillBtnHtml(t)}</div>` },
-  designer: { label:'Designer', cell:(t)=>`<div class="inline-editable" data-assigninline="${t.id}:designer" title="Click to edit designers">${avatarGroupHtml(t.assigned_designer_ids)}</div>` },
-  reviewer: { label:'Reviewer', cell:(t)=>`<div class="inline-editable" data-assigninline="${t.id}:reviewer" title="Click to edit reviewers">${avatarGroupHtml(t.assigned_reviewer_ids)}</div>` },
+  // One column for all three roles. Every group is always offered: the animator
+  // column used to be injected only for animation projects, but now that the
+  // avatars for all three roles share one cell, gating the group would render
+  // animators here while giving no way to edit them.
+  people:   { label:'People',   cell:(t)=>`<div class="inline-editable" data-peopleinline="${t.id}" title="${esc(taskPeopleTitle(t))}">${avatarGroupHtml(taskAssignedIds(t))}</div>` },
   hours:    { label:'Hours',    cell:(t)=>`<div class="inline-editable" data-taskhours="${t.id}" title="Click to edit hours">${taskEntriesFor(t.id).length? fmtH(taskHoursTotal(t.id)) : (t.recorded_hours!=null?fmtH(t.recorded_hours):'—')}</div>` },
+  estimate: { label:'Est.',     cell:(t)=>`<div class="inline-editable" data-taskestimate="${t.id}" title="Click to edit the time estimate">${t.estimated_hours!=null?fmtH(t.estimated_hours):'—'}</div>` },
   due:      { label:'Due',      cell:(t)=>`<div>${dueDateBtnHtml(t)}</div>` },
   retainer: { label:'Retainer', headerAlign:'center', cell:(t)=>{
     const client = taskClient(t);
@@ -2743,25 +3358,18 @@ function visibleTaskCols(showRetainer){
   return taskColumnOrder().filter(k=> state.taskCols.has(k) && (k!=='retainer' || showRetainer!==false));
 }
 
-function taskGridColumns(showAnimator, showRetainer){
+function taskGridColumns(showRetainer){
   const cols = ['minmax(160px,1fr)'];
   visibleTaskCols(showRetainer).forEach(k=>{
     cols.push(colWidth(state.taskColWidths,k,TASK_COL_DEFAULTS));
-    if(k==='reviewer' && showAnimator) cols.push(colWidth(state.taskColWidths,'animator',TASK_COL_DEFAULTS));
   });
   cols.push('34px');
   return cols.join(' ');
 }
 
-function taskRowHtml(t, showAnimator, showRetainer){
-  const cellsHtml = visibleTaskCols(showRetainer).map(k=>{
-    let html = TASK_COLUMN_DEFS[k].cell(t);
-    if(k==='reviewer' && showAnimator){
-      html += `<div class="inline-editable" data-assigninline="${t.id}:animator" title="Click to edit animators">${avatarGroupHtml(t.assigned_animator_ids)}</div>`;
-    }
-    return html;
-  }).join('');
-  return `<div class="task-grid-row task-row" draggable="true" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns(showAnimator, showRetainer)}">
+function taskRowHtml(t, showRetainer, canDrag){
+  const cellsHtml = visibleTaskCols(showRetainer).map(k=> TASK_COLUMN_DEFS[k].cell(t, { showRetainer })).join('');
+  return `<div class="task-grid-row task-row" data-gridkind="task" data-showretainer="${showRetainer===false?'':'1'}" draggable="${canDrag===false?'false':'true'}" data-projtask="${t.id}" style="grid-template-columns:${taskGridColumns(showRetainer)}">
     <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
     ${cellsHtml}
     <div class="tg-actions">
@@ -2775,24 +3383,156 @@ function resizeHandle(key, storeName){
   return `<span class="col-resize-handle" data-resizecol="${key}" data-widthstore="${storeName}"></span>`;
 }
 
-function taskTableHtml(tasks, visibleCount, emptyText, showAnimator, showRetainer){
-  if(!tasks.length) return `<div class="task-grid">${emptyStateHtml({ icon:'tray', title: emptyText||'Nothing here yet.' })}</div>`;
-  const gridCols = taskGridColumns(showAnimator, showRetainer);
+/* Sort/Group by for project-stage and retainer task tables — one shared
+   global toggle (state.taskSort/taskGroupBy) rather than per-page state,
+   since both call sites render through the same taskTableHtml()/
+   taskCardGroupsHtml(). Mirrors the Internal Tasks page's Sort/Group
+   pattern (same label-map + openMenuPopover shape), just against
+   rs_proj_tasks fields.
+
+   Sort defaults to Due date (not Manual) — the drag-ordered position field
+   is still available as an explicit "Manual" choice, but due date is what
+   people actually want to see first day to day. Group by defaults to
+   "Task status", which is the existing To do/Completed split promoted to
+   be one value of the Group control rather than a hardcoded structural
+   wrapper — every other group-by (Priority, Designer) reorganises the
+   *same* combined task list into its own cards instead of nesting inside
+   To do/Completed, via the shared taskCardGroupsHtml() below. Manual
+   drag-reorder only makes sense when Sort is Manual (a non-manual sort
+   would just re-sort the list right back), independent of which grouping
+   is showing — taskTableHtml() computes canDrag from state.taskSort alone. */
+const TASK_SORT_LABELS = { due:'Due date', priority:'Priority', title:'Task name', designer:'Designer', status:'Status', manual:'Manual' };
+const TASK_GROUP_LABELS = { taskstatus:'Task status', priority:'Priority', designer:'Designer' };
+const TASK_PRIORITY_RANK = { Urgent:0, High:1, Medium:2, Low:3 };
+function sortProjTaskList(list){
+  const arr = list.slice();
+  const sort = state.taskSort || 'due';
+  const designerName = t => { const m = state.members.find(x=>x.id===(t.assigned_designer_ids||[])[0]); return m ? m.name : '￿'; };
+  if(sort==='priority') arr.sort((a,b)=> (TASK_PRIORITY_RANK[a.priority]??2) - (TASK_PRIORITY_RANK[b.priority]??2));
+  else if(sort==='title') arr.sort((a,b)=> a.title.localeCompare(b.title));
+  else if(sort==='designer') arr.sort((a,b)=> designerName(a).localeCompare(designerName(b)));
+  else if(sort==='status') arr.sort((a,b)=> statusRecord(a.status).position - statusRecord(b.status).position);
+  else if(sort==='manual') return arr.sort((a,b)=>(a.position||0)-(b.position||0)); // manual ignores direction — position order isn't meaningfully reversible
+  else arr.sort((a,b)=> (a.due_date||'9999-99-99').localeCompare(b.due_date||'9999-99-99'));
+  if((state.taskSortDir||'asc')==='desc') arr.reverse();
+  return arr;
+}
+/* "Sort: Due date ▾" plus a direction arrow (↑ ascending / ↓ descending) —
+   clicking the already-active sort option again in the popover flips
+   taskSortDir instead of re-picking the same key (see wireTaskSortGroupBtns). */
+function taskSortButtonLabel(){
+  const sort = state.taskSort || 'due';
+  const label = TASK_SORT_LABELS[sort] || 'Due date';
+  const arrow = sort!=='manual' ? (state.taskSortDir==='desc'?' ↓':' ↑') : '';
+  return `Sort: ${label}${arrow} ▾`;
+}
+/* Splits a combined task list into labelled { label, tasks, empty } groups,
+   each rendered as its own card by taskCardGroupsHtml(). "Task status"
+   always yields exactly To do + Completed (even when one side is empty, so
+   the two cards stay put rather than jumping around); the other group-bys
+   drop any group with nothing in it. */
+function groupProjTaskList(list){
+  const groupBy = state.taskGroupBy || 'taskstatus';
+  if(groupBy==='priority'){
+    return PRIORITIES.slice().reverse().map(p=>({ label:p, tasks:list.filter(t=>(t.priority||'Medium')===p) })).filter(g=>g.tasks.length);
+  }
+  if(groupBy==='designer'){
+    const named = state.members.filter(m=>list.some(t=>(t.assigned_designer_ids||[]).includes(m.id)))
+      .map(m=>({ label:m.name, tasks:list.filter(t=>(t.assigned_designer_ids||[]).includes(m.id)) }))
+      .sort((a,b)=>a.label.localeCompare(b.label));
+    const unassigned = { label:'Unassigned', tasks:list.filter(t=>!(t.assigned_designer_ids||[]).length) };
+    return [...named, unassigned].filter(g=>g.tasks.length);
+  }
+  return [
+    { label:'To do', tasks:list.filter(t=>!isCompleteStatus(t.status)), empty:'Nothing to do yet.' },
+    { label:'Completed', tasks:list.filter(t=>isCompleteStatus(t.status)), empty:'Nothing completed yet.' }
+  ];
+}
+function wireTaskSortGroupBtns(){
+  const sortBtn = $('#taskSortBtn');
+  if(sortBtn) sortBtn.onclick = (e)=>{
+    e.stopPropagation();
+    openMenuPopover(e.currentTarget, Object.entries(TASK_SORT_LABELS).map(([key,label])=>{
+      const active = (state.taskSort||'due')===key;
+      const arrow = active && key!=='manual' ? (state.taskSortDir==='desc'?' ↓':' ↑') : '';
+      return {
+        label: (active?'✓ ':'')+label+arrow,
+        onClick: ()=>{
+          if(active && key!=='manual') state.taskSortDir = state.taskSortDir==='desc' ? 'asc' : 'desc';
+          else { state.taskSort = key; state.taskSortDir = 'asc'; }
+          saveTaskSort(); saveTaskSortDir(); render();
+        }
+      };
+    }));
+  };
+  const groupBtn = $('#taskGroupBtn');
+  if(groupBtn) groupBtn.onclick = (e)=>{
+    e.stopPropagation();
+    openMenuPopover(e.currentTarget, Object.entries(TASK_GROUP_LABELS).map(([key,label])=>({
+      label: ((state.taskGroupBy||'taskstatus')===key?'✓ ':'')+label,
+      onClick: ()=>{ state.taskGroupBy = key; saveTaskGroupBy(); render(); }
+    })));
+  };
+}
+
+/* One popover covering every role, grouped. Replaces three separate columns
+   each with their own picker — the roles are still distinct arrays in the DB,
+   they're just chosen from one place now. Each toggle writes immediately (same
+   as the old per-role inline pickers did); `cur` is the source of truth for the
+   checkmarks so the popover stays correct across the re-render underneath it. */
+function openTaskPeoplePopover(anchorEl, task){
+  const roles = ASSIGN_ROLES;
+  const cur = {};
+  roles.forEach(r=> cur[r] = new Set(task[ASSIGN_ROLE_FIELD[r]]||[]));
+  const options = [];
+  roles.forEach(r=>{
+    options.push({ header: ASSIGN_ROLE_LABEL[r] });
+    assignablePeople(r).forEach(m=> options.push({
+      value: `${r}:${m.id}`,
+      html: `<span style="display:inline-flex;align-items:center;gap:8px">${avatarHtml(m)}${esc(m.name)}</span>`
+    }));
+  });
+  openMultiPillPopover(anchorEl, options,
+    v=>{ const [r,id] = v.split(':'); return cur[r] && cur[r].has(id); },
+    async (v, checked)=>{
+      const [r,id] = v.split(':');
+      checked ? cur[r].add(id) : cur[r].delete(id);
+      const { error } = await db.from('rs_proj_tasks').update({ [ASSIGN_ROLE_FIELD[r]]: Array.from(cur[r]) }).eq('id', task.id);
+      if(error){ toast(error.code==='42703' ? 'Run migration v19 to enable animator assignments' : 'Could not update'); return; }
+      await refreshProjectView();
+    });
+}
+
+function taskTableHtml(tasks, visibleCount, emptyText, showRetainer){
+  const sorted = sortProjTaskList(tasks);
+  if(!sorted.length) return `<div class="task-grid">${emptyStateHtml({ icon:'tray', title: emptyText||'Nothing here yet.' })}</div>`;
+  const canDrag = (state.taskSort||'due')==='manual';
+  const gridCols = taskGridColumns(showRetainer);
   const headerCells = visibleTaskCols(showRetainer).map(k=>{
     const def = TASK_COLUMN_DEFS[k];
-    let html = `<div style="position:relative${def.headerAlign?`;text-align:${def.headerAlign}`:''}">${def.label}${resizeHandle(k,'task')}</div>`;
-    if(k==='reviewer' && showAnimator) html += `<div style="position:relative">Animator${resizeHandle('animator','task')}</div>`;
-    return html;
+    return `<div style="position:relative${def.headerAlign?`;text-align:${def.headerAlign}`:''}">${def.label}${resizeHandle(k,'task')}</div>`;
   }).join('');
-  const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${gridCols}">
+  const header = `<div class="task-grid-row task-grid-header" data-gridkind="task" data-showretainer="${showRetainer===false?'':'1'}" style="grid-template-columns:${gridCols}">
       <div style="position:relative">Task</div>
       ${headerCells}
       <div></div>
     </div>`;
-  const rows = tasks.map(t=>taskRowHtml(t, showAnimator, showRetainer)).join('');
+  const rows = sorted.map(t=>taskRowHtml(t, showRetainer, canDrag)).join('');
   return `<div class="task-grid">${header}${rows}</div>`;
 }
-
+/* One card per group (see groupProjTaskList) — used by both the retainer
+   client task view and, per-stage, the project detail page, so "Task
+   status" (the default) and every other group-by read identically in both
+   places. */
+function taskCardGroupsHtml(tasks, visibleCount, emptyText, showRetainer){
+  const groups = groupProjTaskList(tasks);
+  return groups.map(g=>`
+    <div class="stage-section" style="margin-bottom:20px">
+      <div class="stage-head"><h4>${esc(g.label)} <span class="home-count">${g.tasks.length}</span></h4></div>
+      <div class="card" style="padding:8px 12px">${taskTableHtml(g.tasks, visibleCount, g.empty||emptyText, showRetainer)}</div>
+    </div>
+  `).join('');
+}
 async function duplicateProjTask(taskId){
   const t = state.projTasks.find(t=>t.id===taskId);
   if(!t) return;
@@ -2825,10 +3565,52 @@ async function deleteProjTaskQuick(taskId){
 
 const ASSIGN_ROLE_FIELD = { designer:'assigned_designer_ids', reviewer:'assigned_reviewer_ids', animator:'assigned_animator_ids' };
 const ASSIGN_ROLE_CAN = { designer:'can_design', reviewer:'can_review', animator:'can_animate' };
+const ASSIGN_ROLES = ['designer','reviewer','animator'];
+const ASSIGN_ROLE_LABEL = { designer:'Designers', reviewer:'Reviewers', animator:'Animators' };
 
-function openInlineHoursEdit(el, taskId){
+/* EVERY active member is assignable to EVERY role. The can_design/can_review/
+   can_animate flags used to filter these pools outright, which meant someone
+   flagged only as an admin simply could not be put on a task — a real gap, not
+   a safeguard. The flags now only affect ORDER: people marked for the role sort
+   first, everyone else follows. That keeps the Settings checkboxes meaningful
+   as a "who normally does this" hint without them blocking anyone. */
+function assignablePeople(role){
+  const can = ASSIGN_ROLE_CAN[role];
+  // Truthy, not `=== false`: can_animate (v19) and friends were added without a
+  // default, so an untouched member row holds null rather than false. Unchecked
+  // in Settings means "not their usual role" however it's stored — they still
+  // appear, just below the people who do that job.
+  return state.members.filter(m=>m.active).slice().sort((a,b)=>{
+    const ac = can && !a[can] ? 1 : 0;
+    const bc = can && !b[can] ? 1 : 0;
+    return ac!==bc ? ac-bc : (a.name||'').localeCompare(b.name||'');
+  });
+}
+
+/* Everyone on the task, across all three roles, each person once — the combined
+   People column shows one avatar per person rather than repeating them per role. */
+function taskAssignedIds(t){
+  const out = [];
+  ASSIGN_ROLES.forEach(r=> (t[ASSIGN_ROLE_FIELD[r]]||[]).forEach(id=>{ if(!out.includes(id)) out.push(id); }));
+  return out;
+}
+function taskPeopleTitle(t){
+  const lines = taskAssignedIds(t).map(id=>{
+    const m = state.members.find(x=>x.id===id);
+    if(!m) return '';
+    const roles = ASSIGN_ROLES.filter(r=>(t[ASSIGN_ROLE_FIELD[r]]||[]).includes(id))
+      .map(r=>ASSIGN_ROLE_LABEL[r].replace(/s$/,''));
+    return `${m.name} — ${roles.join(', ')}`;
+  }).filter(Boolean);
+  return lines.length ? lines.join('\n') : 'Click to assign people';
+}
+
+/* Inline numeric editor for a task field. `field` defaults to recorded_hours so
+   the original call sites are unchanged; the Est. column passes estimated_hours. */
+function openInlineHoursEdit(el, taskId, field){
+  field = field || 'recorded_hours';
   const task = state.projTasks.find(t=>t.id===taskId);
-  const original = task && task.recorded_hours!=null ? String(task.recorded_hours) : '';
+  const original = task && task[field]!=null ? String(task[field]) : '';
   const input = document.createElement('input');
   input.type = 'number'; input.step = '0.25'; input.min = '0'; input.value = original;
   input.className = 'inline-rename-input'; input.style.width = '64px'; input.style.textAlign = 'right';
@@ -2843,8 +3625,11 @@ function openInlineHoursEdit(el, taskId){
     const val = input.value.trim();
     const hours = val==='' ? null : Math.max(0, +val);
     if(hours===null && original===''){ input.replaceWith(el); return; }
-    const { error } = await db.from('rs_proj_tasks').update({ recorded_hours: hours }).eq('id', taskId);
-    if(error){ toast('Could not update hours'); input.replaceWith(el); return; }
+    const { error } = await db.from('rs_proj_tasks').update({ [field]: hours }).eq('id', taskId);
+    if(error){
+      toast(error.code==='PGRST204' ? 'Run migration v42 to enable estimates' : 'Could not update hours');
+      input.replaceWith(el); return;
+    }
     await refreshProjectView();
   }, { once:true });
 }
@@ -2870,6 +3655,10 @@ function wireTaskRows(root){
     if(task && !task.project_id && client?.is_retainer) openRetainerTaskTimeModal(taskId);
     else openInlineHoursEdit(el, taskId);
   }));
+  root.querySelectorAll('[data-taskestimate]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openInlineHoursEdit(el, el.dataset.taskestimate, 'estimated_hours');
+  }));
   root.querySelectorAll('[data-taskdue]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     const taskId = el.dataset.taskdue;
@@ -2889,13 +3678,18 @@ function wireTaskRows(root){
     e.stopPropagation();
     openPriorityPopover(el, el.dataset.priorityinline);
   }));
+  root.querySelectorAll('[data-peopleinline]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const task = state.projTasks.find(t=>t.id===el.dataset.peopleinline);
+    if(task) openTaskPeoplePopover(el, task);
+  }));
   root.querySelectorAll('[data-assigninline]').forEach(el=>el.addEventListener('click', (e)=>{
     e.stopPropagation();
     const [taskId, role] = el.dataset.assigninline.split(':');
     const task = state.projTasks.find(t=>t.id===taskId);
     if(!task) return;
     const field = ASSIGN_ROLE_FIELD[role];
-    const pool = state.members.filter(m=>m.active && m[ASSIGN_ROLE_CAN[role]]!==false);
+    const pool = assignablePeople(role);
     const current = new Set(task[field]||[]);
     const options = pool.map(m=>({ value:m.id, html:`<span style="display:inline-flex;align-items:center;gap:8px">${avatarHtml(m)}${esc(m.name)}</span>` }));
     openMultiPillPopover(el, options, val=>current.has(val), async (val, checked)=>{
@@ -2962,7 +3756,7 @@ function tasksAheadColumns(){
 }
 function tasksAheadRowHtml(t, projectName){
   const cols = tasksAheadColumns();
-  return `<div class="task-grid-row task-row" data-projtask="${t.id}" style="grid-template-columns:${cols}">
+  return `<div class="task-grid-row task-row" data-gridkind="tasksahead" data-projtask="${t.id}" style="grid-template-columns:${cols}">
     <div>${dueDateBtnHtml(t)}</div>
     <div class="tg-title"><span class="status-dot" style="background:${statusColor(t.status)}"></span><span class="inline-editable" data-taskname="${t.id}" title="Click to rename">${esc(t.title)}</span></div>
     <div style="color:var(--muted);font-size:12.5px">${projectName? esc(projectName) : '—'}</div>
@@ -2977,7 +3771,7 @@ function tasksAheadRowHtml(t, projectName){
 }
 function tasksAheadTableHtml(items){
   const cols = tasksAheadColumns();
-  const header = `<div class="task-grid-row task-grid-header" style="grid-template-columns:${cols}">
+  const header = `<div class="task-grid-row task-grid-header" data-gridkind="tasksahead" style="grid-template-columns:${cols}">
       <div style="position:relative">Due${resizeHandle('due','tasksahead')}</div>
       <div style="position:relative">Task</div>
       <div style="position:relative">Project${resizeHandle('project','tasksahead')}</div>
@@ -3036,10 +3830,9 @@ function openProjTaskModal(taskId, ctx){
   const project = t.project_id ? state.projects.find(p=>p.id===t.project_id) : null;
   const client = state.clients.find(c=>c.id=== (project ? project.client_id : t.client_id));
   const stages = project ? state.stages.filter(s=>s.project_id===project.id).sort((a,b)=>a.position-b.position) : [];
-  const designerPool = state.members.filter(m=>m.active && m.can_design!==false);
-  const reviewerPool = state.members.filter(m=>m.active && m.can_review!==false);
-  const animatorPool = state.members.filter(m=>m.active && m.can_animate!==false);
-  const showAnimators = project?.project_type === 'Animations';
+  const designerPool = assignablePeople('designer');
+  const reviewerPool = assignablePeople('reviewer');
+  const animatorPool = assignablePeople('animator');
   showModal(`
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
       <div>
@@ -3055,14 +3848,15 @@ function openProjTaskModal(taskId, ctx){
 
       <div class="full modal-frame">
         <div class="modal-frame-label">Team</div>
-        <div class="full"><label>Designers</label><div id="pt_designers">${pillSelectorHtml(designerPool, t.assigned_designer_ids||[])}</div></div>
-        <div class="full"><label>Reviewers</label><div id="pt_reviewers">${pillSelectorHtml(reviewerPool, t.assigned_reviewer_ids||[])}</div></div>
-        ${showAnimators? `<div class="full"><label>Animators</label><div id="pt_animators">${pillSelectorHtml(animatorPool, t.assigned_animator_ids||[])}</div></div>` : ''}
+        <div><label>Designers</label>${assigneeFieldHtml('pt_designers', designerPool, t.assigned_designer_ids||[])}</div>
+        <div><label>Reviewers</label>${assigneeFieldHtml('pt_reviewers', reviewerPool, t.assigned_reviewer_ids||[])}</div>
+        <div><label>Animators</label>${assigneeFieldHtml('pt_animators', animatorPool, t.assigned_animator_ids||[])}</div>
       </div>
 
       <div class="full modal-frame">
         <div class="modal-frame-label">Dates & hours</div>
         <div><label>Due date</label>${dateFieldHtml('pt_due', t.due_date, 'Set due date')}</div>
+        <div><label>Estimated hours <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="number" min="0" step="0.25" id="pt_estimate" value="${t.estimated_hours!=null?t.estimated_hours:''}"></div>
         ${!client?.is_retainer ? `<div><label>Recorded hours</label><input type="number" min="0" step="0.25" id="pt_hours" value="${t.recorded_hours!=null?t.recorded_hours:''}"></div>` : ''}
         ${client.is_retainer? `
         <div><label>Work date <span style="color:var(--muted);font-weight:400">(for retainer sync)</span></label>${dateFieldHtml('pt_work', t.work_date||iso(new Date()), 'Set work date')}</div>
@@ -3089,9 +3883,9 @@ function openProjTaskModal(taskId, ctx){
       </div>
     </div>
   `, { wide:true });
-  document.querySelectorAll('#pt_designers [data-pillmember], #pt_reviewers [data-pillmember], #pt_animators [data-pillmember]').forEach(b=>{
-    b.addEventListener('click', ()=> b.classList.toggle('selected'));
-  });
+  wireAssigneeField('pt_designers', designerPool);
+  wireAssigneeField('pt_reviewers', reviewerPool);
+  wireAssigneeField('pt_animators', animatorPool);
   wireStatusField('pt_status');
   wirePriorityField('pt_priority');
   wireDateField('pt_due', 'Set due date');
@@ -3134,39 +3928,51 @@ function openProjTaskModal(taskId, ctx){
       title,
       status: $('#pt_status').value,
       priority: $('#pt_priority').value,
-      assigned_designer_ids: Array.from(document.querySelectorAll('#pt_designers .member-pill.selected')).map(b=>b.dataset.pillmember),
-      assigned_reviewer_ids: Array.from(document.querySelectorAll('#pt_reviewers .member-pill.selected')).map(b=>b.dataset.pillmember),
+      assigned_designer_ids: assigneeFieldValue('pt_designers'),
+      assigned_reviewer_ids: assigneeFieldValue('pt_reviewers'),
       recorded_hours: $('#pt_hours') ? ($('#pt_hours').value ? +$('#pt_hours').value : null) : null,
+      estimated_hours: $('#pt_estimate') && $('#pt_estimate').value ? +$('#pt_estimate').value : null,
       due_date: $('#pt_due').value || null,
       work_date: document.getElementById('pt_work') ? ($('#pt_work').value || null) : (t.work_date||null),
       counts_toward_retainer: document.getElementById('pt_retainer') ? $('#pt_retainer').checked : false
     };
-    if(showAnimators) fields.assigned_animator_ids = Array.from(document.querySelectorAll('#pt_animators .member-pill.selected')).map(b=>b.dataset.pillmember);
-    let saved, animatorColMissing = false;
+    fields.assigned_animator_ids = assigneeFieldValue('pt_animators');
+
+    /* Optional columns whose migrations may not have run. Without this retry a
+       single missing column fails the ENTIRE save — the all-or-nothing bug v31
+       already has and that CLAUDE.md warns about. Postgres reports it as 42703,
+       PostgREST's schema cache as PGRST204; drop one field at a time so the
+       toast can name exactly which migration is outstanding rather than
+       blaming both. */
+    const colMissing = e => !!e && (e.code==='42703' || e.code==='PGRST204');
+    const dropped = [];
+    async function attempt(run){
+      let payload = { ...fields };
+      let res = await run(payload);
+      for(const [key, mig] of [['estimated_hours','v42'], ['assigned_animator_ids','v19']]){
+        if(!colMissing(res.error) || !(key in payload)) continue;
+        delete payload[key]; dropped.push(mig);
+        res = await run(payload);
+      }
+      return res;
+    }
+    let saved;
     if(isNew){
       const siblingCount = stages.length
         ? state.projTasks.filter(x=>x.stage_id===fields.stage_id).length
         : state.projTasks.filter(x=>x.client_id===fields.client_id && !x.project_id).length;
-      let { data, error } = await db.from('rs_proj_tasks').insert({ ...fields, position: siblingCount }).select().single();
-      if(error && error.code==='42703' && 'assigned_animator_ids' in fields){
-        const { assigned_animator_ids, ...rest } = fields;
-        ({ data, error } = await db.from('rs_proj_tasks').insert({ ...rest, position: siblingCount }).select().single());
-        animatorColMissing = !error;
-      }
+      const { data, error } = await attempt(payload =>
+        db.from('rs_proj_tasks').insert({ ...payload, position: siblingCount }).select().single());
       if(error){ toast('Could not save task'); console.error(error); return; }
       saved = data;
     } else {
-      let { error } = await db.from('rs_proj_tasks').update(fields).eq('id', t.id);
-      if(error && error.code==='42703' && 'assigned_animator_ids' in fields){
-        const { assigned_animator_ids, ...rest } = fields;
-        ({ error } = await db.from('rs_proj_tasks').update(rest).eq('id', t.id));
-        animatorColMissing = !error;
-      }
+      const { error } = await attempt(payload =>
+        db.from('rs_proj_tasks').update(payload).eq('id', t.id));
       if(error){ toast('Could not save task'); console.error(error); return; }
       saved = { ...t, ...fields };
     }
     closeModal();
-    toast(animatorColMissing ? 'Saved — run migration v19 to enable animator assignments' : (isNew?'Task added':'Task updated'));
+    toast(dropped.length ? `Saved — run migration ${dropped.join(' + ')} to store the remaining fields` : (isNew?'Task added':'Task updated'));
     await refreshProjectView();
   };
 }
@@ -3696,6 +4502,200 @@ function openToolModal(toolId){
   };
 }
 
+/* ── Time Off — holiday/WFH requests + approval + a shared team calendar.
+   No login system in this app (see CURRENT_USER_NAME/currentUser() above),
+   so "who's requesting" is always the hardcoded current user, and "who can
+   approve" is any member with is_admin set (Settings > Team members >
+   Admin). rs_members.is_admin and rs_time_off_requests both come from
+   outputs/v35_time_off.sql — degrades gracefully (toast + no local-state
+   mutation) until that migration is run, same pattern as every other
+   not-yet-run table in this app. */
+function timeOffIsAdmin(){ const m = currentUser(); return !!(m && m.is_admin); }
+function timeOffTypeLabel(type){ return type==='wfh' ? 'WFH' : 'Holiday'; }
+/* Holiday days remaining this calendar year — approved 'holiday' requests
+   only (WFH doesn't count against the allowance), attributed to the year
+   their start_date falls in (a request spanning New Year's is a rare edge
+   case, not worth the extra complexity of splitting it across two years). */
+function holidayDaysUsedThisYear(memberId){
+  const y = new Date().getFullYear();
+  return (state.timeOffRequests||[])
+    .filter(r=>r.member_id===memberId && r.type==='holiday' && r.status==='approved' && new Date(r.start_date+'T00:00').getFullYear()===y)
+    .reduce((sum,r)=> sum + timeOffDaysCount(r), 0);
+}
+function holidayDaysRemainingThisYear(memberId){
+  return holidayDaysPerYear() - holidayDaysUsedThisYear(memberId);
+}
+function timeOffRangeLabel(r){
+  const s = fmtDate(new Date(r.start_date+'T00:00'));
+  if(r.start_date===r.end_date) return s;
+  return `${s} – ${fmtDate(new Date(r.end_date+'T00:00'))}`;
+}
+function timeOffDaysCount(r){ return Math.round((new Date(r.end_date+'T00:00')-new Date(r.start_date+'T00:00'))/86400000)+1; }
+const TIME_OFF_STATUS_META = {
+  pending:{ label:'Pending', bg:'var(--amber-bg)', fg:'var(--amber)' },
+  approved:{ label:'Approved', bg:'var(--green-bg)', fg:'var(--green)' },
+  declined:{ label:'Declined', bg:'var(--red-bg)', fg:'var(--red)' }
+};
+function timeOffStatusPillHtml(status){
+  const m = TIME_OFF_STATUS_META[status] || TIME_OFF_STATUS_META.pending;
+  return `<span class="status-pill" style="background:${m.bg};color:${m.fg}">${m.label}</span>`;
+}
+function timeOffRowHtml(r, {showPerson, actionsHtml}={}){
+  const m = state.members.find(x=>x.id===r.member_id);
+  return `<tr>
+    ${showPerson? `<td>${m?avatarHtml(m):''} ${esc(m?m.name:'Unknown')}</td>`:''}
+    <td><span class="type-badge">${timeOffTypeLabel(r.type)}</span></td>
+    <td>${esc(timeOffRangeLabel(r))}</td>
+    <td style="color:var(--muted)">${timeOffDaysCount(r)}d</td>
+    <td>${timeOffStatusPillHtml(r.status)}</td>
+    <td style="color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.note||'—')}</td>
+    <td class="action-cell">${actionsHtml||''}</td>
+  </tr>`;
+}
+function timeOffListHtml({me, isAdmin}){
+  const all = (state.timeOffRequests||[]).slice();
+  const pending = all.filter(r=>r.status==='pending').sort((a,b)=>a.start_date.localeCompare(b.start_date));
+  const mine = me ? all.filter(r=>r.member_id===me.id).sort((a,b)=>b.start_date.localeCompare(a.start_date)) : [];
+  const teamHistory = isAdmin ? all.filter(r=>(!me || r.member_id!==me.id) && r.status!=='pending').sort((a,b)=>b.start_date.localeCompare(a.start_date)) : [];
+
+  const pendingSection = isAdmin ? `<div class="card" style="margin-bottom:20px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Pending approval${pending.length?` <span style="color:var(--muted);font-weight:500">(${pending.length})</span>`:''}</h3>
+    ${pending.length ? `<table><thead><tr><th>Person</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>
+      ${pending.map(r=>timeOffRowHtml(r,{showPerson:true, actionsHtml:`<button class="btn small" data-toapprove="${r.id}">Approve</button> <button class="btn small ghost" data-todecline="${r.id}">Decline</button>`})).join('')}
+    </tbody></table>` : `<div class="empty" style="padding:10px 0">Nothing waiting on you.</div>`}
+  </div>` : '';
+
+  const mineSection = `<div class="card" style="margin-bottom:20px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">My requests</h3>
+    ${mine.length ? `<table><thead><tr><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>
+      ${mine.map(r=>timeOffRowHtml(r,{showPerson:false, actionsHtml: r.status==='pending' ? `<button class="btn small ghost" data-tocancel="${r.id}">Cancel</button>` : ''})).join('')}
+    </tbody></table>` : `<div class="empty" style="padding:10px 0">No requests yet — use "+ Request time off" above.</div>`}
+  </div>`;
+
+  const teamSection = isAdmin ? `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Team history</h3>
+    ${teamHistory.length ? `<table><thead><tr><th>Person</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>
+      ${teamHistory.map(r=>timeOffRowHtml(r,{showPerson:true, actionsHtml:`<button class="btn small danger" data-todelete="${r.id}">Delete</button>`})).join('')}
+    </tbody></table>` : `<div class="empty" style="padding:10px 0">No decided requests yet.</div>`}
+  </div>` : '';
+
+  return `${pendingSection}${mineSection}${teamSection}`;
+}
+function timeOffCalendarHtml(){
+  const y = state.timeOffCalY, m = state.timeOffCalM;
+  const approved = (state.timeOffRequests||[]).filter(r=>r.status==='approved');
+  const first = new Date(y,m,1);
+  const startOffset = first.getDay();
+  const daysInMonth = new Date(y,m+1,0).getDate();
+  const todayIso = iso(new Date());
+  const dowLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let cells = '';
+  for(let i=0;i<startOffset;i++) cells += `<div class="to-cal-day empty"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const dIso = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayReqs = approved.filter(r=>r.start_date<=dIso && r.end_date>=dIso);
+    cells += `<div class="to-cal-day${dIso===todayIso?' today':''}">
+      <div class="to-cal-daynum">${d}</div>
+      ${dayReqs.map(r=>{
+        const mem = state.members.find(x=>x.id===r.member_id);
+        const color = mem ? clientColor(mem.id) : '#999';
+        return `<div class="to-cal-chip" style="background:${mutedBg(color)};color:${color}" title="${esc(mem?mem.name:'Unknown')} — ${timeOffTypeLabel(r.type)}">${esc(mem?initials(mem.name):'?')} · ${timeOffTypeLabel(r.type)}</div>`;
+      }).join('')}
+    </div>`;
+  }
+  return `<div class="card">
+    <div class="pd-cal-nav">
+      <button type="button" class="pd-cal-navbtn" data-tocalnav="-1">‹</button>
+      <div style="font-size:14px;font-weight:600">${first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</div>
+      <button type="button" class="pd-cal-navbtn" data-tocalnav="1">›</button>
+    </div>
+    <div class="to-cal-grid">${dowLabels.map(d=>`<div class="to-cal-dow">${d}</div>`).join('')}${cells}</div>
+  </div>`;
+}
+function renderTimeOff(){
+  if(state.timeOffCalY==null){ const t = new Date(); state.timeOffCalY = t.getFullYear(); state.timeOffCalM = t.getMonth(); }
+  const me = currentUser();
+  const isAdmin = timeOffIsAdmin();
+  const remainingLine = me ? `<div class="sub" style="margin:6px 0 0"><strong style="color:var(--ink)">${holidayDaysRemainingThisYear(me.id)}</strong> holiday day${holidayDaysRemainingThisYear(me.id)===1?'':'s'} left this year</div>` : '';
+  main.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div><h2>Time Off</h2><div class="sub" style="margin-bottom:0">Request holiday and work-from-home days${isAdmin?' — you can approve requests below':''}</div>${remainingLine}</div>
+      <button class="btn small" id="toRequestBtn">+ Request time off</button>
+    </div>
+    <div class="view-toggle" style="margin:16px 0 20px">
+      <button class="btn small ${state.timeOffView==='list'?'':'ghost'}" data-toview="list">Requests</button>
+      <button class="btn small ${state.timeOffView==='calendar'?'':'ghost'}" data-toview="calendar">Team calendar</button>
+    </div>
+    ${state.timeOffView==='calendar' ? timeOffCalendarHtml() : timeOffListHtml({me, isAdmin})}
+  `;
+  $('#toRequestBtn').onclick = openTimeOffRequestModal;
+  main.querySelectorAll('[data-toview]').forEach(b=>b.addEventListener('click', ()=>{ state.timeOffView = b.dataset.toview; renderTimeOff(); }));
+  main.querySelectorAll('[data-toapprove]').forEach(b=>b.addEventListener('click', ()=> timeOffSetStatus(b.dataset.toapprove, 'approved')));
+  main.querySelectorAll('[data-todecline]').forEach(b=>b.addEventListener('click', ()=> timeOffSetStatus(b.dataset.todecline, 'declined')));
+  main.querySelectorAll('[data-tocancel]').forEach(b=>b.addEventListener('click', ()=> timeOffDelete(b.dataset.tocancel)));
+  main.querySelectorAll('[data-todelete]').forEach(b=>b.addEventListener('click', ()=> timeOffDelete(b.dataset.todelete)));
+  main.querySelectorAll('[data-tocalnav]').forEach(b=>b.addEventListener('click', ()=>{
+    let m = state.timeOffCalM + (+b.dataset.tocalnav), y = state.timeOffCalY;
+    if(m<0){ m=11; y--; } else if(m>11){ m=0; y++; }
+    state.timeOffCalM = m; state.timeOffCalY = y;
+    renderTimeOff();
+  }));
+}
+async function timeOffSetStatus(reqId, status){
+  const me = currentUser();
+  const { error } = await db.from('rs_time_off_requests').update({ status, reviewed_by: me?me.id:null, reviewed_at: new Date().toISOString() }).eq('id', reqId);
+  if(error){ toast('Could not update request'); console.error(error); return; }
+  toast(status==='approved'?'Request approved':'Request declined'); await loadAll(); render();
+}
+async function timeOffDelete(reqId){
+  if(!confirm('Remove this time off request?')) return;
+  const { error } = await db.from('rs_time_off_requests').delete().eq('id', reqId);
+  if(error){ toast('Could not remove'); console.error(error); return; }
+  toast('Request removed'); await loadAll(); render();
+}
+function openTimeOffRequestModal(){
+  const me = currentUser();
+  if(!me){ toast(`Add a team member named "${CURRENT_USER_NAME}" in Settings first`); return; }
+  const todayIso = iso(new Date());
+  let type = 'holiday';
+  showModal(`
+    <h3>Request time off</h3>
+    <form class="log" style="max-width:none">
+      <div class="full">
+        <label>Type</label>
+        <div class="view-toggle" style="margin-bottom:0">
+          <button type="button" class="btn small" data-totype="holiday">Holiday</button>
+          <button type="button" class="btn small ghost" data-totype="wfh">Work from home</button>
+        </div>
+      </div>
+      <div><label>Start date</label><input type="date" id="to_start" value="${todayIso}"></div>
+      <div><label>End date</label><input type="date" id="to_end" value="${todayIso}"></div>
+      <div class="full"><label>Note <span style="color:var(--muted);font-weight:400">(optional)</span></label><textarea id="to_note" rows="2" placeholder="Anything your approver should know"></textarea></div>
+    </form>
+    <div class="modal-actions">
+      <span></span>
+      <div class="right">
+        <button class="btn ghost" id="to_cancel">Cancel</button>
+        <button class="btn" id="to_save">Request</button>
+      </div>
+    </div>
+  `);
+  document.querySelectorAll('[data-totype]').forEach(b=>b.addEventListener('click', ()=>{
+    type = b.dataset.totype;
+    document.querySelectorAll('[data-totype]').forEach(x=>x.classList.toggle('ghost', x!==b));
+  }));
+  $('#to_cancel').onclick = closeModal;
+  $('#to_save').onclick = async ()=>{
+    const start = $('#to_start').value, end = $('#to_end').value;
+    if(!start || !end){ toast('Pick both dates'); return; }
+    if(end < start){ toast('End date must be on or after the start date'); return; }
+    const note = $('#to_note').value.trim() || null;
+    const { error } = await db.from('rs_time_off_requests').insert({ member_id: me.id, type, start_date:start, end_date:end, note, status:'pending' });
+    if(error){ toast(error.code==='PGRST205'?'Run migration v35 to enable Time Off':'Could not save'); console.error(error); return; }
+    closeModal(); toast('Request submitted'); await loadAll(); render();
+  };
+}
+
 function renderProjDetail(){
   const p = state.projects.find(p=>p.id===state.projProjectId);
   if(!p){ state.projView='clientProjects'; render(); return; }
@@ -3734,8 +4734,8 @@ function renderProjDetail(){
   // meter), then an underline-tab strip. No enclosing .card any more, to
   // match animProjectHeaderHtml's frameless header exactly.
   let html = `<div class="breadcrumb">
-      <button data-bc="clients">Graphics</button><span class="sep">/</span>
-      <button data-bc="client">${esc(c.name)}</button><span class="sep">/</span>
+      <button data-bc="clients">Graphics</button><span class="sep"></span>
+      <button data-bc="client">${esc(c.name)}</button><span class="sep"></span>
       <span class="current">${esc(p.name)}</span>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:${allTasks.length?'16px':'20px'}">
@@ -3759,7 +4759,11 @@ function renderProjDetail(){
   } else if(tab==='deliverables'){
     html += animDeliverablesBodyHtml(p);
   } else {
-    html += `<div style="margin-bottom:20px"><button class="btn small ghost" id="colDropdownBtn">Columns ▾</button></div>`;
+    html += `<div style="margin-bottom:20px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn small ghost" id="taskSortBtn">${taskSortButtonLabel()}</button>
+      <button class="btn small ghost" id="taskGroupBtn">Group: ${TASK_GROUP_LABELS[state.taskGroupBy]||'Task status'} ▾</button>
+      <button class="btn small ghost" id="colDropdownBtn">Columns ▾</button>
+    </div>`;
     if(!stages.length){
       html += `<div class="empty">No stages yet.</div><div style="margin-top:12px"><button class="btn small ghost" id="addStageBtn">+ Add stage</button></div>`;
     } else {
@@ -3778,7 +4782,7 @@ function renderProjDetail(){
               ${idx>0 && s.due_date ? `<span style="font-size:11px;color:var(--muted)">${reviewWindowLabel(s.due_date, p.review_days)}</span>` : ''}
             </div>
           </div>
-          <div class="card" style="padding:8px 12px">${taskTableHtml(tasks, visibleCount, 'No tasks in this stage yet.', p.project_type==='Animations', c.is_retainer)}</div>
+          ${taskCardGroupsHtml(tasks, visibleCount, 'No tasks in this stage yet.', c.is_retainer)}
           <div style="margin-top:10px"><button class="btn small ghost" data-addtask="${s.id}">+ Task</button></div>
         </div>`;
       });
@@ -3807,6 +4811,7 @@ function renderProjDetail(){
   }
 
   $('#colDropdownBtn').onclick = (e)=>{ e.stopPropagation(); openColumnDropdown(e.currentTarget); };
+  wireTaskSortGroupBtns();
   main.querySelectorAll('[data-addtask]').forEach(el=>el.addEventListener('click', ()=> openProjTaskModal(null, { projectId:p.id, stageId:el.dataset.addtask })));
   wireTaskRows(main);
   main.querySelectorAll('[data-stagedate]').forEach(el=>el.addEventListener('click', ()=>{
@@ -4553,7 +5558,7 @@ function renderArchived(){
   const archivedClients = state.clients.filter(c=>!c.active);
   const archivedProjects = state.projects.filter(p=>!p.active).map(p=>({ p, client: state.clients.find(c=>c.id===p.client_id) }));
 
-  let html = `<div class="breadcrumb"><button data-bc="settings">Settings</button><span class="sep">/</span><span class="current">Archived</span></div>
+  let html = `<div class="breadcrumb"><button data-bc="settings">Settings</button><span class="sep"></span><span class="current">Archived</span></div>
     <h2>Archived</h2><div class="sub">Read-only view of archived clients and projects — restore any of them to bring them back into the active pages.</div>
     <h3 style="font-size:15px;font-weight:600;margin:20px 0 14px">Clients</h3>`;
   html += archivedClients.length
@@ -4614,6 +5619,7 @@ const SETTINGS_SECTIONS = [
   { key:'pipeline', label:'Pipeline statuses' },
   { key:'deliverablecols', label:'Deliverable columns' },
   { key:'data', label:'Data & backups' },
+  { key:'admin', label:'Admin settings' },
 ];
 
 function settingsClientsHtml(){
@@ -4691,26 +5697,28 @@ function wireSettingsClients(){
 function settingsTeamHtml(){
   return `<div class="card">
     <h3 style="font-size:15px;font-weight:600;margin-bottom:10px">Team members</h3>
-    <table><thead><tr><th>Name</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>Name</th><th>Login email</th><th>Factor</th><th style="text-align:center">Designer</th><th style="text-align:center">Reviewer</th><th style="text-align:center">Animator</th><th style="text-align:center">Admin</th><th></th></tr></thead><tbody>
     ${state.members.map(m=>`<tr style="${m.active?'':'opacity:.45'}">
       <td><input type="text" data-membername="${m.id}" value="${esc(m.name)}" style="min-width:120px"></td>
+      <td><input type="email" data-memberemail="${m.id}" value="${esc(m.email||'')}" placeholder="—" style="min-width:170px"></td>
       <td>×${m.weight}</td>
       <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_design" ${m.can_design!==false?'checked':''} style="width:auto"></td>
       <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_review" ${m.can_review!==false?'checked':''} style="width:auto"></td>
       <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:can_animate" ${m.can_animate!==false?'checked':''} style="width:auto"></td>
+      <td style="text-align:center"><input type="checkbox" data-mrole="${m.id}:is_admin" ${m.is_admin?'checked':''} style="width:auto"></td>
       <td class="action-cell">
         <button class="btn small ghost" data-mweight="${m.id}">Change factor</button>
         <button class="btn small ghost" data-mactive="${m.id}">${m.active?'Archive':'Restore'}</button>
         ${!m.active? `<button class="btn small danger" data-mdelete="${m.id}">Delete</button>`:''}
       </td>
-    </tr>`).join('') || '<tr><td colspan="6" class="empty">No team members yet.</td></tr>'}
+    </tr>`).join('') || '<tr><td colspan="8" class="empty">No team members yet.</td></tr>'}
     </tbody></table>
     <div class="row-form">
       <input id="m_name" placeholder="Name" style="flex:2">
       <input id="m_weight" type="number" step="0.25" min="0.25" value="1" title="Weighting factor">
       <button class="btn small" id="m_add">Add</button>
     </div>
-    <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Designer/Reviewer/Animator checkboxes control who shows up in those pickers on project tasks. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px">Factor multiplies logged hours, e.g. ×2 turns 4 real hours into 8 retainer hours. Designer/Reviewer/Animator checkboxes control who shows up in those pickers on project tasks. Admin controls who can approve Time Off requests. Archive a client or member before you can delete it — archiving hides it from logging without losing history.</div>
   </div>`;
 }
 function wireSettingsTeam(){
@@ -4742,6 +5750,21 @@ function wireSettingsTeam(){
     if(error){ toast('Could not save'); return; }
     await loadAll();
   }));
+  // Links a member row to their Supabase Auth login (migration v39). Stored
+  // lowercased because currentUser() matches case-insensitively, and the unique
+  // index is on lower(email) — keeping the stored value normalised means the two
+  // can never disagree about whether a duplicate exists.
+  main.querySelectorAll('[data-memberemail]').forEach(inp=>{
+    inp.addEventListener('change', async ()=>{
+      const raw = inp.value.trim().toLowerCase();
+      const { error } = await db.from('rs_members').update({ email: raw || null }).eq('id', inp.dataset.memberemail);
+      if(error){
+        toast(error.code==='PGRST204' ? 'Run migration v39 to enable logins' : (error.code==='23505' ? 'Another member already uses that email' : 'Could not save email'));
+        return;
+      }
+      toast(raw ? 'Login email saved' : 'Login email cleared'); await loadAll();
+    });
+  });
   main.querySelectorAll('[data-membername]').forEach(inp=>{
     inp.addEventListener('change', async ()=>{
       const name = inp.value.trim();
@@ -5172,6 +6195,35 @@ function wireSettingsData(){
   $('#exportCsv').onclick = exportTasksCsv;
 }
 
+/* Admin settings — app-wide numbers/toggles not tied to any one client,
+   project, or member. Starts with just the holiday-days-per-year allowance
+   (rs_app_settings, outputs/v37_app_settings.sql) that drives the "days
+   left this year" line on the Time Off page — a deliberately separate
+   section from every other Settings tab, which are all about editing lists
+   of clients/members/statuses rather than a single app-wide value. */
+function settingsAdminHtml(){
+  return `<div class="card">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Admin settings</h3>
+    <div class="sub" style="margin-bottom:14px">App-wide settings — not tied to any one client, project, or member.</div>
+    <div class="row-form">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;white-space:nowrap">Holiday days per year
+        <input type="number" id="as_holiday_days" min="0" step="1" value="${holidayDaysPerYear()}" style="width:80px">
+      </label>
+      <button class="btn small" id="as_save">Save</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px">Drives the "days left this year" line at the top of the Time Off page — the same allowance applies to everyone.</div>
+  </div>`;
+}
+function wireSettingsAdmin(){
+  $('#as_save').onclick = async ()=>{
+    const n = parseInt($('#as_holiday_days').value, 10);
+    if(!Number.isFinite(n) || n<0){ toast('Enter a valid number of days'); return; }
+    const { error } = await db.from('rs_app_settings').upsert({ key:'holiday_days_per_year', value:String(n) });
+    if(error){ toast(error.code==='PGRST205'?'Run migration v37 to enable Admin settings':'Could not save'); console.error(error); return; }
+    toast('Saved'); await loadAll(); render();
+  };
+}
+
 function settingsSectionHtml(key){
   if(key==='clients') return settingsClientsHtml();
   if(key==='team') return settingsTeamHtml();
@@ -5182,6 +6234,7 @@ function settingsSectionHtml(key){
   if(key==='pipeline') return settingsPipelineHtml();
   if(key==='deliverablecols') return settingsDeliverableColumnsHtml();
   if(key==='data') return settingsDataHtml();
+  if(key==='admin') return settingsAdminHtml();
   return '';
 }
 function wireSettingsSection(key){
@@ -5194,6 +6247,7 @@ function wireSettingsSection(key){
   else if(key==='pipeline') wireSettingsPipeline();
   else if(key==='deliverablecols') wireSettingsDeliverableColumns();
   else if(key==='data') wireSettingsData();
+  else if(key==='admin') wireSettingsAdmin();
 }
 
 function renderSettings(){
@@ -5229,7 +6283,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.60.2';
+const APP_VERSION = '0.76.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -5441,12 +6495,22 @@ function initColumnResize(){
     if(!dragging) return;
     const newWidth = Math.max(60, dragging.startWidth + (e.clientX - dragging.startX));
     dragging.store[dragging.key] = newWidth;
-    const colsStr = dragging.isTasksAhead ? tasksAheadColumns() : taskGridColumns();
-    document.querySelectorAll('.task-grid-row').forEach(row=> row.style.gridTemplateColumns = colsStr);
+    // Only rows belonging to the table being resized, and each recomputed with
+    // ITS OWN showRetainer. The previous version called taskGridColumns() with no
+    // arguments and applied the result to every .task-grid-row on the page — so a
+    // drag silently rebuilt the columns from a different (retainer-less) column
+    // set and smeared it across unrelated grids too.
+    const kind = dragging.isTasksAhead ? 'tasksahead' : 'task';
+    document.querySelectorAll(`.task-grid-row[data-gridkind="${kind}"]`).forEach(row=>{
+      row.style.gridTemplateColumns = dragging.isTasksAhead
+        ? tasksAheadColumns()
+        : taskGridColumns(row.dataset.showretainer==='1');
+    });
   });
   document.addEventListener('mouseup', ()=>{
     if(!dragging) return;
     document.querySelectorAll('.col-resize-handle.resizing').forEach(h=>h.classList.remove('resizing'));
+    saveColWidths();   // widths used to be session-only and reset on refresh
     dragging = null;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
@@ -5826,16 +6890,116 @@ function openAnimCellModal(shotId, stepId){
   };
 }
 
-/* ================= Public client dashboard (?client=slug) ================= */
-async function bootPublicDashboard(slug, isAdmin, initialPub){
-  const { data: client, error } = await db.from('rs_clients').select('*').eq('slug', slug).eq('active', true).maybeSingle();
-  if(error || !client){
-    document.body.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper);text-align:center">
-      <div><div style="font-size:16px;color:var(--ink);margin-bottom:8px;font-weight:600">Dashboard not found</div>
-      <div style="font-size:13px;color:var(--muted)">This link may have changed or been removed.</div></div>
+/* ================= Public client dashboard (?client=slug) =================
+   A lightweight speed-bump, not real security — RLS is fully open (see the
+   note at the top of CLAUDE.md) and this PIN lives in plain sight in the JS
+   source, so anyone determined can read it straight out of the page. Its
+   only job is to stop a leaked/forwarded link from being casually opened by
+   someone it wasn't meant for. Remembered per-device via localStorage (not
+   sessionStorage) so a client isn't asked again on every visit. */
+const CLIENT_DASHBOARD_PIN = '8651';
+function clientPinOk(){ return store.get('rs_client_pin_ok')==='1'; }
+/* Sign-in screen for the INTERNAL app only — the client portal (?client=slug)
+   never reaches this and stays open to clients, gated by its own PIN.
+   Deliberately email+password rather than a magic link: Supabase's built-in
+   email service is rate-limited and explicitly not for production use, and a
+   team of nine hitting that limit would be locked out of their own tracker.
+   Accounts are created by an admin in Supabase > Authentication > Users; there
+   is no self-signup, and no password reset in-app (an admin resets it there). */
+function renderLoginGate(){
+  document.body.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper)">
+      <div style="max-width:320px;width:100%;padding:32px;box-sizing:border-box">
+        <div style="display:flex;align-items:center;gap:9px;justify-content:center;margin-bottom:18px">
+          <span style="width:26px;height:26px;border-radius:8px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">RS</span>
+          <span style="font-size:15px;font-weight:600;color:var(--ink)">Reciprocal Space</span>
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:18px;text-align:center">Sign in to continue.</div>
+        <form id="loginForm">
+          <input type="email" id="loginEmail" autocomplete="username" placeholder="Email" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:14px;margin-bottom:8px;background:var(--card);color:var(--ink);font-family:inherit">
+          <input type="password" id="loginPass" autocomplete="current-password" placeholder="Password" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:14px;margin-bottom:12px;background:var(--card);color:var(--ink);font-family:inherit">
+          <button type="submit" class="btn" id="loginBtn" style="width:100%">Sign in</button>
+        </form>
+        <div id="loginError" style="color:var(--red);font-size:12.5px;margin-top:10px;text-align:center;display:none"></div>
+      </div>
     </div>`;
-    return;
+  const email = document.getElementById('loginEmail');
+  const pass = document.getElementById('loginPass');
+  const err = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  document.getElementById('loginForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    err.style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    const { error } = await db.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
+    if(error){
+      err.textContent = error.message || 'Could not sign in.';
+      err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Sign in';
+      pass.value = ''; pass.focus();
+      return;
+    }
+    // Reload rather than hand-running boot()'s wiring: the whole app shell has
+    // to initialise from scratch anyway, and a reload is the one path
+    // guaranteed to match a normal signed-in visit.
+    location.reload();
+  });
+  email.focus();
+}
+
+function renderClientPinGate(onSuccess){
+  document.body.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper)">
+      <div style="max-width:300px;width:100%;padding:32px;text-align:center;box-sizing:border-box">
+        <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:6px">Enter PIN to continue</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:20px">This dashboard is protected.</div>
+        <form id="pinForm">
+          <input type="password" inputmode="numeric" autocomplete="off" id="pinInput" placeholder="PIN" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:16px;text-align:center;letter-spacing:3px;margin-bottom:12px;background:var(--card);color:var(--ink)">
+          <button type="submit" class="btn" style="width:100%">Continue</button>
+        </form>
+        <div id="pinError" style="color:var(--red);font-size:12.5px;margin-top:10px;display:none">Incorrect PIN — try again.</div>
+      </div>
+    </div>`;
+  const input = document.getElementById('pinInput');
+  document.getElementById('pinForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    if(input.value.trim() === CLIENT_DASHBOARD_PIN){
+      store.set('rs_client_pin_ok', '1');
+      onSuccess();
+    } else {
+      document.getElementById('pinError').style.display = 'block';
+      input.value = '';
+      input.focus();
+    }
+  });
+  input.focus();
+}
+/* Everything the portal needs for one client, in one call.
+   Prefers client_portal() (migration v40) — a security definer function that is
+   the ONLY thing anon can touch once RLS is on (v41), because RLS itself can't
+   express "this visitor may read exactly one client": the slug is a parameter
+   the visitor controls, so any policy permissive enough to serve the portal
+   serves every client's data. The function's body is the access rule instead.
+   Falls back to the original direct-table reads when v40 hasn't run, so this
+   ships safely ahead of the migration. */
+async function fetchClientPortal(slug){
+  const { data, error } = await db.rpc('client_portal', { p_slug: slug });
+  if(!error){
+    if(!data) return null;
+    return {
+      client: data.client, projects: data.projects||[], stages: data.stages||[],
+      categories: data.categories||[], links: data.links||[],
+      stageTasks: data.stage_tasks||[], retainerTasks: data.retainer_tasks||[],
+      taskStatuses: data.task_statuses||[]
+    };
   }
+  console.warn('client_portal() not available — run outputs/v40_client_portal_rpc.sql (portal is on the legacy anon-read path; do NOT run v41 yet)', error);
+  return await fetchClientPortalLegacy(slug);
+}
+
+async function fetchClientPortalLegacy(slug){
+  const { data: client, error } = await db.from('rs_clients').select('*').eq('slug', slug).eq('active', true).maybeSingle();
+  if(error || !client) return null;
   const { data: projects } = await db.from('rs_projects').select('*').eq('client_id', client.id).eq('active', true).order('name');
   const projectIds = (projects||[]).map(p=>p.id);
   const stagesRes = projectIds.length ? await db.from('rs_project_stages').select('*').in('project_id', projectIds).order('position') : { data: [] };
@@ -5881,14 +7045,41 @@ async function bootPublicDashboard(slug, isAdmin, initialPub){
       ? db.from('rs_proj_tasks').select('*').eq('client_id', client.id).is('project_id', null).not('due_date','is',null)
       : { data: [] }
   ]);
-  state.projTasks = tasksRes.data||[];
-  state.taskStatuses = (statusesRes.data && statusesRes.data.length) ? statusesRes.data : DEFAULT_TASK_STATUSES;
-  state.stageCategories = categories;
-  state.stageLinks = links;
-  renderPublicDashboard(client, projects||[], stages, categories, links, !!isAdmin, retainerTasksRes.data||[], initialPub);
+  return {
+    client, projects: projects||[], stages, categories, links,
+    stageTasks: tasksRes.data||[], retainerTasks: retainerTasksRes.data||[],
+    taskStatuses: statusesRes.data||[]
+  };
 }
 
-function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks, initialPub){
+async function bootPublicDashboard(slug, isAdmin, initialPub){
+  const portal = await fetchClientPortal(slug);
+  if(!portal || !portal.client){
+    document.body.innerHTML = `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;background:var(--paper);text-align:center">
+      <div><div style="font-size:16px;color:var(--ink);margin-bottom:8px;font-weight:600">Dashboard not found</div>
+      <div style="font-size:13px;color:var(--muted)">This link may have changed or been removed.</div></div>
+    </div>`;
+    return;
+  }
+  // stageStatus()/isCompleteStatus() (shared with the internal app) read from
+  // state — populate just enough of it here since the public path skips loadAll().
+  // openStageCategoryModal/openStageLinkModal (used in admin mode) also read
+  // state.stageCategories/stageLinks to work out new-item positions.
+  state.projTasks = portal.stageTasks;
+  state.taskStatuses = portal.taskStatuses.length ? portal.taskStatuses : DEFAULT_TASK_STATUSES;
+  state.stageCategories = portal.categories;
+  state.stageLinks = portal.links;
+  // Admin-only, and admin mode now requires a login — so this is an ordinary
+  // authenticated read and stays a direct table query rather than going through
+  // client_portal() (which is scoped to exactly one client by design).
+  const otherClients = isAdmin
+    ? (await db.from('rs_clients').select('id,name,slug').eq('active', true).order('name')).data || []
+    : [];
+  renderPublicDashboard(portal.client, portal.projects, portal.stages, portal.categories, portal.links, !!isAdmin, portal.retainerTasks, initialPub, otherClients);
+}
+
+function renderPublicDashboard(client, projects, allStages, allCategories, allLinks, isAdmin, retainerTasks, initialPub, otherClients){
+  otherClients = otherClients || [];
   retainerTasks = retainerTasks || [];
   const now = new Date();
   // 'home' is the landing page (greeting, project cards, useful info); 'project'
@@ -5897,7 +7088,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   // every admin write: add material, toggle a date, drag a task to a new
   // day, etc.) passes the page's current view/selection back in here so an
   // admin action doesn't bounce the client back to Home mid-browse.
-  const pub = initialPub ? { ...initialPub } : { view:'home', projectId: null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth() };
+  const pub = initialPub ? { ganttScale:'weeks', ...initialPub } : { view:'home', projectId: null, viewedStageId: null, calY: now.getFullYear(), calM: now.getMonth(), ganttScale:'weeks' };
   // Reserve the scrollbar gutter permanently — without this, a short page
   // (Home) has no vertical scrollbar while a tall one (a project with lots
   // of materials) does, and the centered max-width container shifts a few
@@ -5919,6 +7110,16 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
   // field is still stored and still editable, just currently unused.
   const websiteHref = safeUrl(client.dash_website_url) || 'https://reciprocal.space';
   async function reload(){ await bootPublicDashboard(client.slug, true, { ...pub }); }
+  // Switching client is a fresh boot (different client = different projects/
+  // stages/tasks entirely, so there's nothing from `pub` worth carrying
+  // over — unlike reload(), which stays on the same client). pushState so
+  // the address bar — and a refresh — reflect whichever client is now being
+  // viewed, same as manually editing the ?client= slug would.
+  async function jumpToClient(newSlug){
+    if(!newSlug || newSlug===client.slug) return;
+    history.pushState({}, '', `?client=${newSlug}&admin=1`);
+    await bootPublicDashboard(newSlug, true);
+  }
 
   /* Admin-only "+" on a calendar day — the client is already fixed by the
      portal we're on, so this is deliberately just a name + a date, not the
@@ -6275,6 +7476,11 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <span class="pd-nav-group-icon" style="${timelineActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
           <span class="pd-nav-group-label">Timeline</span>
         </button>` : '';
+      const ganttActive = pub.view==='gantt';
+      const ganttBtn = projects.length ? `<button type="button" class="pd-nav-group ${ganttActive?'active':''}" data-pdgantt="1" style="${ganttActive?`color:${accent}`:''}">
+          <span class="pd-nav-group-icon" style="${ganttActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M4 5h9M4 5v14M4 12h13M4 19h6"/></svg></span>
+          <span class="pd-nav-group-label">Gantt</span>
+        </button>` : '';
       const allTasksActive = pub.view==='alltasks';
       const allTasksBtn = !projects.length ? `<button type="button" class="pd-nav-group ${allTasksActive?'active':''}" data-pdalltasks="1" style="${allTasksActive?`color:${accent}`:''}">
           <span class="pd-nav-group-icon" style="${allTasksActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M8 6h12M8 12h12M8 18h12"/><path d="m4 6 .01.01M4 12l.01.01M4 18l.01.01" stroke-width="2.4" stroke-linecap="round"/></svg></span>
@@ -6285,7 +7491,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
           <span class="pd-nav-group-icon" style="${calendarActive?`color:${accent}`:''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
           <span class="pd-nav-group-label">Calendar</span>
         </button>` : '';
-      const globalNav = `<div style="margin-bottom:26px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}${allTasksBtn}${calendarBtn}</div>`;
+      const globalNav = `<div style="margin-bottom:26px;display:flex;flex-direction:column;gap:2px">${homeBtn}${timelineBtn}${ganttBtn}${allTasksBtn}${calendarBtn}</div>`;
       const footerLink = `<a class="pd-nav-footer-link" href="${esc(websiteHref)}" target="_blank" rel="noopener">${LINK_ICONS.link} Reciprocal Space</a>`;
       // Who's actually handling this account — optional (dash_contact_name/
       // _role, set from the internal app's client edit modal), so this
@@ -6387,7 +7593,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <div class="pd-materials-grid">${projects.map(pdProjectCardHtml).join('')}</div>
     ` : '';
     const homeHtml = `
-      <h2 style="margin-bottom:0">Hello, ${esc(client.name)}</h2>
+      <h2 style="margin-bottom:0">Hello, ${esc(client.name)}${client.is_retainer? ' <span class="retainer-badge">Retainer</span>':''}</h2>
       <p class="sub" style="margin:10px 0 0;max-width:640px">${esc(DASH_EXPLAINER)}</p>
       ${renewalLineHtml}
       ${client.dash_greeting? `<p class="sub" style="margin:8px 0 0;max-width:640px">${esc(client.dash_greeting)}</p>`:''}
@@ -6443,8 +7649,48 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       ${timelineRows || `<div class="empty" style="padding:20px 0">No dates scheduled yet.</div>`}
     `;
 
+    // Gantt — a bar-chart view of this client's own active projects, built by
+    // the shared ganttChartHtml() the internal Milestones > Gantt page also
+    // uses, so both charts stay identical in behaviour by construction rather
+    // than by two copies of the same date maths being kept in sync by hand.
+    // One row per project (no group header — this page only ever shows one
+    // client). Respects hide_due_date_from_client the same way Timeline does,
+    // but stricter: a hidden stage is dropped from the client's chain entirely
+    // rather than relabeled, since a bar's POSITION leaks the date just as
+    // effectively as printing it; admin mode includes every dated stage.
+    const ganttGroups = [{
+      label: '',
+      rows: projects.map(p=>{
+        const all = stagesFor(p.id);
+        const dated = all.filter(s=>s.due_date && (isAdmin || !s.hide_due_date_from_client));
+        return {
+          id: p.id,
+          label: p.project_type,
+          color: accent,
+          done: all.filter(s=>stageStatus(s.id)==='Complete').length,
+          total: all.length,
+          stages: dated.map(s=>({
+            id:s.id, name:s.name, dueIso:s.due_date,
+            complete: stageStatus(s.id)==='Complete',
+            attrs: `data-pdstage="${s.id}" data-pdstageproj="${p.id}"`
+          }))
+        };
+      })
+    }];
+    const ganttHtml = `<h2 style="margin-bottom:0">Gantt</h2>
+      <p class="sub" style="margin:10px 0 22px">Every stage across your active projects, on one timeline. Click a bar to open that stage.</p>
+      ${ganttChartHtml({
+        groups: ganttGroups,
+        todayIso,
+        scale: pub.ganttScale,
+        scaleAttr: 'data-pdgscale',
+        legendColor: accent,
+        emptyText: 'No dates scheduled yet.'
+      })}`;
+
     const contentHtml = (pub.view==='project' && proj) ? projectHtml
       : (pub.view==='timeline' && projects.length) ? timelineHtml
+      : (pub.view==='gantt' && projects.length) ? ganttHtml
       : (pub.view==='alltasks' && !projects.length) ? allTasksHtml
       : (pub.view==='calendar' && !projects.length) ? calendarPageHtml
       : homeHtml;
@@ -6479,6 +7725,9 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
       <div style="--pd-accent:${accent};min-height:100vh;background:var(--paper);font-family:'Inter',sans-serif;color:var(--ink);display:flex;flex-direction:column">
         ${isAdmin? `<div style="background:var(--accent-soft);color:var(--accent);border-bottom:1px solid var(--line);text-align:center;padding:10px 20px;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap">
           <span>🔒 Admin view — add links and manage assets here. The client only ever sees the read-only version.</span>
+          ${otherClients.length>1 ? `<select id="pdClientSwitch" style="font-size:12.5px;font-family:inherit;border:1px solid var(--accent);color:var(--accent);background:var(--card);border-radius:7px;padding:4px 8px;cursor:pointer">
+            ${otherClients.map(c=>`<option value="${esc(c.slug)}" ${c.slug===client.slug?'selected':''}>${esc(c.name)}</option>`).join('')}
+          </select>` : ''}
           <button class="btn small ghost" id="pdCopyClient">Copy client link</button>
         </div>` : ''}
         <div style="max-width:1600px;width:100%;box-sizing:border-box;margin:0 auto;padding:0 24px;flex:1;display:flex;flex-direction:column;min-width:0">
@@ -6494,12 +7743,19 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
 
     document.querySelectorAll('[data-pdhome]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='home'; paint(); }));
     document.querySelectorAll('[data-pdtimeline]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='timeline'; paint(); }));
+    document.querySelectorAll('[data-pdgantt]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='gantt'; paint(); }));
     document.querySelectorAll('[data-pdalltasks]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='alltasks'; paint(); }));
     document.querySelectorAll('[data-pdcalendar]').forEach(el=>el.addEventListener('click', ()=>{ pub.view='calendar'; paint(); }));
     document.querySelectorAll('[data-pdtab]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdtab; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-pdopenproj]').forEach(el=>el.addEventListener('click', ()=>{ pub.projectId = el.dataset.pdopenproj; pub.viewedStageId = null; pub.view='project'; paint(); }));
     document.querySelectorAll('[data-openlink]').forEach(el=>el.addEventListener('click', ()=> window.open(el.dataset.openlink, '_blank', 'noopener,noreferrer')));
     document.querySelectorAll('[data-pdstage]').forEach(el=>el.addEventListener('click', ()=>{ pub.viewedStageId = el.dataset.pdstage; if(el.dataset.pdstageproj) pub.projectId = el.dataset.pdstageproj; pub.view='project'; paint(); }));
+    // Gantt zoom + land scrolled to "today" — wireGanttChart is the same shared
+    // wiring the internal Milestones > Gantt page uses.
+    if(pub.view==='gantt'){
+      document.querySelectorAll('[data-pdgscale]').forEach(el=>el.addEventListener('click', ()=>{ pub.ganttScale = el.dataset.pdgscale; paint(); }));
+      wireGanttChart(document);
+    }
     document.querySelectorAll('[data-calnav]').forEach(el=>el.addEventListener('click', ()=>{
       let m = pub.calM + (+el.dataset.calnav);
       let y = pub.calY;
@@ -6514,6 +7770,8 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         const url = `${window.location.origin}${window.location.pathname}?client=${client.slug}`;
         navigator.clipboard?.writeText(url).then(()=> toast('Client link copied')).catch(()=> toast(url));
       });
+      const switchSel = document.getElementById('pdClientSwitch');
+      if(switchSel) switchSel.addEventListener('change', ()=> jumpToClient(switchSel.value));
       // "+ Add material"/"+ Add note" no longer surface category management at
       // all — find-or-create a category behind the scenes (ensureMaterialsCategory)
       // and go straight to the link modal. Scope falls back stage → project →
@@ -6587,7 +7845,56 @@ async function boot(){
 
   const qs = new URLSearchParams(window.location.search);
   const clientSlug = qs.get('client');
-  if(clientSlug){ await bootPublicDashboard(clientSlug, qs.get('admin')==='1'); return; }
+  if(clientSlug){
+    const isAdminReq = qs.get('admin')==='1';
+    // Admin mode edits real data, so it now requires a signed-in team member —
+    // previously anyone who had the &admin=1 URL could write. A plain
+    // ?client=slug visit never touches auth and stays open to clients.
+    // renderLoginGate reloads on success, which returns here with the same URL
+    // (admin flag intact) and a session in hand.
+    const start = async ()=>{
+      if(!isAdminReq){ await bootPublicDashboard(clientSlug, false); return; }
+      const { data:{ session } } = await db.auth.getSession();
+      if(!session){ renderLoginGate(); return; }
+      AUTH_EMAIL = (session.user.email||'').trim().toLowerCase();
+      await bootPublicDashboard(clientSlug, true);
+    };
+    if(clientPinOk()) await start();
+    else renderClientPinGate(start);
+    return;
+  }
+
+  // The internal app requires a signed-in team member. This gate is what makes
+  // RLS meaningful later (v41) — until requests carry an identity, no policy can
+  // tell the team apart from anyone else holding the anon key. Deliberately
+  // AFTER the ?client= branch above, so client portals stay open to clients.
+  const { data:{ session } } = await db.auth.getSession();
+  if(!session){ renderLoginGate(); return; }
+  AUTH_EMAIL = (session.user.email||'').trim().toLowerCase();
+
+  /* One-time reveal of the Est. column. Any browser with a saved column set has
+     one that predates this column, so it'd sit hidden behind Columns ▾ and the
+     feature would look like it never shipped. Flag-guarded, so if you turn it
+     back off that sticks. */
+  /* Saved column prefs predate the merged People column, so a returning browser
+     would show neither the old designer/reviewer columns (gone) nor the new one.
+     Swap them once, in place, keeping roughly the old position. */
+  if(!store.get('rs_task_cols_people')){
+    const old = ['designer','reviewer','animator'];
+    const hadAny = old.some(k=>state.taskCols.has(k));
+    old.forEach(k=>state.taskCols.delete(k));
+    if(hadAny || !state.taskCols.size) state.taskCols.add('people');
+    const at = Math.max(0, state.taskColOrder.findIndex(k=>old.includes(k)));
+    state.taskColOrder = state.taskColOrder.filter(k=>!old.includes(k));
+    if(!state.taskColOrder.includes('people')) state.taskColOrder.splice(at, 0, 'people');
+    saveTaskCols(); saveTaskColOrder();
+    store.set('rs_task_cols_people','1');
+  }
+  if(!store.get('rs_task_cols_est')){
+    state.taskCols.add('estimate');
+    saveTaskCols();
+    store.set('rs_task_cols_est','1');
+  }
 
   $('#sidebar').style.display = 'flex';
   $('#themeToggleBtn').addEventListener('click', toggleTheme);
@@ -6604,6 +7911,10 @@ async function boot(){
   });
   $('#mobileNavBackdrop').addEventListener('click', closeMobileNav);
   $('#brandBtn').addEventListener('click', ()=>{ state.view='home'; render(); });
+  $('#sidebarSignOut').addEventListener('click', async ()=>{
+    await db.auth.signOut();
+    location.reload();
+  });
   document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click', ()=>{
     state.view = b.dataset.view;
     if(state.view==='projects'){ state.projView='clients'; state.projClientId=null; state.projProjectId=null; }
@@ -6667,7 +7978,9 @@ function animProjectCardHtml(p){
   const approved = steps.length ? shots.filter(s=> animShotProgress(s, steps).done===steps.length).length : 0;
   const pct = shots.length ? Math.round(approved/shots.length*100) : 0;
   return `<div class="card client-card" data-animopen="${p.id}">
-    <h3 style="display:flex;align-items:center;gap:8px">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:'Unknown client'}</h3>
+    <h3 style="display:flex;align-items:center;gap:8px">${c?`<span class="dot" style="background:${colorFor(c)}"></span>${esc(c.name)}`:'Unknown client'}
+      ${c? `<span class="card-actions"><button class="btn small ghost menu-dots" data-animclientmenu="${c.id}" title="More options"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="15" height="15"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></button></span>`:''}
+    </h3>
     <div class="cycle"><span class="type-badge">${projectTypeIconHtml(p.project_type,12)} ${esc(p.project_type)}</span>${projectScopePillHtml(p,{afterBadge:true, accent:c?colorFor(c):null})}${p.label?`<span class="label-chip">${esc(p.label)}</span>`:''}</div>
     <div class="breakdown" style="border-top:none;padding-top:0;margin-top:10px">
       <div><span>Shots</span><span>${shots.length}</span></div>
@@ -6707,6 +8020,12 @@ function renderAnimProjectsGrid(){
     : `<div class="empty">No embedded animation projects yet — tick "Requires animation pipeline" when creating or editing a project to add it here.</div>`;
 
   main.innerHTML = html;
+  // Nested inside the whole-card click target, so stop the click reaching it —
+  // opening the kebab must not also open the project.
+  main.querySelectorAll('[data-animclientmenu]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openMenuPopover(e.currentTarget, [contactInfoMenuItem(el.dataset.animclientmenu)]);
+  }));
   main.querySelectorAll('[data-animopen]').forEach(el=>el.addEventListener('click', ()=>{
     const proj = state.projects.find(x=>x.id===el.dataset.animopen);
     // Embedded animation work now lives on the project's own page (merged
@@ -6733,7 +8052,7 @@ function renderAnimProjectsGrid(){
 function animProjectHeaderHtml(p){
   const c = state.clients.find(cl=>cl.id===p.client_id);
   const scopeLabel = p.anim_total_seconds!=null ? `${p.anim_total_seconds}s length` : 'No length set';
-  return `<div class="breadcrumb"><button data-animback="1">Animation</button><span class="sep">/</span><span class="current">${c?esc(c.name):'?'}${p.label?' · '+esc(p.label):''}</span></div>
+  return `<div class="breadcrumb"><button data-animback="1">Animation</button><span class="sep"></span><span class="current">${c?esc(c.name):'?'}${p.label?' · '+esc(p.label):''}</span></div>
     <h2 style="display:flex;align-items:center;gap:8px">${projectTypeIconHtml(p.project_type,18)}${c?esc(c.name):'?'}${p.label?` <span style="font-weight:400;color:var(--muted)">· ${esc(p.label)}</span>`:''}
       <span style="font-size:12px;font-weight:500;color:var(--muted);vertical-align:middle;background:var(--track);padding:3px 9px;border-radius:99px">${esc(scopeLabel)}</span>
     </h2>`;
