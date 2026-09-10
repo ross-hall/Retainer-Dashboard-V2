@@ -6283,7 +6283,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.76.0';
+const APP_VERSION = '0.77.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
