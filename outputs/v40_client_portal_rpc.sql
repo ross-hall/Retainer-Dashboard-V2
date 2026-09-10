@@ -41,6 +41,10 @@ set search_path = public
 as $$
 declare
   v_client rs_clients%rowtype;
+  -- Effort/billing fields stripped from every task before it reaches a client's
+  -- browser. Same reasoning as the client whitelist below: the portal renders a
+  -- task's title and date, never its hours, so shipping them is pure exposure.
+  v_task_hidden text[] := array['estimated_hours','recorded_hours','counts_toward_retainer'];
   v_project_ids uuid[];
   v_stage_ids uuid[];
   v_cat_ids uuid[];
@@ -88,12 +92,12 @@ begin
     'links', coalesce((select jsonb_agg(to_jsonb(l) order by l.position)
                          from rs_stage_links l where l.category_id = any(v_cat_ids)), '[]'::jsonb),
     -- Tasks inside this client's stages — drives stageStatus() on the portal.
-    'stage_tasks', coalesce((select jsonb_agg(to_jsonb(t))
+    'stage_tasks', coalesce((select jsonb_agg(to_jsonb(t) - v_task_hidden)
                                from rs_proj_tasks t where t.stage_id = any(v_stage_ids)), '[]'::jsonb),
     -- Retainer to-do items (client-scoped, no project, dated). Gated on
     -- is_retainer to match the app's existing fetch exactly.
     'retainer_tasks', case when v_client.is_retainer then
-        coalesce((select jsonb_agg(to_jsonb(t)) from rs_proj_tasks t
+        coalesce((select jsonb_agg(to_jsonb(t) - v_task_hidden) from rs_proj_tasks t
                    where t.client_id = v_client.id and t.project_id is null
                      and t.due_date is not null), '[]'::jsonb)
       else '[]'::jsonb end,
