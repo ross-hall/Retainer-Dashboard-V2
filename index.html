@@ -270,7 +270,14 @@
   .task-grid-row > div.inline-editable,
   .task-grid-row > div:has(.pill-btn, .stage-date-btn, .inline-editable){overflow:visible}
   .task-grid-header{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);font-weight:600;padding:9px 10px;position:sticky;top:0;background:var(--card);z-index:3}
-  .rc-event-chip{font-size:10px;padding:3px 6px;border-radius:4px;margin-bottom:3px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-left:3px solid;font-weight:600}
+  .milestone-chip.cal-chip{padding:6px 7px;margin-bottom:5px;font-size:10.5px;line-height:1.45}
+.milestone-chip.cal-chip .mc1{font-size:11px;margin-bottom:1px;align-items:flex-start}
+.milestone-chip.cal-chip .mc1 .dot{margin-top:3px;flex:0 0 auto}
+/* Wrap to two lines rather than truncating — the whole point of moving off the
+   old single-line strip was that a task title got cut off mid-word. */
+.milestone-chip.cal-chip .mc-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.milestone-chip.cal-chip .mc2,.milestone-chip.cal-chip .mc3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.milestone-chip.cal-chip .avatar{width:16px;height:16px;font-size:8px}
 .pill-popover-sect{display:flex;flex-direction:column;flex:0 0 auto}
 .pill-popover-note{font-size:11.5px;color:var(--muted);padding:4px 10px 8px;line-height:1.4}
 .pill-popover-group{position:sticky;top:0;z-index:1;background:var(--card);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-light);padding:9px 10px 4px}
@@ -713,9 +720,9 @@
   .pd-cal-dow{font-size:10px;font-weight:600;text-transform:uppercase;color:var(--muted);text-align:center;padding:4px 0 8px}
   .pd-cal-day{position:relative;min-height:92px;border-radius:8px;padding:8px;border:1px solid var(--line-soft)}
   .pd-cal-daynum{font-size:11px;font-weight:600;color:var(--ink);margin-bottom:6px}
-  .pd-cal-chip{font-size:10px;padding:3px 6px;border-radius:5px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--track);color:var(--ink)}
-  .pd-cal-chip[draggable="true"]{cursor:grab}
-  .pd-cal-chip:active{cursor:grabbing}
+  .milestone-chip.cal-chip[draggable="true"]{cursor:grab}
+  .milestone-chip.cal-chip[draggable="false"]{cursor:pointer}
+  .milestone-chip.cal-chip:active{cursor:grabbing}
   .pd-cal-day.drop-target{background:var(--track)}
   .pd-cal-more{font-size:10px;color:var(--muted)}
   /* Hover-reveal "+" (admin only) to add a retainer task due that day. */
@@ -840,7 +847,7 @@
     .pd-stages-col{border-right:none;border-bottom:1px solid var(--line);padding:0 0 16px;margin-bottom:22px}
     .pd-content-col{padding:0 0 32px}
   }
-  @media(max-width:760px){ .pd-cal-chip{display:none} }
+  @media(max-width:760px){ .milestone-chip.cal-chip{display:none} .pd-cal-more{display:none} }
   .year-row:last-child{border-bottom:none}
 </style>
 </head>
@@ -927,7 +934,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M15 17v1.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V7"/><path d="M10 12h9.5m0 0-3-3m3 3-3 3"/></svg>
       </button>
     </div>
-    <div id="versionBadge" class="version-badge">v0.79.0</div>
+    <div id="versionBadge" class="version-badge">v0.79.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -2893,8 +2900,8 @@ function renderClientCalendarBodyHtml(c){
     const tks = tasksByDate[dateStr] || [];
     const isToday = dateStr===todayIso;
     // Events first: they're the context you read the day's work against.
-    const evChips = evs.map(e=>`<div class="rc-event-chip" draggable="true" data-rcevent="${e.id}" style="background:${mutedBg(accent)};color:${accent};border-left-color:${accent}" title="${esc(e.title)}${e.note?` — ${esc(e.note)}`:''} · click to edit">${esc(e.title)}</div>`).join('');
-    const tkChips = tks.slice(0,2).map(t=>`<div class="pd-cal-chip" draggable="true" data-rctask="${t.id}" title="${esc(t.title)} — drag to reschedule">${esc(t.title)}</div>`).join('');
+    const evChips = evs.map(e=>calEventChipHtml(e, accent)).join('');
+    const tkChips = tks.slice(0,2).map(t=>calTaskChipHtml(t, { withPeople:true, draggable:true, attrs:`data-rctask="${t.id}"` })).join('');
     cells += `<div class="pd-cal-day" data-rcdrop="${dateStr}" style="${isToday?`border-color:${accent};border-width:2px`:''}">
       <div class="pd-cal-daynum" style="${isToday?`color:${accent}`:''}">${d}</div>
       <button type="button" class="pd-cal-add-btn" style="background:${accent}" data-rcadd="${dateStr}" title="Add an event">+</button>
@@ -2916,7 +2923,7 @@ function renderClientCalendarBodyHtml(c){
       <div class="pd-cal-grid">${['S','M','T','W','T','F','S'].map(x=>`<div class="pd-cal-dow">${x}</div>`).join('')}${cells}</div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:11.5px;color:var(--muted)">
         <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${accent};vertical-align:middle;margin-right:5px"></span>Client event</span>
-        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--track);border:1px solid var(--line);vertical-align:middle;margin-right:5px"></span>Retainer task</span>
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--muted);vertical-align:middle;margin-right:5px"></span>Retainer task <span style="opacity:.75">(dot shows status)</span></span>
         <span>Drag either to move it · click a day's + to add an event</span>
       </div>
     </div>
@@ -2930,6 +2937,53 @@ function renderClientCalendarBodyHtml(c){
         </div>`).join('')
         : emptyStateHtml({ icon:'calendar', title:'No upcoming events', subtitle:'Add board meetings, readouts, conferences — anything dated that isn\'t a task.' })}
     </div>`;
+}
+/* One chip design across all three calendars. The Milestones grid's
+   .milestone-chip (bold titled line + two muted lines, left accent border,
+   hover lift) is the app's established "dated thing" card, so the retainer
+   calendar and the client portal now use it too instead of the old
+   single-line chip strip, which truncated the title and showed
+   nothing else about the task.
+
+   `.cal-chip` is a size modifier, not a second design: a 7-column month grid
+   is narrower than the Milestones grid's 5, so padding and type step down
+   while the structure stays identical. */
+function calChipHtml({ title, dotColor, line2, line3, attrs, draggable }){
+  return `<div class="milestone-chip cal-chip" draggable="${draggable?'true':'false'}" ${attrs||''} title="${esc(title)}${line2?` — ${esc(String(line2).replace(/<[^>]*>/g,''))}`:''}" style="border-left-color:${dotColor}">
+    <div class="mc1"><span class="dot" style="background:${dotColor}"></span><span class="mc-title">${esc(title)}</span></div>
+    ${line2?`<div class="mc2">${line2}</div>`:''}
+    ${line3?`<div class="mc3">${line3}</div>`:''}
+  </div>`;
+}
+/* Internal: status, who's on it, and the title — the three things you actually
+   want off a calendar. Avatars are internal-only because the public portal
+   never fetches rs_members, so there are no names to render there. */
+function calTaskChipHtml(t, opts){
+  const people = (opts && opts.withPeople) ? taskAssignedIds(t) : [];
+  const pri = t.priority ? `<span style="opacity:.85">${esc(t.priority)}</span>` : '';
+  const statusLine = `${esc(t.status||'To do')}${pri?` · ${pri}`:''}`;
+  return calChipHtml({
+    title: t.title,
+    dotColor: statusColor(t.status),
+    line2: statusLine,
+    line3: (opts && opts.withPeople)
+      ? (people.length ? avatarGroupHtml(people) : '<span style="opacity:.7">Unassigned</span>')
+      : '',
+    attrs: (opts && opts.attrs) || '',
+    draggable: !!(opts && opts.draggable)
+  });
+}
+function calEventChipHtml(e, accent){
+  const kind = (CLIENT_EVENT_KINDS.find(k=>k[0]===e.kind)||['','Event'])[1];
+  const multi = e.end_date && e.end_date > e.event_date;
+  return calChipHtml({
+    title: e.title,
+    dotColor: accent,
+    line2: esc(kind),
+    line3: multi ? esc(clientEventDateLabel(e)) : (e.note ? esc(e.note) : ''),
+    attrs: `data-rcevent="${e.id}"`,
+    draggable: true
+  });
 }
 function clientEventDateLabel(e){
   const a = new Date(e.event_date+'T00:00');
@@ -7617,7 +7671,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.79.0';
+const APP_VERSION = '0.79.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -8711,7 +8765,7 @@ function renderPublicDashboard(client, projects, allStages, allCategories, allLi
         cells += `<div class="pd-cal-day" data-caldropdate="${dateStr}" style="${isToday?`border-color:${accent};border-width:2px`:''}">
           <div class="pd-cal-daynum" style="${isToday?`color:${accent}`:''}">${d}</div>
           ${isAdmin? `<button type="button" class="pd-cal-add-btn" style="background:${accent}" data-caladdpd="${dateStr}" title="Add task">+</button>`:''}
-          ${dayTasks.slice(0,2).map(t=>`<div class="pd-cal-chip" draggable="${isAdmin}" data-calchip="${t.id}" title="${esc(t.title)}${isAdmin?' — drag to reschedule':''}">${esc(t.title)}</div>`).join('')}
+          ${dayTasks.slice(0,2).map(t=>calTaskChipHtml(t, { draggable:isAdmin, attrs:`data-calchip="${t.id}"` })).join('')}
           ${dayTasks.length>2? `<div class="pd-cal-more">+${dayTasks.length-2} more</div>`:''}
         </div>`;
       }
