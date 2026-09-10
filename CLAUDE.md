@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.75.0**
+Current version: **v0.76.0**
 
 > ✅ **RLS IS ON — verified live 2026-09-10.** v40 and v41 have both run. Confirmed against the live DB: `anon` gets `42501 permission denied` on a direct `rs_clients` read, `client_portal()` returns a full payload for `anon`, and the internal-only client columns (`retainer_hours`, `rollover_*`, `retainer_paused`, `miro_link_internal`) are no longer in that payload. v39 was skipped and that turned out to be harmless — see below.
 >
@@ -798,6 +798,16 @@ Font: Inter (unchanged from v0.9.0)
 - **v40 was updated and must be re-run.** `client_portal()` returned whole task rows, so `estimated_hours` would have shipped to every client's browser. It now strips `estimated_hours`/`recorded_hours`/`counts_toward_retainer` from the task payload (`to_jsonb(t) - v_task_hidden`) — the last two were already leaking before this version. `create or replace`, so re-running is safe.
 - **One-time reveal of the Est. column**: any browser with a saved `rs_task_cols` set has one predating this column, so it would sit hidden behind Columns ▾ and the feature would look like it never shipped. Guarded by a `rs_task_cols_est` flag so turning it back off sticks.
 - **Pre-existing, not introduced here:** at very low usage with a wide allowance (e.g. 4h of 40h) the "used" and "%" labels on the big bar overlap, because the %-label's 16% tracking floor doesn't clear the wider text. Unrelated to estimates — worth a separate fix if it becomes annoying.
+
+**What shipped in v0.76.0** (task modal redesigned around a people dropdown; calendar task chips now open a details modal instead of navigating away):
+- **People selection is a dropdown, not a wall of pills.** `pillSelectorHtml` rendered *every* eligible member as a toggle pill — up to 27 across Designers/Reviewers/Animators — which dominated the modal. Replaced by `assigneeFieldHtml`/`wireAssigneeField`/`assigneeFieldValue`: a control that looks like a normal form input with the chosen people as chips inside it, opening the **same `openMultiPillPopover`** every task row already uses, so picking people looks identical wherever you do it.
+- **Value carried in a hidden input**, the same pattern `statusFieldHtml`/`dateFieldHtml` already use — so the save handler reads one field per role instead of scraping `.member-pill.selected` classes back out of the DOM. Unlike the task-row picker, toggling here writes nothing until the modal's own Save.
+- **The three team fields now sit in the normal 2-up grid** rather than each spanning full width, so the Team section is three compact rows instead of three stacked pill walls — the main reason the modal was so tall.
+- **`pillSelectorHtml` and its `.pill-select`/`.member-pill` CSS were deleted** — grep confirmed the task modal was the only consumer, so it's gone rather than left dead.
+- **New `openTaskPreviewModal(taskId)`** — calendar task chips previously called `jumpToProjTask`, which navigated the whole app to that task's project/retainer page *and* opened the edit form, so glancing at "what's this on Tuesday?" cost you your place in the calendar. Stage chips already previewed via `openStagePreviewModal`; task chips were the odd one out. The new modal shows status, priority, due, estimate, logged hours, assignees and the retainer flag, with **Close / Open in context / Edit task**. "Edit task" deliberately does *not* navigate, so closing it returns you to the calendar; "Open in context" keeps the old jump as an explicit choice. One handler change covers both the month and week views, since they share `data-msitem`.
+- The command palette still uses `jumpToProjTask` — jumping is the point there, so it was left alone.
+- Verified live **against real data**: the harness browser turned out to hold a genuine signed-in session (`r.hall@reciprocal.space`) persisted from local testing, so `loadAll()` succeeded under RLS rather than needing synthetic state. Confirmed the dropdown opens with all eligible members, toggling updates both the hidden input and the chips (`m1,m3` → `m1,m3,m4`), Save sends the right arrays (verified with a stubbed write — nothing real was mutated), a real task ("Deck Updates") opens with populated chips and zero leftover pills, and a calendar chip click opens the preview with avatars while `state.view` stays on `milestones`.
+- Re-confirmed while investigating: `anon` still gets 401 on both read and write against the live DB, so RLS is intact.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

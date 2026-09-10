@@ -461,10 +461,9 @@
   .avatar-group .avatar{margin-left:-8px}
   .avatar-group .avatar:first-child{margin-left:0}
 
-  .pill-select{display:flex;flex-wrap:wrap;gap:7px}
   /* People picker for the task modal: reads as a normal form control with the
      chosen people as chips inside it, and opens the same openMultiPillPopover
-     every task row uses. Replaces pillSelectorHtml's wall of toggle pills — up
+     every task row uses. Replaced the old wall of toggle member pills — up
      to 27 of them across three roles, which dominated the modal. */
   .assignee-field{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%;min-height:40px;box-sizing:border-box;padding:6px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card);cursor:pointer;text-align:left;font-family:inherit;transition:box-shadow var(--fast) var(--ease)}
   .assignee-field:hover{box-shadow:0 0 0 1px var(--ink-light)}
@@ -472,9 +471,6 @@
   .assignee-chip .avatar{width:auto;height:20px;min-width:20px;font-size:9px;border:none}
   .assignee-empty{font-size:13px;color:var(--muted)}
   .assignee-field .pill-chevron{margin-left:auto;color:var(--muted);flex:none}
-  .member-pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--card);border-radius:99px;padding:3px 12px 3px 3px;font-size:12.5px;cursor:pointer}
-  .member-pill .avatar{width:auto;height:20px;min-width:20px;font-size:9px;border:none}
-  .member-pill.selected{border-color:var(--accent);background:var(--track);font-weight:600}
 
   .status-pill{font-size:12px;font-weight:600;padding:5px 12px;border-radius:99px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;background:var(--track);color:var(--ink);letter-spacing:0}
   .status-todo{background:var(--track);color:var(--muted)}
@@ -926,7 +922,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M15 17v1.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V7"/><path d="M10 12h9.5m0 0-3-3m3 3-3 3"/></svg>
       </button>
     </div>
-    <div id="versionBadge" class="version-badge">v0.75.0</div>
+    <div id="versionBadge" class="version-badge">v0.76.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -4042,11 +4038,6 @@ function assigneeFieldValue(id){
   return el ? (el.value||'').split(',').filter(Boolean) : [];
 }
 
-function pillSelectorHtml(members, selectedIds){
-  if(!members.length) return '<div class="empty" style="padding:4px 0">No eligible team members — check Settings</div>';
-  return `<div class="pill-select">${members.map(m=>`<button type="button" class="member-pill ${selectedIds.includes(m.id)?'selected':''}" data-pillmember="${m.id}"><span class="avatar" style="background:${clientColor(m.id)}">${initials(m.name)}</span>${esc(m.name)}</button>`).join('')}</div>`;
-}
-
 function taskEntriesFor(taskId){ return (state.projTaskEntries||[]).filter(e=>e.proj_task_id===taskId).sort((a,b)=>a.work_date.localeCompare(b.work_date)); }
 function taskHoursTotal(taskId){
   return taskEntriesFor(taskId).reduce((n,e)=>{ const m=state.members.find(mm=>mm.id===e.member_id); return n + e.hours*(m?(m.weight||1):1); }, 0);
@@ -7149,7 +7140,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.75.0';
+const APP_VERSION = '0.76.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
