@@ -270,7 +270,8 @@
   .task-grid-row > div.inline-editable,
   .task-grid-row > div:has(.pill-btn, .stage-date-btn, .inline-editable){overflow:visible}
   .task-grid-header{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);font-weight:600;padding:9px 10px;position:sticky;top:0;background:var(--card);z-index:3}
-  .pill-popover-sect{display:flex;flex-direction:column;flex:0 0 auto}
+  .rc-event-chip{font-size:10px;padding:3px 6px;border-radius:4px;margin-bottom:3px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-left:3px solid;font-weight:600}
+.pill-popover-sect{display:flex;flex-direction:column;flex:0 0 auto}
 .pill-popover-note{font-size:11.5px;color:var(--muted);padding:4px 10px 8px;line-height:1.4}
 .pill-popover-group{position:sticky;top:0;z-index:1;background:var(--card);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-light);padding:9px 10px 4px}
   .pill-popover-group:first-child{padding-top:2px}
@@ -926,7 +927,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M15 17v1.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V7"/><path d="M10 12h9.5m0 0-3-3m3 3-3 3"/></svg>
       </button>
     </div>
-    <div id="versionBadge" class="version-badge">v0.78.0</div>
+    <div id="versionBadge" class="version-badge">v0.79.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -986,10 +987,13 @@ let state = { view:'home', clients:[], members:[], tasks:[],
   taskColOrder:loadStoredArray('rs_task_col_order', DEFAULT_TASK_COL_ORDER),
   milestoneMonth:null, milestoneHidden:new Set(), milestoneViewMode:'month', milestoneAnchor:null,
   milestoneShowProjects:true, milestoneShowRetainer:true, milestoneTypeHidden:new Set(),
+  // Off unless deliberately turned on — see INDUSTRY_EVENTS.
+  milestoneShowIndustry: store.get('rs_ms_industry')==='1',
   homeCols:loadStoredSet('rs_home_cols', ['priority','due']), homeHoursExpanded:false,
   taskColWidths:loadStoredObj('rs_task_col_widths'), tasksAheadColWidths:loadStoredObj('rs_tasksahead_col_widths'), taskStatuses:[], stageCategories:[], stageLinks:[], animShots:[], animSteps:[], animCells:[], animProjectId:null, animTab:'home', animFeedback:[], animCellStatuses:[], projTaskEntries:[], clientListGroup:'client', clientListSort:'alpha', settingsSection:'clients',
   departments:[], internalTasks:[], checklists:[], checklistItems:[], checklistTemplates:[], checklistTemplateItems:[], tools:[], animDeliverables:[], animDeliverableColumns:[],
   timeOffRequests:[], timeOffView:'list', timeOffCalY:null, timeOffCalM:null, appSettings:{}, clientContacts:[],
+  clientEvents:[], clientCalY:null, clientCalM:null,
   taskSort: store.get('rs_task_sort') || 'due', taskSortDir: store.get('rs_task_sortdir') || 'asc', taskGroupBy: store.get('rs_task_groupby') || 'taskstatus',
   ganttScale: store.get('rs_gantt_scale') || 'weeks',
   internalCols:loadStoredSet('rs_internal_cols', DEFAULT_INTERNAL_COLS),
@@ -1395,7 +1399,7 @@ async function loadAll(){
   if (c.error||m.error||t.error){ toast('Load failed — check Supabase setup'); console.error(c.error||m.error||t.error); return; }
   state.clients = c.data; state.members = m.data; state.tasks = t.data;
 
-  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc,tor,aps,ccn] = await Promise.all([
+  const [pr,st,pt,pty,ts,sc,sl,ash,ast,acl,afb,pte,acs,dep,int,cl,cli,tls,clt,clti,adl,adc,tor,aps,ccn,cev] = await Promise.all([
     db.from('rs_projects').select('*').order('name'),
     db.from('rs_project_stages').select('*').order('position'),
     db.from('rs_proj_tasks').select('*').order('created_at'),
@@ -1420,7 +1424,8 @@ async function loadAll(){
     db.from('rs_anim_deliverable_columns').select('*').order('position'),
     db.from('rs_time_off_requests').select('*').order('start_date',{ascending:false}),
     db.from('rs_app_settings').select('*'),
-    db.from('rs_client_contacts').select('*').order('position')
+    db.from('rs_client_contacts').select('*').order('position'),
+    db.from('rs_client_events').select('*').order('event_date')
   ]);
   state.projects = pr.data||[]; state.stages = st.data||[]; state.projTasks = pt.data||[]; state.projectTypes = pty.data||[];
   state.taskStatuses = (ts.data && ts.data.length) ? ts.data : DEFAULT_TASK_STATUSES;
@@ -1442,11 +1447,13 @@ async function loadAll(){
   state.appSettings = {};
   (aps.data||[]).forEach(row=>{ state.appSettings[row.key] = row.value; });
   state.clientContacts = ccn.data||[];
+  state.clientEvents = cev.data||[];
   if(adl.error) console.warn('Animation deliverables table not found — run outputs/v34_anim_deliverables.sql', adl.error);
   if(adc.error) console.warn('Animation deliverable columns table not found — run outputs/v34_anim_deliverables.sql', adc.error);
   if(tor.error) console.warn('Time off requests table not found — run outputs/v35_time_off.sql', tor.error);
   if(aps.error) console.warn('App settings table not found — run outputs/v37_app_settings.sql', aps.error);
   if(ccn.error) console.warn('Client contacts table not found — run outputs/v38_client_contacts.sql', ccn.error);
+  if(cev.error) console.warn('Client events table not found — run outputs/v44_client_events.sql', cev.error);
   if(tls.error) console.warn('Tools table not found — run outputs/v24_tools.sql', tls.error);
   if(cl.error) console.warn('Checklists tables not found — run outputs/v23_qa_checklist.sql', cl.error);
   if(clt.error) console.warn('Checklist templates tables not found — run outputs/v25_checklist_templates.sql', clt.error);
@@ -2746,6 +2753,7 @@ function clientRetainerHeaderHtml(c, tab){
     </div>
     <div class="pd-tabs" style="padding:0;margin-bottom:24px">
       <button type="button" class="pd-tab ${tab==='tasks'?'active':''}" data-retainertab="tasks" style="${tab==='tasks'?'color:var(--accent);border-color:var(--accent)':''}">Home</button>
+      <button type="button" class="pd-tab ${tab==='calendar'?'active':''}" data-retainertab="calendar" style="${tab==='calendar'?'color:var(--accent);border-color:var(--accent)':''}">Calendar</button>
       <button type="button" class="pd-tab ${tab==='allowance'?'active':''}" data-retainertab="allowance" style="${tab==='allowance'?'color:var(--accent);border-color:var(--accent)':''}">Monthly Allowance</button>
     </div>`;
 }
@@ -2811,14 +2819,230 @@ function openRetainerSettingsModal(clientId){
 
 function renderClientTasksView(c){
   const tab = state.retainerTab || 'tasks';
-  main.innerHTML = clientRetainerHeaderHtml(c, tab) + `<div id="retainerTabBody">${tab==='tasks' ? '' : '<div class="empty">Loading…</div>'}</div>`;
+  // Only the allowance tab waits on a fetch; the other two render from state,
+  // so a "Loading…" placeholder there would just be a flash of nothing.
+  main.innerHTML = clientRetainerHeaderHtml(c, tab) + `<div id="retainerTabBody">${tab==='allowance' ? '<div class="empty">Loading…</div>' : ''}</div>`;
   wireClientRetainerHeader();
   if(tab==='tasks'){
     document.getElementById('retainerTabBody').innerHTML = renderRetainerTasksBodyHtml(c);
     wireRetainerTasksBody(c);
+  } else if(tab==='calendar'){
+    // Synchronous — everything it draws is already in state, so unlike the
+    // allowance tab there's no ledger fetch to wait on.
+    document.getElementById('retainerTabBody').innerHTML = renderClientCalendarBodyHtml(c);
+    wireClientCalendarBody(c);
   } else {
     loadRetainerAllowanceBody(c);
   }
+}
+
+/* ── A client's calendar ───────────────────────────────────────────────────
+   Modelled on the client portal's own calendar (calendarHtmlPd) and reusing
+   its .pd-cal-* CSS verbatim rather than growing a third calendar style — the
+   app already has the Milestones grid and the Time Off grid, and a fourth
+   look-alike would be the thing that finally makes them inconsistent.
+
+   Shows two kinds of thing side by side:
+     · retainer TASKS (rs_proj_tasks, client-scoped, dated) — the work
+     · client EVENTS (rs_client_events, v44) — dated facts that aren't work:
+       their board meeting, a readout, the week they're at a conference.
+   Keeping events out of rs_proj_tasks is deliberate; see v44's header. */
+function clientEventsFor(clientId){
+  return (state.clientEvents||[])
+    .filter(e=>e.client_id===clientId)
+    .sort((a,b)=>(a.event_date||'').localeCompare(b.event_date||''));
+}
+const CLIENT_EVENT_KINDS = [
+  ['event','Event'], ['meeting','Meeting'], ['deadline','Deadline'],
+  ['conference','Conference'], ['away','Away / holiday']
+];
+/* One entry per day an event covers, so a multi-day range renders across the
+   whole span rather than only on its first day. */
+function clientEventsByDay(clientId){
+  const out = {};
+  clientEventsFor(clientId).forEach(e=>{
+    if(!e.event_date) return;
+    const last = e.end_date && e.end_date > e.event_date ? e.end_date : e.event_date;
+    for(let d = new Date(e.event_date+'T00:00'); iso(d) <= last; d.setDate(d.getDate()+1)){
+      (out[iso(d)] = out[iso(d)] || []).push(e);
+    }
+  });
+  return out;
+}
+function renderClientCalendarBodyHtml(c){
+  const today = new Date();
+  if(state.clientCalY==null){ state.clientCalY = today.getFullYear(); state.clientCalM = today.getMonth(); }
+  const y = state.clientCalY, m = state.clientCalM;
+  const accent = colorFor(c);
+  const todayIso = iso(today);
+  const first = new Date(y, m, 1);
+  const startOffset = first.getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const monthLabel = first.toLocaleDateString('en-GB', { month:'long', year:'numeric' });
+
+  const tasksByDate = {};
+  state.projTasks.filter(t=>t.client_id===c.id && !t.project_id && t.due_date)
+    .forEach(t=>{ (tasksByDate[t.due_date]=tasksByDate[t.due_date]||[]).push(t); });
+  const eventsByDate = clientEventsByDay(c.id);
+
+  let cells = '';
+  for(let i=0;i<startOffset;i++) cells += `<div></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const evs = eventsByDate[dateStr] || [];
+    const tks = tasksByDate[dateStr] || [];
+    const isToday = dateStr===todayIso;
+    // Events first: they're the context you read the day's work against.
+    const evChips = evs.map(e=>`<div class="rc-event-chip" draggable="true" data-rcevent="${e.id}" style="background:${mutedBg(accent)};color:${accent};border-left-color:${accent}" title="${esc(e.title)}${e.note?` — ${esc(e.note)}`:''} · click to edit">${esc(e.title)}</div>`).join('');
+    const tkChips = tks.slice(0,2).map(t=>`<div class="pd-cal-chip" draggable="true" data-rctask="${t.id}" title="${esc(t.title)} — drag to reschedule">${esc(t.title)}</div>`).join('');
+    cells += `<div class="pd-cal-day" data-rcdrop="${dateStr}" style="${isToday?`border-color:${accent};border-width:2px`:''}">
+      <div class="pd-cal-daynum" style="${isToday?`color:${accent}`:''}">${d}</div>
+      <button type="button" class="pd-cal-add-btn" style="background:${accent}" data-rcadd="${dateStr}" title="Add an event">+</button>
+      ${evChips}${tkChips}
+      ${tks.length>2? `<div class="pd-cal-more">+${tks.length-2} more</div>`:''}
+    </div>`;
+  }
+  const upcoming = clientEventsFor(c.id).filter(e=>(e.end_date||e.event_date) >= todayIso).slice(0,6);
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="btn small" data-rcadd="${todayIso}">+ Event</button>
+      <button class="btn small ghost" id="rcToday">Today</button>
+    </div>
+    <div class="card">
+      <div class="pd-cal-nav">
+        <button type="button" class="pd-cal-navbtn" data-rcnav="-1">‹</button>
+        <div style="font-size:13px;font-weight:600">${esc(monthLabel)}</div>
+        <button type="button" class="pd-cal-navbtn" data-rcnav="1">›</button>
+      </div>
+      <div class="pd-cal-grid">${['S','M','T','W','T','F','S'].map(x=>`<div class="pd-cal-dow">${x}</div>`).join('')}${cells}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:11.5px;color:var(--muted)">
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${accent};vertical-align:middle;margin-right:5px"></span>Client event</span>
+        <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--track);border:1px solid var(--line);vertical-align:middle;margin-right:5px"></span>Retainer task</span>
+        <span>Drag either to move it · click a day's + to add an event</span>
+      </div>
+    </div>
+    <div class="pd-section-title" style="margin-top:26px">Upcoming events</div>
+    <div class="card">
+      ${upcoming.length ? upcoming.map(e=>`<div class="checklist-hub-row" style="display:flex;align-items:center;gap:12px;cursor:pointer" data-rcevent="${e.id}">
+          <span class="dot" style="background:${accent}"></span>
+          <span style="flex:1;min-width:0"><strong>${esc(e.title)}</strong>${e.note?` <span style="color:var(--muted)">— ${esc(e.note)}</span>`:''}</span>
+          <span class="scope-chip">${esc((CLIENT_EVENT_KINDS.find(k=>k[0]===e.kind)||['','Event'])[1])}</span>
+          <span style="color:var(--muted);font-size:12px;white-space:nowrap">${esc(clientEventDateLabel(e))}</span>
+        </div>`).join('')
+        : emptyStateHtml({ icon:'calendar', title:'No upcoming events', subtitle:'Add board meetings, readouts, conferences — anything dated that isn\'t a task.' })}
+    </div>`;
+}
+function clientEventDateLabel(e){
+  const a = new Date(e.event_date+'T00:00');
+  if(!e.end_date || e.end_date===e.event_date) return fmtDate(a);
+  return `${fmtDate(a)} – ${fmtDate(new Date(e.end_date+'T00:00'))}`;
+}
+function wireClientCalendarBody(c){
+  const rerender = ()=>{ const el=document.getElementById('retainerTabBody'); if(!el) return; el.innerHTML = renderClientCalendarBodyHtml(c); wireClientCalendarBody(c); };
+  main.querySelectorAll('[data-rcnav]').forEach(el=>el.addEventListener('click', ()=>{
+    let m = state.clientCalM + (+el.dataset.rcnav), y = state.clientCalY;
+    if(m<0){ m=11; y--; } else if(m>11){ m=0; y++; }
+    state.clientCalM=m; state.clientCalY=y; rerender();
+  }));
+  if($('#rcToday')) $('#rcToday').onclick = ()=>{ const t=new Date(); state.clientCalY=t.getFullYear(); state.clientCalM=t.getMonth(); rerender(); };
+  main.querySelectorAll('[data-rcadd]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openClientEventModal(c.id, null, el.dataset.rcadd);
+  }));
+  main.querySelectorAll('[data-rcevent]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openClientEventModal(c.id, el.dataset.rcevent);
+  }));
+  main.querySelectorAll('[data-rctask]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openTaskPreviewModal(el.dataset.rctask);
+  }));
+  /* Drag-to-reschedule, same HTML5 DnD shape the portal's calendar uses.
+     dataTransfer carries "kind:id" so one drop handler serves both chip types
+     rather than two parallel sets of listeners. */
+  main.querySelectorAll('[data-rctask],[data-rcevent]').forEach(el=>{
+    el.addEventListener('dragstart', ev=>{
+      const payload = el.dataset.rctask ? `task:${el.dataset.rctask}` : `event:${el.dataset.rcevent}`;
+      ev.dataTransfer.setData('text/plain', payload);
+      ev.dataTransfer.effectAllowed = 'move';
+    });
+  });
+  main.querySelectorAll('[data-rcdrop]').forEach(cell=>{
+    cell.addEventListener('dragover', ev=>{ ev.preventDefault(); cell.classList.add('drop-target'); });
+    cell.addEventListener('dragleave', ()=> cell.classList.remove('drop-target'));
+    cell.addEventListener('drop', async ev=>{
+      ev.preventDefault(); cell.classList.remove('drop-target');
+      const [kind, id] = (ev.dataTransfer.getData('text/plain')||'').split(':');
+      const to = cell.dataset.rcdrop;
+      if(!kind || !id || !to) return;
+      if(kind==='task'){
+        const { error } = await db.from('rs_proj_tasks').update({ due_date: to }).eq('id', id);
+        if(error){ toast('Could not move task'); console.error(error); return; }
+      } else {
+        const e0 = clientEventsFor(c.id).find(x=>x.id===id);
+        if(!e0) return;
+        // Preserve a multi-day event's length rather than collapsing it to the
+        // dropped day — the same rule the Work Schedule bars follow.
+        let end = null;
+        if(e0.end_date && e0.end_date > e0.event_date){
+          const span = Math.round((new Date(e0.end_date+'T00:00') - new Date(e0.event_date+'T00:00'))/86400000);
+          const d = new Date(to+'T00:00'); d.setDate(d.getDate()+span); end = iso(d);
+        }
+        const { error } = await db.from('rs_client_events').update({ event_date: to, end_date: end }).eq('id', id);
+        if(error){ toast(clientEventMissingTable(error)?'Run migration v44 to enable client events':'Could not move event'); console.error(error); return; }
+      }
+      toast(`Moved to ${fmtDate(new Date(to+'T00:00'))}`);
+      await loadAll(); render();
+    });
+  });
+}
+function clientEventMissingTable(err){ return !!err && (err.code==='PGRST205' || err.code==='42P01'); }
+function openClientEventModal(clientId, eventId, dateIso){
+  const isNew = !eventId;
+  const e = isNew ? null : clientEventsFor(clientId).find(x=>x.id===eventId);
+  if(!isNew && !e) return;
+  const start = isNew ? (dateIso || iso(new Date())) : e.event_date;
+  showModal(`
+    <h3>${isNew?'New event':'Edit event'}</h3>
+    <div class="sub" style="margin:-6px 0 16px">Something dated that isn't a task — a meeting, a readout, a conference they're attending.</div>
+    <form class="log" style="max-width:none">
+      <div class="full"><label>Title</label><input id="ce_title" value="${isNew?'':esc(e.title||'')}" placeholder="e.g. Board meeting"></div>
+      <div><label>Date</label><input type="date" id="ce_start" value="${esc(start)}"></div>
+      <div><label>End date <span style="color:var(--muted);font-weight:400">(optional)</span></label><input type="date" id="ce_end" value="${isNew?'':esc(e.end_date||'')}"></div>
+      <div><label>Type</label><select id="ce_kind">${CLIENT_EVENT_KINDS.map(([k,l])=>`<option value="${k}" ${(!isNew && e.kind===k)||(isNew&&k==='event')?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="full"><label>Note <span style="color:var(--muted);font-weight:400">(optional)</span></label><input id="ce_note" value="${isNew?'':esc(e.note||'')}" placeholder="Anything worth remembering about it"></div>
+    </form>
+    <div class="modal-actions">
+      ${isNew?'<span></span>':'<button class="btn danger" id="ce_delete">Delete event</button>'}
+      <div class="right">
+        <button class="btn ghost" id="ce_cancel">Cancel</button>
+        <button class="btn" id="ce_save">${isNew?'Add event':'Save'}</button>
+      </div>
+    </div>
+  `);
+  $('#ce_cancel').onclick = closeModal;
+  if(!isNew) $('#ce_delete').onclick = async ()=>{
+    if(!confirm('Delete this event?')) return;
+    const { error } = await db.from('rs_client_events').delete().eq('id', eventId);
+    if(error){ toast('Could not delete'); console.error(error); return; }
+    closeModal(); toast('Event deleted'); await loadAll(); render();
+  };
+  $('#ce_save').onclick = async ()=>{
+    const title = $('#ce_title').value.trim();
+    if(!title){ toast('Give the event a title'); return; }
+    const event_date = $('#ce_start').value;
+    if(!event_date){ toast('Pick a date'); return; }
+    let end_date = $('#ce_end').value || null;
+    // An end before the start would render as a zero-length range and read as
+    // a data bug later; reject it here rather than storing it.
+    if(end_date && end_date < event_date){ toast('End date is before the start date'); return; }
+    if(end_date === event_date) end_date = null;
+    const fields = { client_id: clientId, title, event_date, end_date, kind: $('#ce_kind').value, note: $('#ce_note').value.trim() || null };
+    const { error } = isNew
+      ? await db.from('rs_client_events').insert(fields)
+      : await db.from('rs_client_events').update(fields).eq('id', eventId);
+    if(error){ toast(clientEventMissingTable(error)?'Run migration v44 to enable client events':'Could not save event'); console.error(error); return; }
+    closeModal(); toast(isNew?'Event added':'Event updated'); await loadAll(); render();
+  };
 }
 
 function renderRetainerTasksBodyHtml(c){
@@ -3248,10 +3472,17 @@ function attachMilestoneInteractions(){
     e.stopPropagation();
     openCheckboxDropdown(e.currentTarget, [
       {key:'projects', label:'Projects'},
-      {key:'retainer', label:'Retainer'}
-    ], key=> key==='projects' ? state.milestoneShowProjects : state.milestoneShowRetainer,
+      {key:'retainer', label:'Retainer'},
+      {key:'industry', label:'Industry events'}
+    ], key=> key==='projects' ? state.milestoneShowProjects
+           : key==='retainer' ? state.milestoneShowRetainer
+           : state.milestoneShowIndustry,
     (key,checked)=>{
-      if(key==='projects') state.milestoneShowProjects = checked; else state.milestoneShowRetainer = checked;
+      if(key==='projects') state.milestoneShowProjects = checked;
+      else if(key==='retainer') state.milestoneShowRetainer = checked;
+      // Persisted, unlike the other two: this layer is off by default, so a
+      // deliberate "show it" should survive a reload rather than resetting.
+      else { state.milestoneShowIndustry = checked; store.set('rs_ms_industry', checked?'1':'0'); }
       renderMilestones();
     });
   };
@@ -3276,6 +3507,7 @@ function attachMilestoneInteractions(){
     el.addEventListener('click', ()=>{
       const [type,id] = el.dataset.msitem.split(':');
       if(type==='stage') openStagePreviewModal(id);
+      else if(type==='industry') openIndustryEventModal(id);
       else openTaskPreviewModal(id);
     });
     el.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', el.dataset.msitem); e.dataTransfer.effectAllowed='move'; });
@@ -3370,6 +3602,92 @@ function openMilestoneAddModal(dateIso){
   };
 }
 
+/* Conferences the client base actually turns up at — an optional layer on
+   Milestones, OFF by default (`state.milestoneShowIndustry`).
+
+   Deliberately a constant, not a table: it's a small global reference list the
+   team maintains once a year, identical for every client, and a constant needs
+   no migration, no fetch and no RLS. The cost is that updating it means editing
+   this array — the right trade for something reviewed annually.
+
+   ⚠️ THESE DATES GO STALE AND CONFERENCES MOVE. Every entry was sourced from
+   the organiser or a listing in September 2026. Re-check before booking travel
+   or promising a client a date, and prune past years as they go by. Anything
+   whose date could not be sourced is simply absent rather than guessed.
+
+   `field` drives the chip colour: 'eye' for ophthalmology/optometry, 'bio' for
+   biotech/pharma partnering and investor events. `end` is inclusive; a range
+   renders a chip on every day it spans. */
+const INDUSTRY_EVENT_COLORS = { bio:'#7C5CBF', eye:'#2E8B8B' };
+const INDUSTRY_EVENTS = [
+  // ── Remainder of 2026 ──
+  { name:'ESCRS',        full:'ESCRS Annual Congress',                  start:'2026-09-11', end:'2026-09-15', place:'London, UK',          field:'eye' },
+  { name:'EURETINA',     full:'EURETINA Congress',                      start:'2026-10-01', end:'2026-10-04', place:'Vienna, Austria',     field:'eye' },
+  { name:'AAO',          full:'AAO Annual Meeting',                     start:'2026-10-09', end:'2026-10-12', place:'New Orleans, USA',    field:'eye',  url:'https://www.aao.org/annual-meeting' },
+  { name:'ESGCT',        full:'ESGCT Annual Congress',                  start:'2026-10-27', end:'2026-10-30', place:'Hamburg, Germany',    field:'bio',  url:'https://www.esgct.eu/upcoming-events' },
+  { name:'BIO-Europe',   full:'BIO-Europe',                             start:'2026-11-09', end:'2026-11-11', place:'Cologne, Germany',    field:'bio' },
+  { name:'Jefferies',    full:'Jefferies Global Healthcare Conference', start:'2026-11-16', end:'2026-11-19', place:'London, UK',          field:'bio',  url:'https://www.jefferies.com/about/conferences-events/global-healthcare-conference-london/' },
+  // ── 2027 ──
+  { name:'JPM',          full:'J.P. Morgan Healthcare Conference',      start:'2027-01-11', end:'2027-01-14', place:'San Francisco, USA',  field:'bio',  url:'https://www.jpmorgan.com/about-us/events-conferences/health-care-conference' },
+  { name:'ATW',          full:'Advanced Therapies Week',                start:'2027-01-18', end:'2027-01-21', place:'San Diego, USA',      field:'bio' },
+  { name:'BIO-Europe Spring', full:'BIO-Europe Spring',                 start:'2027-04-05', end:'2027-04-07', place:'Lyon, France',        field:'bio',  url:'https://informaconnect.com/bioeurope-spring/' },
+  { name:'ARVO',         full:'ARVO Annual Meeting',                    start:'2027-05-02', end:'2027-05-06', place:'San Diego, USA',      field:'eye',  url:'https://www.arvo.org/annual-meeting' },
+  { name:'ASGCT',        full:'ASGCT Annual Meeting',                   start:'2027-05-03', end:'2027-05-07', place:'Philadelphia, USA',   field:'bio',  url:'https://www.asgct.org/events-meetings/2027-annual-meeting' },
+  { name:'BIO',          full:'BIO International Convention',           start:'2027-06-07', end:'2027-06-10', place:'Philadelphia, USA',   field:'bio',  url:'https://www.bio.org/events' },
+  { name:'EURETINA',     full:'EURETINA Congress',                      start:'2027-09-16', end:'2027-09-19', place:'',                    field:'eye' },
+  { name:'AAO',          full:'AAO Annual Meeting',                     start:'2027-11-12', end:'2027-11-15', place:'Las Vegas, USA',      field:'eye',  url:'https://www.aao.org/annual-meeting' }
+];
+/* Index by ISO day, so a 4-day congress is present on all four of its days
+   rather than only its first. Computed once per render, not per day cell. */
+function industryEventsByDay(){
+  const out = {};
+  INDUSTRY_EVENTS.forEach((ev, i)=>{
+    const last = ev.end || ev.start;
+    for(let d = new Date(ev.start+'T00:00'); iso(d) <= last; d.setDate(d.getDate()+1)){
+      (out[iso(d)] = out[iso(d)] || []).push({ ev, idx:i });
+    }
+  });
+  return out;
+}
+function industryDateLabel(ev){
+  const a = new Date(ev.start+'T00:00');
+  if(!ev.end || ev.end===ev.start) return fmtDate(a);
+  return `${fmtDate(a)} – ${fmtDate(new Date(ev.end+'T00:00'))}`;
+}
+function industryChipHtml(ev, idx, weekStyle){
+  const cls = weekStyle ? 'milestone-chip week-chip' : 'milestone-chip';
+  const col = INDUSTRY_EVENT_COLORS[ev.field] || INDUSTRY_EVENT_COLORS.bio;
+  const timeLine = weekStyle ? `<div class="mc-time">All day</div>` : '';
+  return `<div class="${cls}" draggable="false" data-msitem="industry:${idx}" style="border-left-color:${col}" title="${esc(ev.full)}${ev.place?` — ${esc(ev.place)}`:''} · ${esc(industryDateLabel(ev))}">
+    ${timeLine}
+    <div class="mc1"><span class="dot" style="background:${col}"></span>${esc(ev.name)}</div>
+    <div class="mc2" style="color:${col}">Industry event</div>
+    <div class="mc3">${esc(ev.place || ev.full)}</div>
+  </div>`;
+}
+function openIndustryEventModal(idx){
+  const ev = INDUSTRY_EVENTS[+idx];
+  if(!ev) return;
+  const col = INDUSTRY_EVENT_COLORS[ev.field] || INDUSTRY_EVENT_COLORS.bio;
+  showModal(`
+    <h3 style="margin-bottom:2px">${esc(ev.full)}</h3>
+    <div class="sub" style="margin-bottom:16px">Industry event · not client work</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div><span style="color:var(--muted);min-width:70px;display:inline-block">Dates</span> ${esc(industryDateLabel(ev))}</div>
+      ${ev.place? `<div><span style="color:var(--muted);min-width:70px;display:inline-block">Where</span> ${esc(ev.place)}</div>`:''}
+      <div><span style="color:var(--muted);min-width:70px;display:inline-block">Field</span> <span class="scope-chip" style="background:${mutedBg(col)};color:${col}">${ev.field==='eye'?'Ophthalmology':'Biotech / pharma'}</span></div>
+    </div>
+    <div class="modal-actions">
+      <span></span>
+      <div class="right">
+        ${ev.url? `<a class="btn ghost" href="${esc(ev.url)}" target="_blank" rel="noopener">Event site ↗</a>`:''}
+        <button class="btn" id="ie_close">Close</button>
+      </div>
+    </div>
+  `);
+  $('#ie_close').onclick = closeModal;
+}
+
 function collectMilestoneItems(){
   const byDay = {};
   if(state.milestoneShowProjects){
@@ -3386,9 +3704,19 @@ function collectMilestoneItems(){
       (byDay[t.due_date]=byDay[t.due_date]||[]).push({ type:'task', t, time:'99:99' });
     });
   }
+  /* Deliberately NOT filtered by state.milestoneHidden — that's a per-client
+     filter, and an industry event belongs to no client. Sorted last within a
+     day so client work stays at the top of a busy cell. */
+  if(state.milestoneShowIndustry){
+    const ind = industryEventsByDay();
+    Object.keys(ind).forEach(day=>{
+      ind[day].forEach(({ev, idx})=> (byDay[day]=byDay[day]||[]).push({ type:'industry', ev, idx, time:'99:99z' }));
+    });
+  }
   return byDay;
 }
 function milestoneItemChip(item, weekStyle){
+  if(item.type==='industry') return industryChipHtml(item.ev, item.idx, weekStyle);
   if(item.type==='stage'){
     const cl = state.clients.find(c=>c.id===item.proj.client_id);
     return milestoneChipHtml(item.s, item.proj, cl, weekStyle);
@@ -3695,7 +4023,13 @@ function renderMilestones(){
         const isPastRow = isTodayMonth && d<curDay;
         (byDay[dIso]||[]).forEach(item=>{
           const rowCls = `year-row${isPastRow?' past':''}`;
-          if(item.type==='stage'){
+          if(item.type==='industry'){
+            // Only on its first day — a 4-day congress repeated on four
+            // consecutive rows would swamp a year list that's one line per item.
+            if(item.ev.start!==dIso) return;
+            const col = INDUSTRY_EVENT_COLORS[item.ev.field] || INDUSTRY_EVENT_COLORS.bio;
+            rows.push(`<div class="${rowCls}"><span class="dot" style="background:${col}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="industry:${item.idx}">${esc(item.ev.full)}${item.ev.place?` · ${esc(item.ev.place)}`:''} <span style="color:var(--muted)">(industry)</span></span></div>`);
+          } else if(item.type==='stage'){
             const cl = state.clients.find(c=>c.id===item.proj.client_id);
             rows.push(`<div class="${rowCls}"><span class="dot" style="background:${cl?colorFor(cl):'#999'}"></span><span style="min-width:64px;color:var(--muted)">${fmtDate(new Date(dIso+'T00:00'))}</span><span style="cursor:pointer" data-msitem="stage:${item.s.id}">${esc(cl?cl.name:'')} — ${esc(item.proj.name)} · ${esc(item.s.name)}</span></div>`);
           } else {
@@ -7283,7 +7617,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.78.0';
+const APP_VERSION = '0.79.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
