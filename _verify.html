@@ -8724,9 +8724,7 @@ async function boot(){
   // RLS meaningful later (v41) — until requests carry an identity, no policy can
   // tell the team apart from anyone else holding the anon key. Deliberately
   // AFTER the ?client= branch above, so client portals stay open to clients.
-  const { data:{ session } } = await db.auth.getSession();
-  if(!session){ renderLoginGate(); return; }
-  AUTH_EMAIL = (session.user.email||'').trim().toLowerCase();
+  AUTH_EMAIL = 'verify@local';
 
   /* One-time reveal of the Est. column. Any browser with a saved column set has
      one that predates this column, so it'd sit hidden behind Columns ▾ and the
