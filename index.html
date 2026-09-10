@@ -270,7 +270,9 @@
   .task-grid-row > div.inline-editable,
   .task-grid-row > div:has(.pill-btn, .stage-date-btn, .inline-editable){overflow:visible}
   .task-grid-header{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-light);font-weight:600;padding:9px 10px;position:sticky;top:0;background:var(--card);z-index:3}
-  .pill-popover-group{position:sticky;top:0;z-index:1;background:var(--card);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-light);padding:9px 10px 4px}
+  .pill-popover-sect{display:flex;flex-direction:column;flex:0 0 auto}
+.pill-popover-note{font-size:11.5px;color:var(--muted);padding:4px 10px 8px;line-height:1.4}
+.pill-popover-group{position:sticky;top:0;z-index:1;background:var(--card);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-light);padding:9px 10px 4px}
   .pill-popover-group:first-child{padding-top:2px}
   .col-resize-handle{position:absolute;top:0;right:-6px;width:10px;height:100%;cursor:col-resize;z-index:2}
   .col-resize-handle:hover, .col-resize-handle.resizing{background:linear-gradient(to right, transparent 5px, var(--accent) 5px, var(--accent) 6px, transparent 6px)}
@@ -924,7 +926,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M15 17v1.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V7"/><path d="M10 12h9.5m0 0-3-3m3 3-3 3"/></svg>
       </button>
     </div>
-    <div id="versionBadge" class="version-badge">v0.77.0</div>
+    <div id="versionBadge" class="version-badge">v0.78.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -1504,10 +1506,23 @@ function openMultiPillPopover(anchorEl, options, isChecked, onToggle){
   _activePillPopover = pop;
   const checkSvg = '<svg class="pill-popover-check" viewBox="0 0 16 16" width="13" height="13"><path d="M13.5 4.5l-7 7L3 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   function draw(){
+    // A `header` entry opens a section that runs until the next header. The
+    // wrapper matters: sticky headers sharing one containing block all pin to
+    // the same spot and stack on top of each other, so each group needs its own
+    // box for its header to be pushed out by the next one.
+    const itemHtml = o=> o.note
+      ? `<div class="pill-popover-note">${esc(o.note)}</div>`
+      : `<button type="button" class="pill-popover-item" data-mpval="${esc(o.value)}">${o.html}${isChecked(o.value)?checkSvg:''}</button>`;
+    const sections = [];
+    options.forEach(o=>{
+      if(o.header) sections.push({ header:o.header, items:[] });  // notes fall through as items
+      else if(sections.length) sections[sections.length-1].items.push(o);
+      else sections.push({ header:null, items:[o] });
+    });
     pop.innerHTML = options.length
-      ? options.map(o=> o.header
-          ? `<div class="pill-popover-group">${esc(o.header)}</div>`
-          : `<button type="button" class="pill-popover-item" data-mpval="${esc(o.value)}">${o.html}${isChecked(o.value)?checkSvg:''}</button>`).join('')
+      ? sections.map(sec=> sec.header
+          ? `<div class="pill-popover-sect"><div class="pill-popover-group">${esc(sec.header)}</div>${sec.items.map(itemHtml).join('')}</div>`
+          : sec.items.map(itemHtml).join('')).join('')
       : '<div class="empty" style="padding:6px 4px">Nothing to choose from</div>';
     pop.querySelectorAll('[data-mpval]').forEach(b=>b.addEventListener('click', (e)=>{
       e.stopPropagation();
@@ -2359,10 +2374,24 @@ const CURRENT_USER_NAME = 'Ross Hall'; // fallback only — used until rs_member
 let AUTH_EMAIL = null;
 function currentUser(){
   const members = state.members || [];
+  /* Signed in => the email link is the ONLY thing that decides who you are.
+     There is deliberately no name fallback here: it used to resolve any
+     signed-in session with no matching rs_members.email to CURRENT_USER_NAME,
+     so a new teammate's first login silently became Ross — seeing his tasks and
+     holiday balance and inheriting his is_admin approval rights. Returning null
+     is the safe answer; every caller already guards for it and shows an
+     unidentified state instead. Requires v39 + a Login email set in
+     Settings > Team members. */
   if(AUTH_EMAIL){
-    const byEmail = members.find(m=>(m.email||'').trim().toLowerCase()===AUTH_EMAIL);
-    if(byEmail) return byEmail;
+    // Normalise BOTH sides. Both assignments in boot() already lowercase, but
+    // with the name fallback gone a stray capital would leave everyone
+    // unidentified rather than merely mis-identified — too sharp an edge to
+    // leave resting on a caller's discipline.
+    const want = String(AUTH_EMAIL).trim().toLowerCase();
+    return members.find(m=>(m.email||'').trim().toLowerCase()===want) || null;
   }
+  // No session at all (nothing reaches this in the internal app post-v41, but
+  // keep the old behaviour rather than breaking any signed-out render path).
   return members.find(m=>(m.name||'').trim().toLowerCase()===CURRENT_USER_NAME.toLowerCase());
 }
 
@@ -2475,7 +2504,7 @@ function renderHome(){
   const me = currentUser();
   let html = me
     ? `<h2 style="font-size:34px;margin-bottom:22px">${timeOfDayGreeting()}, ${esc((me.name||'').trim().split(/\s+/)[0]||me.name)}</h2>`
-    : `<h2>Home</h2><div class="sub">Add a team member named "${CURRENT_USER_NAME}" in Settings to personalize this page.</div>`;
+    : `<h2>Home</h2><div class="sub">We can't tell which team member you are. Set your login email against your name in Settings &rsaquo; Team members to personalise this page.</div>`;
   if(!me){ main.innerHTML = html; return; }
 
   const toReview = state.projTasks.filter(t=> (t.assigned_reviewer_ids||[]).includes(me.id) && !isCompleteStatus(t.status))
@@ -4423,7 +4452,11 @@ function openTaskPeoplePopover(anchorEl, task){
   const options = [];
   roles.forEach(r=>{
     options.push({ header: ASSIGN_ROLE_LABEL[r] });
-    assignablePeople(r).forEach(m=> options.push({
+    const pool = assignPoolFor(r, task[ASSIGN_ROLE_FIELD[r]]);
+    // A role nobody is ticked for would otherwise render as a bare heading with
+    // nothing under it, reading as broken. Say where the tickbox lives instead.
+    if(!pool.length) options.push({ note: `Nobody is ticked for ${ASSIGN_ROLE_LABEL[r]} — set that in Settings > Team members` });
+    pool.forEach(m=> options.push({
       value: `${r}:${m.id}`,
       html: `<span style="display:inline-flex;align-items:center;gap:8px">${avatarHtml(m)}${esc(m.name)}</span>`
     }));
@@ -4434,7 +4467,13 @@ function openTaskPeoplePopover(anchorEl, task){
       const [r,id] = v.split(':');
       checked ? cur[r].add(id) : cur[r].delete(id);
       const { error } = await db.from('rs_proj_tasks').update({ [ASSIGN_ROLE_FIELD[r]]: Array.from(cur[r]) }).eq('id', task.id);
-      if(error){ toast(error.code==='42703' ? 'Run migration v19 to enable animator assignments' : 'Could not update'); return; }
+      if(error){
+        checked ? cur[r].delete(id) : cur[r].add(id);  // keep the tick honest
+        const mig = ASSIGN_ROLE_MIGRATION[r];
+        const missing = error.code==='42703' || error.code==='PGRST204';
+        toast(missing && mig ? `Run migration ${mig} to enable ${ASSIGN_ROLE_LABEL[r].toLowerCase()} assignments` : 'Could not update');
+        return;
+      }
       await refreshProjectView();
     });
 }
@@ -4499,28 +4538,39 @@ async function deleteProjTaskQuick(taskId){
   toast('Task deleted'); await refreshProjectView();
 }
 
-const ASSIGN_ROLE_FIELD = { designer:'assigned_designer_ids', reviewer:'assigned_reviewer_ids', animator:'assigned_animator_ids' };
-const ASSIGN_ROLE_CAN = { designer:'can_design', reviewer:'can_review', animator:'can_animate' };
-const ASSIGN_ROLES = ['designer','reviewer','animator'];
-const ASSIGN_ROLE_LABEL = { designer:'Designers', reviewer:'Reviewers', animator:'Animators' };
+const ASSIGN_ROLE_FIELD = { designer:'assigned_designer_ids', reviewer:'assigned_reviewer_ids', animator:'assigned_animator_ids', admin:'assigned_admin_ids' };
+const ASSIGN_ROLE_CAN = { designer:'can_design', reviewer:'can_review', animator:'can_animate', admin:'is_admin' };
+const ASSIGN_ROLES = ['designer','reviewer','animator','admin'];
+const ASSIGN_ROLE_LABEL = { designer:'Designers', reviewer:'Reviewers', animator:'Animators', admin:'Admin' };
+// Roles whose column may not exist yet, so a write can name its migration.
+const ASSIGN_ROLE_MIGRATION = { animator:'v19', admin:'v43' };
 
-/* EVERY active member is assignable to EVERY role. The can_design/can_review/
-   can_animate flags used to filter these pools outright, which meant someone
-   flagged only as an admin simply could not be put on a task — a real gap, not
-   a safeguard. The flags now only affect ORDER: people marked for the role sort
-   first, everyone else follows. That keeps the Settings checkboxes meaningful
-   as a "who normally does this" hint without them blocking anyone. */
+/* Each role offers exactly the active members ticked for it in Settings >
+   Team members — can_design / can_review / can_animate, and is_admin for the
+   Admin group. Truthy rather than `=== false`, because can_animate (v19) and
+   friends were added with no default, so an untouched row holds null. */
 function assignablePeople(role){
   const can = ASSIGN_ROLE_CAN[role];
-  // Truthy, not `=== false`: can_animate (v19) and friends were added without a
-  // default, so an untouched member row holds null rather than false. Unchecked
-  // in Settings means "not their usual role" however it's stored — they still
-  // appear, just below the people who do that job.
-  return state.members.filter(m=>m.active).slice().sort((a,b)=>{
-    const ac = can && !a[can] ? 1 : 0;
-    const bc = can && !b[can] ? 1 : 0;
-    return ac!==bc ? ac-bc : (a.name||'').localeCompare(b.name||'');
+  return state.members
+    .filter(m=>m.active && (!can || m[can]))
+    .slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+}
+
+/* The pool an editor should actually show: everyone eligible, PLUS anyone
+   already assigned to this role on this task even if they no longer qualify.
+   Without the second half, un-ticking someone's can_design in Settings would
+   make them invisible in every task they're on — and assigneeFieldHtml drops
+   selected ids that aren't in its pool, so the next save would silently delete
+   them from the task. Eligibility governs who you can ADD, never who is
+   quietly removed; an ineligible holdover is still there to be taken off. */
+function assignPoolFor(role, currentIds){
+  const pool = assignablePeople(role);
+  (currentIds||[]).forEach(id=>{
+    if(pool.some(m=>m.id===id)) return;
+    const m = state.members.find(x=>x.id===id);
+    if(m) pool.push(m);
   });
+  return pool;
 }
 
 /* Everyone on the task, across all three roles, each person once — the combined
@@ -4766,9 +4816,10 @@ function openProjTaskModal(taskId, ctx){
   const project = t.project_id ? state.projects.find(p=>p.id===t.project_id) : null;
   const client = state.clients.find(c=>c.id=== (project ? project.client_id : t.client_id));
   const stages = project ? state.stages.filter(s=>s.project_id===project.id).sort((a,b)=>a.position-b.position) : [];
-  const designerPool = assignablePeople('designer');
-  const reviewerPool = assignablePeople('reviewer');
-  const animatorPool = assignablePeople('animator');
+  const designerPool = assignPoolFor('designer', t.assigned_designer_ids);
+  const reviewerPool = assignPoolFor('reviewer', t.assigned_reviewer_ids);
+  const animatorPool = assignPoolFor('animator', t.assigned_animator_ids);
+  const adminPool    = assignPoolFor('admin',    t.assigned_admin_ids);
   showModal(`
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
       <div>
@@ -4787,6 +4838,7 @@ function openProjTaskModal(taskId, ctx){
         <div><label>Designers</label>${assigneeFieldHtml('pt_designers', designerPool, t.assigned_designer_ids||[])}</div>
         <div><label>Reviewers</label>${assigneeFieldHtml('pt_reviewers', reviewerPool, t.assigned_reviewer_ids||[])}</div>
         <div><label>Animators</label>${assigneeFieldHtml('pt_animators', animatorPool, t.assigned_animator_ids||[])}</div>
+        <div><label>Admin</label>${assigneeFieldHtml('pt_admins', adminPool, t.assigned_admin_ids||[])}</div>
       </div>
 
       <div class="full modal-frame">
@@ -4822,6 +4874,7 @@ function openProjTaskModal(taskId, ctx){
   wireAssigneeField('pt_designers', designerPool);
   wireAssigneeField('pt_reviewers', reviewerPool);
   wireAssigneeField('pt_animators', animatorPool);
+  wireAssigneeField('pt_admins', adminPool);
   wireStatusField('pt_status');
   wirePriorityField('pt_priority');
   wireDateField('pt_due', 'Set due date');
@@ -4873,6 +4926,7 @@ function openProjTaskModal(taskId, ctx){
       counts_toward_retainer: document.getElementById('pt_retainer') ? $('#pt_retainer').checked : false
     };
     fields.assigned_animator_ids = assigneeFieldValue('pt_animators');
+    fields.assigned_admin_ids = assigneeFieldValue('pt_admins');
 
     /* Optional columns whose migrations may not have run. Without this retry a
        single missing column fails the ENTIRE save — the all-or-nothing bug v31
@@ -4881,12 +4935,22 @@ function openProjTaskModal(taskId, ctx){
        toast can name exactly which migration is outstanding rather than
        blaming both. */
     const colMissing = e => !!e && (e.code==='42703' || e.code==='PGRST204');
+    const OPTIONAL_COLS = [['estimated_hours','v42'], ['assigned_animator_ids','v19'], ['assigned_admin_ids','v43']];
     const dropped = [];
     async function attempt(run){
       let payload = { ...fields };
       let res = await run(payload);
-      for(const [key, mig] of [['estimated_hours','v42'], ['assigned_animator_ids','v19']]){
-        if(!colMissing(res.error) || !(key in payload)) continue;
+      for(let i=0; i<OPTIONAL_COLS.length && colMissing(res.error); i++){
+        /* Drop the column the error actually NAMES, not just the next one in
+           the list. Postgres/PostgREST name the offending column in the
+           message, and dropping blindly in order meant one missing column
+           could discard edits to columns that exist — a real "estimated hours
+           silently didn't save" bug — and blame three migrations in the toast.
+           Sequential order is still the fallback for an unnamed error. */
+        const msg = (res.error.message||'') + ' ' + (res.error.details||'');
+        const named = OPTIONAL_COLS.find(([k])=> k in payload && msg.includes(k));
+        const [key, mig] = named || OPTIONAL_COLS.find(([k])=> k in payload) || [];
+        if(!key) break;
         delete payload[key]; dropped.push(mig);
         res = await run(payload);
       }
@@ -5591,7 +5655,7 @@ async function timeOffDelete(reqId){
 }
 function openTimeOffRequestModal(){
   const me = currentUser();
-  if(!me){ toast(`Add a team member named "${CURRENT_USER_NAME}" in Settings first`); return; }
+  if(!me){ toast('Set your login email in Settings > Team members first'); return; }
   const todayIso = iso(new Date());
   let type = 'holiday';
   showModal(`
@@ -7219,7 +7283,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.77.0';
+const APP_VERSION = '0.78.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;

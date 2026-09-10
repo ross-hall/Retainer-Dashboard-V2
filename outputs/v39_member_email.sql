@@ -37,9 +37,17 @@ create policy rs_authenticated_all on rs_members
   for all to authenticated using (true) with check (true);
 revoke all on rs_members from anon;
 
--- Link your member row to the login you sign in with. This is cosmetic-ish:
--- until it's set, currentUser() falls back to matching CURRENT_USER_NAME by
--- name, which is why skipping this file didn't break anything when v41 went in.
--- Setting it matters once other team members get their own logins, since the
--- name fallback only ever resolves to one person.
--- update rs_members set email = 'you@reciprocal.space' where name = 'Ross Hall';
+-- ⚠️ THIS IS NO LONGER OPTIONAL, AND THIS FILE IS NO LONGER SAFE TO SKIP.
+-- As of v0.78.0 currentUser() has NO name fallback: a signed-in session with no
+-- matching email here resolves to nobody, and the app shows an unidentified
+-- state (no Home greeting, no holiday balance, no time-off admin rights). That
+-- is the point — the old fallback silently resolved any new teammate's first
+-- login to Ross, handing them his tasks and his approval rights. The trade-off
+-- is that until this column exists and holds your address, nobody is
+-- identified, including you.
+--
+-- So this file now links the row itself rather than leaving it commented out.
+-- Change the address if you sign in as something else, and add a line per
+-- teammate as they get logins (or use Settings > Team members > Login email).
+update rs_members set email = 'r.hall@reciprocal.space'
+ where name = 'Ross Hall' and email is null;
