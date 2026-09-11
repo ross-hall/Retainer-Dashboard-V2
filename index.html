@@ -190,15 +190,19 @@
   .cycle{color:var(--muted);font-size:12.5px;margin:3px 0 20px}
 
   .meter-wrap{margin-top:22px;margin-bottom:8px}
-  .meter{position:relative;height:24px;background:var(--track);border-radius:8px}
-  .meter .fill{position:absolute;inset:0 auto 0 0;border-radius:8px;background:var(--accent);transition:width .4s ease;max-width:100%}
+  .meter{position:relative;height:24px;background:var(--track);border-radius:99px}
+  .meter .fill{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--accent);transition:width .4s ease;max-width:100%}
+  .meter .fill.has-est,.meter-compact .fill.has-est{border-radius:99px 0 0 99px}
   .meter .fill.warn{background:var(--amber)}
   .meter .fill.over{background:var(--red)}
   /* The "to do" band: estimated hours still outstanding, drawn immediately
      after the used fill. var(--ink-light) at low alpha rather than a fixed grey
      so it reads as a light band over the near-white track in light mode AND a
      light band over the dark track in dark mode — one rule, both themes. */
-  .meter .fill-est{position:absolute;top:0;bottom:0;background:var(--ink-light);opacity:.38;border-radius:0 8px 8px 0;transition:width .4s ease,left .4s ease}
+  .meter .fill-est{position:absolute;top:0;bottom:0;background:var(--ink-light);opacity:.38;border-radius:0 99px 99px 0;transition:width .4s ease,left .4s ease}
+  /* Nothing used yet: the band starts at the track's own left edge, so it needs
+     the full pill or it renders a square corner against a rounded track. */
+  .meter .fill-est.flush,.meter-compact .fill-est.flush{border-radius:99px}
   .meter .tick{position:absolute;top:-6px;bottom:-6px;width:2px;background:var(--ink);opacity:.4;left:75%}
   .meter .tick-label{position:absolute;top:-22px;left:75%;transform:translateX(-50%);font-size:10.5px;color:var(--muted);white-space:nowrap;font-weight:500}
   /* Labels sit inside the bar itself rather than below it — "used" is
@@ -277,7 +281,9 @@
    old single-line strip was that a task title got cut off mid-word. */
 .milestone-chip.cal-chip .mc-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .milestone-chip.cal-chip .mc2,.milestone-chip.cal-chip .mc3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.milestone-chip.cal-chip .avatar{width:16px;height:16px;font-size:8px}
+.milestone-chip.cal-chip .avatar{width:16px;min-width:16px;height:16px;padding:0;font-size:8px;border-width:1px}
+.milestone-chip.cal-chip .avatar-group .avatar{margin-left:-4px}
+.milestone-chip.cal-chip .avatar-group .avatar:first-child{margin-left:0}
 .pill-popover-sect{display:flex;flex-direction:column;flex:0 0 auto}
 .pill-popover-note{font-size:11.5px;color:var(--muted);padding:4px 10px 8px;line-height:1.4}
 .pill-popover-group{position:sticky;top:0;z-index:1;background:var(--card);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-light);padding:9px 10px 4px}
@@ -934,7 +940,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M15 17v1.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V7"/><path d="M10 12h9.5m0 0-3-3m3 3-3 3"/></svg>
       </button>
     </div>
-    <div id="versionBadge" class="version-badge">v0.79.1</div>
+    <div id="versionBadge" class="version-badge">v0.79.2</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -2583,16 +2589,17 @@ function estBandHtml(u, fillPct){
   const w = Math.max(0, Math.min(u.estPct||0, 100-fillPct));
   if(w<=0) return '';
   const projected = (u.used||0) + est;
-  return `<div class="fill-est" style="left:${fillPct}%;width:${w}%" title="${esc(fmtH(est))} estimated on to-do tasks · ${esc(fmtH(projected))} of ${esc(fmtH(u.effectiveHours))} projected"></div>`;
+  return `<div class="fill-est${fillPct<=0.5?' flush':''}" style="left:${fillPct}%;width:${w}%" title="${esc(fmtH(est))} estimated on to-do tasks · ${esc(fmtH(projected))} of ${esc(fmtH(u.effectiveHours))} projected"></div>`;
 }
 function meterHtml(u){
   const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
   const fillPct = Math.min(u.pct,100);
   const labelPct = Math.max(fillPct, 16);
+  const estHtml = estBandHtml(u, fillPct);
   return `<div class="meter-wrap">
       <div class="meter">
-        <div class="fill ${cls}" style="width:${fillPct}%"></div>
-        ${estBandHtml(u, fillPct)}
+        <div class="fill ${cls}${estHtml?' has-est':''}" style="width:${fillPct}%"></div>
+        ${estHtml}
         <div class="tick"></div>
         <div class="tick-label">75%</div>
         <span class="meter-used-label">${fmtH(u.used)} of ${fmtH(u.effectiveHours)}</span>
@@ -2604,9 +2611,10 @@ function compactMeterHtml(u){
   const cls = u.pct>=100?'over':u.pct>=75?'warn':'';
   const fillPct = Math.min(u.pct,100);
   const labelPct = Math.max(fillPct, 22);
+  const estHtml = estBandHtml(u, fillPct);
   return `<div class="meter-compact">
-      <div class="fill ${cls}" style="width:${fillPct}%"></div>
-      ${estBandHtml(u, fillPct)}
+      <div class="fill ${cls}${estHtml?' has-est':''}" style="width:${fillPct}%"></div>
+      ${estHtml}
       <div class="tick"></div>
       <span class="meter-compact-used">${fmtH(u.used)}</span>
       <span class="meter-compact-pct" style="left:${labelPct}%">${Math.round(u.pct)}%</span>
@@ -7671,7 +7679,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.79.1';
+const APP_VERSION = '0.79.2';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
