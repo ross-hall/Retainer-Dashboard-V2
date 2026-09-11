@@ -141,6 +141,18 @@
   #sidebar.collapsed .collapse-btn svg{transform:rotate(180deg)}
   #sidebar.collapsed .side-top{justify-content:center}
   #sidebar.collapsed .side-top .brand,#sidebar.collapsed .side-top #themeToggleBtn{display:none}
+  /* Icon-only hover tooltips — collapsed sidebar only. Labels are visible
+     the rest of the time, so there's nothing to explain; collapsed, the
+     icon is all that's left and needs a name on hover. This is a single
+     JS-positioned element (see wireSidebarTooltips), not a CSS ::after on
+     the button itself — #sidebar has overflow-x:hidden (needed for its own
+     vertical scroll, and Chrome silently forces both axes to a clipping
+     mode together once either is non-visible), so anything anchored inside
+     it and extending past its 60px collapsed width gets clipped. */
+  .sidebar-tooltip{position:fixed;background:var(--ink);color:var(--paper);font-size:12px;font-weight:500;
+    padding:5px 9px;border-radius:6px;white-space:nowrap;box-shadow:var(--shadow-pop);z-index:500;
+    opacity:0;visibility:hidden;pointer-events:none;transition:opacity var(--fast) var(--ease)}
+  .sidebar-tooltip.show{opacity:1;visibility:visible}
   @media(min-width:761px) and (max-width:1080px){
     #sidebar{width:192px}
     main{padding:26px 22px 90px}
@@ -882,45 +894,45 @@
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 4.5v15" stroke="currentColor" stroke-width="1.6"/><path d="M13.5 10l-2 2 2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
-    <button class="sidebar-search-btn" id="sidebarSearchBtn" title="Search (⌘K)">
+    <button class="sidebar-search-btn" id="sidebarSearchBtn" aria-label="Search (⌘K)" data-tip="Search (⌘K)">
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
       <span class="nav-label">Search</span>
       <span class="cmd-hint">⌘K</span>
     </button>
     <nav id="nav">
-      <button data-view="home" class="active" title="Home">
+      <button data-view="home" class="active" aria-label="Home" data-tip="Home">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 11.5 12 4l8 7.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="nav-label">Home</span>
       </button>
-      <button data-view="projects" title="Graphics">
+      <button data-view="projects" aria-label="Graphics" data-tip="Graphics">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5" stroke="currentColor" stroke-width="1.7"/><circle cx="8.5" cy="9.5" r="1.7" stroke="currentColor" stroke-width="1.5"/><path d="m4 16.5 4.5-4.5a1.5 1.5 0 0 1 2.1 0l2.4 2.4M13 17l3.5-3.5a1.5 1.5 0 0 1 2.1 0l1.9 1.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="nav-label">Graphics</span>
       </button>
-      <button data-view="animation" title="Animation (Beta)">
+      <button data-view="animation" aria-label="Animation (Beta)" data-tip="Animation (Beta)">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="5" width="16" height="14" rx="1.5" stroke="currentColor" stroke-width="1.7"/><path d="M10 9.2 15 12l-5 2.8Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         <span class="nav-label">Animation (Beta)</span>
       </button>
-      <button data-view="tasksahead" title="Week Tasks" class="nav-group-start">
+      <button data-view="tasksahead" aria-label="Week Tasks" data-tip="Week Tasks" class="nav-group-start">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="5.5" width="16" height="14.5" rx="1.5" stroke="currentColor" stroke-width="1.7"/><path d="M4 9.5h16M8 3.5v3M16 3.5v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
         <span class="nav-label">Week Tasks</span>
       </button>
-      <button data-view="milestones" title="Milestones">
+      <button data-view="milestones" aria-label="Milestones" data-tip="Milestones">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3v18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M6 4.5h11l-2.5 3.5 2.5 3.5H6" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
         <span class="nav-label">Milestones</span>
       </button>
-      <button data-view="internal" title="Internal Tasks">
+      <button data-view="internal" aria-label="Internal Tasks" data-tip="Internal Tasks">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 4.5h8a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.5 9h5M9.5 12.5h5M9.5 16h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
         <span class="nav-label">Internal Tasks</span>
       </button>
-      <button data-view="checklists" title="Checklists">
+      <button data-view="checklists" aria-label="Checklists" data-tip="Checklists">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 6.5h9M9 12h9M9 17.5h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="m4 6.5 1 1 2-2M4 12l1 1 2-2M4 17.5l1 1 2-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="nav-label">Checklists</span>
       </button>
-      <button data-view="tools" title="Tools">
+      <button data-view="tools" aria-label="Tools" data-tip="Tools">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.7 6.3a3.5 3.5 0 0 0-4.6 4.2L4 16.6V20h3.4l6.1-6.1a3.5 3.5 0 0 0 4.2-4.6l-2.5 2.5-2-2 2.5-2.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
         <span class="nav-label">Tools</span>
       </button>
-      <button data-view="settings" class="nav-icon-btn" title="Settings">
+      <button data-view="settings" class="nav-icon-btn" aria-label="Settings" data-tip="Settings">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3.3"/>
           <circle cx="12" cy="12" r="7"/>
@@ -928,7 +940,7 @@
         </svg>
         <span class="nav-label">Settings</span>
       </button>
-      <button data-view="timeoff" title="Time Off">
+      <button data-view="timeoff" aria-label="Time Off" data-tip="Time Off">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3v18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 3a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.7 20.4c1-1.2 1-2.6 0-3.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         <span class="nav-label">Time Off</span>
       </button>
@@ -940,7 +952,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M15 17v1.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V7"/><path d="M10 12h9.5m0 0-3-3m3 3-3 3"/></svg>
       </button>
     </div>
-    <div id="versionBadge" class="version-badge">v0.79.2</div>
+    <div id="versionBadge" class="version-badge">v0.79.3</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -949,6 +961,7 @@
 </button>
 <div id="modalRoot"></div>
 <div class="toast" id="toast"></div>
+<div class="sidebar-tooltip" id="sidebarTooltip"></div>
 
 <script>
 /* ============ CONFIG ============ */
@@ -2340,7 +2353,35 @@ function updateSidebarUser(){
   const avatar = document.getElementById('sidebarUserAvatar');
   avatar.textContent = initials(me.name);
   avatar.style.background = clientColor(me.id);
+  avatar.title = me.name;
   document.getElementById('sidebarUserName').textContent = me.name;
+}
+
+/* Icon-only hover tooltips for the collapsed sidebar — see the .sidebar-tooltip
+   CSS comment for why this is a floating element positioned in JS rather than
+   a CSS ::after on the button (the sidebar's own overflow-x:hidden clips it). */
+function wireSidebarTooltips(){
+  const tip = document.getElementById('sidebarTooltip');
+  const sidebar = document.getElementById('sidebar');
+  if(!tip || !sidebar) return;
+  const targets = [
+    ...document.querySelectorAll('#nav button[data-tip]'),
+    document.getElementById('sidebarSearchBtn')
+  ].filter(Boolean);
+  targets.forEach(el=>{
+    el.addEventListener('mouseenter', ()=>{
+      if(!sidebar.classList.contains('collapsed')) return;
+      const text = el.dataset.tip;
+      if(!text) return;
+      tip.textContent = text;
+      const r = el.getBoundingClientRect();
+      tip.style.left = (r.right + 12) + 'px';
+      tip.style.top = (r.top + r.height/2) + 'px';
+      tip.style.transform = 'translateY(-50%)';
+      tip.classList.add('show');
+    });
+    el.addEventListener('mouseleave', ()=> tip.classList.remove('show'));
+  });
 }
 
 function closeMobileNav(){
@@ -7679,7 +7720,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.79.2';
+const APP_VERSION = '0.79.3';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
@@ -9299,6 +9340,7 @@ async function boot(){
     const collapsed = $('#sidebar').classList.toggle('collapsed');
     store.set('rs_sidebar_collapsed', collapsed?'1':'0');
     $('#sidebarCollapseBtn').title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    document.getElementById('sidebarTooltip').classList.remove('show');
   });
   if($('#sidebar').classList.contains('collapsed')) $('#sidebarCollapseBtn').title = 'Expand sidebar';
   $('#mobileMenuBtn').addEventListener('click', ()=>{
@@ -9320,6 +9362,7 @@ async function boot(){
   $('#quickAddFab').style.display = 'flex';
   $('#quickAddFab').addEventListener('click', e=> openQuickAddMenu(e.currentTarget));
   $('#sidebarSearchBtn').addEventListener('click', openCommandPalette);
+  wireSidebarTooltips();
   document.addEventListener('keydown', e=>{
     if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); openCommandPalette(); }
   });

@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.79.2**
+Current version: **v0.79.3**
 
 > ✅ **RLS IS ON — verified live 2026-09-10.** v40 and v41 have both run. Confirmed against the live DB: `anon` gets `42501 permission denied` on a direct `rs_clients` read, `client_portal()` returns a full payload for `anon`, and the internal-only client columns (`retainer_hours`, `rollover_*`, `retainer_paused`, `miro_link_internal`) are no longer in that payload. v39 was skipped and that turned out to be harmless — see below.
 >
@@ -860,6 +860,12 @@ Font: Inter (unchanged from v0.9.0)
 - **Calendar avatars were 26×16, not 16×16.** `.avatar`'s base rule sets `min-width:26px` (it also has `padding:0 3px` so a two-initial avatar can grow), and v0.79.1's `.cal-chip .avatar{width:16px;height:16px}` override never touched `min-width` — so the width floor won and every avatar rendered as a squashed oval. The override now sets `min-width:16px` and `padding:0` as well, plus `border-width:1px` (the base 2px white ring is heavy at 16px) and a `-4px` group overlap instead of the base `-8px`, which is proportioned for 26px avatars. Verified all four avatars measure exactly 16×16 with `border-radius:50%`.
 - Verified by computed style and `getBoundingClientRect()` in both themes: track and fill radii, `gapPx: 0` where band meets fill in all band cases, the `flush` class only at 0%, avatars square at 16px, and the compact client-card bar confirmed unchanged and consistent (pill, `has-est`, zero gap). Screenshots of all four meter states and the calendar chips.
 - **Not fixed, still pre-existing:** at very low usage the "used" and "%" labels on the big bar overlap (the %-label's 16% tracking floor doesn't clear the wider "10h of 40h" text). It became more visible while testing the 0% case above. Unrelated to these three fixes and unchanged since v0.75.0 flagged it.
+
+**What shipped in v0.79.3** (collapsed-sidebar icons get a hover tooltip naming them):
+- **New `.sidebar-tooltip` floating element** (`#sidebarTooltip`, one shared instance appended near the end of `<body>`), shown only while `#sidebar.collapsed` and only for whichever icon is under the pointer — every nav button and the search button lost their `title` attribute in favour of `aria-label` (screen readers) + `data-tip` (the tooltip's text), so there's no native OS tooltip competing with it.
+- **Positioned in JS (`wireSidebarTooltips()`, next to `updateSidebarUser`), not CSS.** A `content:attr(data-tip)` pseudo-element anchored to the button was the first attempt and read the right text/opacity in computed style, but never actually painted — `#sidebar` has `overflow-x:hidden` (needed for its own vertical scroll), and once either overflow axis is non-`visible`, Chrome silently forces the other to a clipping mode too, so anything anchored inside the sidebar and extending past its collapsed 60px width was being clipped rather than shown. The floating element is positioned via `getBoundingClientRect()` on `mouseenter` instead, so it's unaffected by any ancestor's overflow.
+- **Same ink/paper pill styling as the retainer usage-bar labels** (`.meter-used-label` et al) — dark pill + light text in light mode, light pill + dark text in dark mode, both from the app's own tokens rather than a fixed colour. Hides on `mouseleave` and on toggling the sidebar back open (via the collapse button).
+- Verified via computed style rather than screenshot for the actual tooltip content (this harness's screenshot capture has a known glitch with this shared preview pane, documented elsewhere in this file): correct text/position/opacity=1/visibility for a nav button and the search button while collapsed, correctly stays hidden while expanded, hides on mouseleave, and correct ink/paper colours in both themes.
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 
