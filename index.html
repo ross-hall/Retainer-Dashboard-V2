@@ -952,7 +952,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M15 17v1.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V7"/><path d="M10 12h9.5m0 0-3-3m3 3-3 3"/></svg>
       </button>
     </div>
-    <div id="versionBadge" class="version-badge">v0.79.3</div>
+    <div id="versionBadge" class="version-badge">v0.80.0</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -1306,6 +1306,51 @@ const DEFAULT_HOLIDAY_DAYS_PER_YEAR = 25;
 function holidayDaysPerYear(){
   const n = Number(appSetting('holiday_days_per_year', DEFAULT_HOLIDAY_DAYS_PER_YEAR));
   return Number.isFinite(n) ? n : DEFAULT_HOLIDAY_DAYS_PER_YEAR;
+}
+/* Which nav pages an admin can hide from everyone else — e.g. before sharing
+   a login with someone outside the team who shouldn't see work-in-progress
+   pages. 'settings' is deliberately excluded: it's where this list itself is
+   edited, so hiding it would be a one-way door with no in-app way back. */
+const NAV_HIDEABLE_PAGES = [
+  { key:'home', label:'Home' },
+  { key:'projects', label:'Graphics' },
+  { key:'animation', label:'Animation (Beta)' },
+  { key:'tasksahead', label:'Week Tasks' },
+  { key:'milestones', label:'Milestones' },
+  { key:'internal', label:'Internal Tasks' },
+  { key:'checklists', label:'Checklists' },
+  { key:'tools', label:'Tools' },
+  { key:'timeoff', label:'Time Off' },
+];
+function hiddenNavPages(){
+  const raw = appSetting('hidden_nav_pages', '[]');
+  try{ const arr = JSON.parse(raw); return new Set(Array.isArray(arr) ? arr : []); }
+  catch(e){ return new Set(); }
+}
+/* Admins always see every page (so nobody — including whoever set the hidden
+   list — can lock themselves out); everyone else's sidebar drops whichever
+   nav buttons are in the hidden set. Called from render() after every view
+   switch rather than once at boot, since the active view/nav markup is
+   rebuilt each time. */
+function applyNavVisibility(){
+  if(isAdminUser()) return;
+  const hidden = hiddenNavPages();
+  if(!hidden.size) return;
+  document.querySelectorAll('#nav button[data-view]').forEach(b=>{
+    if(hidden.has(b.dataset.view)) b.style.display = 'none';
+  });
+}
+/* If a non-admin's current view is one that just got hidden (or they land on
+   'home' as the default and it's the hidden one), bounce to the first page
+   still visible to them rather than rendering a page with no way back to it
+   via the nav — checked before render()'s active-state loop runs so the
+   redirect and the loop agree on state.view. */
+function redirectFromHiddenView(){
+  if(isAdminUser()) return;
+  const hidden = hiddenNavPages();
+  if(!hidden.size || !hidden.has(state.view)) return;
+  const fallback = NAV_HIDEABLE_PAGES.find(p=>!hidden.has(p.key));
+  state.view = fallback ? fallback.key : 'settings';
 }
 function avatarHtml(member){ if(!member) return ''; return `<span class="avatar" style="background:${clientColor(member.id)}" title="${esc(member.name)}">${initials(member.name)}</span>`; }
 function avatarWithName(member){ return member ? `<span style="display:inline-flex;align-items:center;gap:6px">${avatarHtml(member)}${esc(member.name)}</span>` : '<span style="color:var(--muted)">—</span>'; }
@@ -2393,9 +2438,12 @@ function closeMobileNav(){
 
 function render(){
   updateSidebarUser();
+  redirectFromHiddenView();
   document.querySelectorAll('#nav button').forEach(b=>{
     b.classList.toggle('active', b.dataset.view===state.view);
+    b.style.display = '';
   });
+  applyNavVisibility();
   const titleEl = document.getElementById('mobileTopBarTitle');
   if(titleEl){
     const activeLabel = document.querySelector('#nav button.active .nav-label');
@@ -2455,6 +2503,13 @@ function currentUser(){
   // keep the old behaviour rather than breaking any signed-out render path).
   return members.find(m=>(m.name||'').trim().toLowerCase()===CURRENT_USER_NAME.toLowerCase());
 }
+
+/* Shared "is this signed-in user an admin" check — currently just
+   rs_members.is_admin (Settings > Team members > Admin), same flag that
+   already drives Time Off approval and the People picker's Admin group.
+   Used wherever an admin should see something a regular team member
+   doesn't, e.g. hideNavPages() below. */
+function isAdminUser(){ const m = currentUser(); return !!(m && m.is_admin); }
 
 function homeTaskContextHtml(t){
   if(t.project_id){
@@ -5947,7 +6002,7 @@ function openToolModal(toolId){
    outputs/v35_time_off.sql — degrades gracefully (toast + no local-state
    mutation) until that migration is run, same pattern as every other
    not-yet-run table in this app. */
-function timeOffIsAdmin(){ const m = currentUser(); return !!(m && m.is_admin); }
+function timeOffIsAdmin(){ return isAdminUser(); }
 function timeOffTypeLabel(type){ return type==='wfh' ? 'WFH' : 'Holiday'; }
 /* Holiday days remaining this calendar year — approved 'holiday' requests
    only (WFH doesn't count against the allowance), attributed to the year
@@ -7649,7 +7704,15 @@ function settingsAdminHtml(){
       <button class="btn small" id="as_save">Save</button>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-top:10px">Drives the "days left this year" line at the top of the Time Off page — the same allowance applies to everyone.</div>
-  </div>`;
+  </div>
+  ${isAdminUser() ? `<div class="card" style="margin-top:16px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:6px">Hide pages from non-admins</h3>
+    <div class="sub" style="margin-bottom:14px">Tick a page to remove it from the sidebar for anyone who isn't marked Admin (Settings > Team members) — useful before sharing a login with someone outside the team who shouldn't see unfinished pages. Admins always see everything, including you.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      ${NAV_HIDEABLE_PAGES.map(p=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" data-hidepage="${p.key}" ${hiddenNavPages().has(p.key)?'checked':''} style="width:auto">${esc(p.label)}</label>`).join('')}
+    </div>
+    <button class="btn small" id="as_hide_save">Save</button>
+  </div>` : ''}`;
 }
 function wireSettingsAdmin(){
   $('#as_save').onclick = async ()=>{
@@ -7657,6 +7720,12 @@ function wireSettingsAdmin(){
     if(!Number.isFinite(n) || n<0){ toast('Enter a valid number of days'); return; }
     const { error } = await db.from('rs_app_settings').upsert({ key:'holiday_days_per_year', value:String(n) });
     if(error){ toast(error.code==='PGRST205'?'Run migration v37 to enable Admin settings':'Could not save'); console.error(error); return; }
+    toast('Saved'); await loadAll(); render();
+  };
+  if($('#as_hide_save')) $('#as_hide_save').onclick = async ()=>{
+    const keys = Array.from(document.querySelectorAll('[data-hidepage]:checked')).map(el=>el.dataset.hidepage);
+    const { error } = await db.from('rs_app_settings').upsert({ key:'hidden_nav_pages', value:JSON.stringify(keys) });
+    if(error){ toast(error.code==='PGRST205'?'Run migration v37 to enable this':'Could not save'); console.error(error); return; }
     toast('Saved'); await loadAll(); render();
   };
 }
@@ -7720,7 +7789,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.79.3';
+const APP_VERSION = '0.80.0';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
