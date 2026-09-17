@@ -3,7 +3,7 @@
 ## Project overview
 Single-file HTML app: `index.html` (~4,810 lines) — note: this CLAUDE.md previously referred to it as `rs-retainer-tracker.html`; the file on disk is `index.html`, same structure described below.
 Function index: `rs-function-index.md` — **always read this before grepping the main file**
-Current version: **v0.80.0**
+Current version: **v0.80.1**
 
 > ✅ **RLS IS ON — verified live 2026-09-10.** v40 and v41 have both run. Confirmed against the live DB: `anon` gets `42501 permission denied` on a direct `rs_clients` read, `client_portal()` returns a full payload for `anon`, and the internal-only client columns (`retainer_hours`, `rollover_*`, `retainer_paused`, `miro_link_internal`) are no longer in that payload. v39 was skipped and that turned out to be harmless — see below.
 >
@@ -875,6 +875,12 @@ Font: Inter (unchanged from v0.9.0)
 - **The "Hide pages from non-admins" card on Settings > Admin settings is itself admin-only** — `settingsAdminHtml()` only includes it when `isAdminUser()` is true, so the very audience it's hiding pages from can't see (or toggle) the control either. The existing holiday-days-per-year field on the same page is unchanged and still open to everyone, same as before.
 - **Degrades exactly like the existing Admin settings field**: Save on the new card upserts `{key:'hidden_nav_pages', value: JSON.stringify(keys)}` into `rs_app_settings` and toasts "Run migration v37 to enable this" on the real `PGRST205` pre-migration — verified live against the actual error code, same pattern `as_save` already established for `holiday_days_per_year`.
 - Verified against `_verify.html` (auth gate bypassed) on synthetic state with two members (one admin, one not): admin sees all 10 nav buttons; the non-admin correctly loses exactly the three hidden buttons (`display:none`) with every other button — including Settings — untouched; switching back to admin restores all 10 with no stuck `display:none` from the reset-then-hide pass; a non-admin deep-linked onto a hidden page redirects to `home`; the Settings hide-pages card is present for the admin (checkboxes pre-checked to match the stored list) and completely absent from the non-admin's Settings > Admin settings render; the Save handler's exact upsert payload and the `PGRST205` toast both confirmed via a stubbed `db.from('rs_app_settings').upsert`; dark mode (no new styled surfaces beyond existing `.card`/checkbox/label classes, so no separate light/dark risk).
+
+**What shipped in v0.80.1** (a "Prototype" pill on the internal app — separate, same-day follow-up to v0.80.0's hide-pages toggle, so someone the app gets shared with knows at a glance it's still a work in progress even on the pages that stay visible):
+- **Two placements, both reusing the existing amber `.label-chip` pill** rather than new CSS — under the sidebar brand row (`.proto-badge-row`, its own full-width row so it isn't squeezed into the already-tight `.side-top` icon row) and next to the mobile top-bar title, so it's visible on both desktop and the `≤760px` mobile stack without opening the nav drawer. Both carry a `title` tooltip explaining what "Prototype" means here.
+- **Hidden when the sidebar is collapsed**, matching the existing convention for `.brand-name`/`.version-badge` — collapsed mode is icon-only by design, and there's no icon-only version of a text pill worth inventing for it.
+- **Internal app only, deliberately** — the public client-dashboard (`?client=slug`) is untouched. Labelling a paying client's own portal "Prototype" is a different call than labelling the internal tool your own team (and a boss) uses, and wasn't asked for.
+- Verified live: the sidebar pill renders and reads "Prototype" in both light and dark mode; correctly `display:none` once `#sidebar.collapsed`; the mobile top-bar pill sits cleanly next to a short title ("Home") and a long one ("Internal Tasks", title ending at 158px of a 375px viewport) with zero horizontal overflow on `#mobileTopBar` (`scrollWidth===clientWidth===375`).
 
 Full technical detail for v0.11.0 (exact line numbers, which functions touch what) is in `rs-function-index.md` — note line numbers there predate the v0.13.0 restructure and have drifted further since; grep for function names rather than trusting them.
 

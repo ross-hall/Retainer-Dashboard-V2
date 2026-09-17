@@ -116,6 +116,8 @@
   #sidebar .sidebar-search-btn:hover{background:var(--track)}
   #sidebar .sidebar-search-btn svg{width:16px;height:16px;flex:none;opacity:.8}
   #sidebar .sidebar-search-btn .cmd-hint{margin-left:auto}
+  .proto-badge-row{text-align:center}
+  #sidebar.collapsed .proto-badge-row{display:none}
   #sidebar.collapsed .sidebar-search-btn{justify-content:center}
   #sidebar.collapsed .sidebar-search-btn .nav-label,#sidebar.collapsed .sidebar-search-btn .cmd-hint{display:none}
 
@@ -876,6 +878,7 @@
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
   </button>
   <span class="mobile-top-bar-title" id="mobileTopBarTitle">Reciprocal Space</span>
+  <span class="label-chip" style="margin-left:0;flex:none" title="This app is an active work-in-progress — pages, layouts and data may still change">Prototype</span>
 </div>
 <div class="mobile-nav-backdrop" id="mobileNavBackdrop"></div>
 
@@ -894,6 +897,7 @@
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 4.5v15" stroke="currentColor" stroke-width="1.6"/><path d="M13.5 10l-2 2 2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
+    <div class="proto-badge-row"><span class="label-chip" style="margin-left:0" title="This app is an active work-in-progress — pages, layouts and data may still change">Prototype</span></div>
     <button class="sidebar-search-btn" id="sidebarSearchBtn" aria-label="Search (⌘K)" data-tip="Search (⌘K)">
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
       <span class="nav-label">Search</span>
@@ -952,7 +956,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15"><path d="M15 17v1.5a2 2 0 0 1-2 2H6.5a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V7"/><path d="M10 12h9.5m0 0-3-3m3 3-3 3"/></svg>
       </button>
     </div>
-    <div id="versionBadge" class="version-badge">v0.80.0</div>
+    <div id="versionBadge" class="version-badge">v0.80.1</div>
   </aside>
   <main id="main"></main>
 </div>
@@ -7789,7 +7793,7 @@ function showSetup(){
   };
 }
 
-const APP_VERSION = '0.80.0';
+const APP_VERSION = '0.80.1';
 let _versionClickCount = 0, _versionClickTimer = null;
 function handleVersionClick(){
   _versionClickCount++;
